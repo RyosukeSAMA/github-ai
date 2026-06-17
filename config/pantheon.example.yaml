@@ -1,0 +1,75 @@
+# Pantheon configuration template.
+# Copy this file to pantheon.yaml and fill in your settings.
+# DO NOT commit your real pantheon.yaml (it's in .gitignore).
+
+pantheon:
+  # Hermes is the orchestrator. Use your strongest model here.
+  hermes:
+    model: claude-sonnet-4-20250514
+    provider: anthropic
+    temperature: 0.2
+    max_tokens: 4096
+
+  # Each role picks its own model. Different gods, different tools.
+  roles:
+    hephaestus:
+      name: "Hephaestus (锻造之神)"
+      description: "Writes and refactors code"
+      model: claude-sonnet-4-20250514
+      provider: anthropic
+      temperature: 0.1
+      tools: []
+      enabled: true
+
+    athena:
+      name: "Athena (智慧之神)"
+      description: "Researches and gathers information"
+      model: gpt-4o
+      provider: openai
+      temperature: 0.3
+      tools: [web_search, web_extract]
+      enabled: true
+
+    apollo:
+      name: "Apollo (艺术之神)"
+      description: "Generates images, audio, video"
+      model: gpt-4o
+      provider: openai
+      temperature: 0.7
+      tools: [image_gen, tts]
+      enabled: true
+
+    chronos:
+      name: "Chronos (时间之神)"
+      description: "Schedules and runs periodic tasks"
+      model: none              # no LLM, pure scheduling
+      provider: none
+      tools: [cronjob]
+      enabled: true
+
+# LLM providers. API keys are read from environment variables.
+llm_providers:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: https://api.anthropic.com
+
+  ollama:
+    # For local models via Ollama. Uncomment to enable.
+    # base_url: http://localhost:11434
+    base_url: http://localhost:11434
+    enabled: false
+
+# Web UI settings
+web:
+  host: 127.0.0.1
+  port: 8000
+  reload: false
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
