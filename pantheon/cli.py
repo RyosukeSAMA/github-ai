@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -32,7 +31,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
-    version: Optional[bool] = typer.Option(
+    version: bool | None = typer.Option(
         None,
         "--version",
         callback=_version_callback,
@@ -47,7 +46,7 @@ def main(
 @app.command("ask")
 def ask(
     task: str = typer.Argument(..., help="The task to send to the Pantheon."),
-    role: Optional[str] = typer.Option(
+    role: str | None = typer.Option(
         None,
         "--role",
         "-r",
@@ -59,7 +58,7 @@ def ask(
         "-m",
         help="Force multi-role collaboration mode.",
     ),
-    config: Optional[str] = typer.Option(
+    config: str | None = typer.Option(
         None, "--config", "-c", help="Path to pantheon.yaml."
     ),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON instead of formatted text."),
@@ -116,7 +115,7 @@ def ask(
 
 @app.command("roles")
 def list_roles(
-    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    config: str | None = typer.Option(None, "--config", "-c"),
 ) -> None:
     """List all enabled roles."""
     try:
@@ -140,7 +139,7 @@ def web(
     host: str = typer.Option("127.0.0.1", "--host", "-h"),
     port: int = typer.Option(8000, "--port", "-p"),
     reload: bool = typer.Option(False, "--reload"),
-    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    config: str | None = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Launch the Web UI."""
     try:
@@ -153,7 +152,7 @@ def web(
     from pantheon.web import create_app
 
     app_instance = create_app(config_path=config)
-    console.print(f"\n[bold green]🏛️ Pantheon Web UI[/bold green]")
+    console.print("\n[bold green]🏛️ Pantheon Web UI[/bold green]")
     console.print(f"   [cyan]http://{host}:{port}[/cyan]\n")
 
     uvicorn.run(app_instance, host=host, port=port, reload=reload, log_level="info")

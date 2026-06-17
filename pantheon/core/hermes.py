@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from pantheon.core.base import Plan, PlanStep, Task, TaskResult, time_ms
+from pantheon.core.base import Plan, Task, TaskResult
 from pantheon.core.router import Router
 
 
@@ -17,11 +17,11 @@ class Hermes:
     Then he collects results and produces the final answer.
     """
 
-    def __init__(self, roles: Dict[str, Any], router: Router) -> None:
+    def __init__(self, roles: dict[str, Any], router: Router) -> None:
         self.roles = roles  # name -> Role instance
         self.router = router
 
-    def dispatch(self, task: Task) -> Dict[str, Any]:
+    def dispatch(self, task: Task) -> dict[str, Any]:
         """Dispatch a task according to its mode.
 
         Returns a dict:
@@ -61,7 +61,7 @@ class Hermes:
         role_name: str,
         task: Task,
         plan_reasoning: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         role = self.roles.get(role_name)
         if role is None:
             return {
@@ -83,9 +83,9 @@ class Hermes:
         self,
         task: Task,
         plan: Plan,
-    ) -> Dict[str, Any]:
-        steps_output: List[TaskResult] = []
-        context: List[Dict[str, Any]] = []
+    ) -> dict[str, Any]:
+        steps_output: list[TaskResult] = []
+        context: list[dict[str, Any]] = []
 
         for i, step in enumerate(plan.steps, 1):
             role = self.roles.get(step.role)
@@ -129,7 +129,7 @@ class Hermes:
             "steps": steps_output,
         }
 
-    def _role_descriptions(self) -> Dict[str, Dict[str, Any]]:
+    def _role_descriptions(self) -> dict[str, dict[str, Any]]:
         return {
             name: {"description": getattr(role, "description", "")}
             for name, role in self.roles.items()

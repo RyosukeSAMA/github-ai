@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -12,14 +12,13 @@ from pydantic import BaseModel
 
 from pantheon.core.pantheon import Pantheon
 
-
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 class AskRequest(BaseModel):
     task: str
     mode: str = "auto"          # "auto" | "role:<name>" | "multi"
-    role: Optional[str] = None  # convenience: --role foo → mode = "role:foo"
+    role: str | None = None  # convenience: --role foo → mode = "role:foo"
 
 
 class AskResponse(BaseModel):
@@ -29,11 +28,11 @@ class AskResponse(BaseModel):
     steps: list = []
 
 
-def create_app(config_path: Optional[str] = None) -> FastAPI:
+def create_app(config_path: str | None = None) -> FastAPI:
     """Build the FastAPI app. Pantheon instance is created lazily."""
     app = FastAPI(title="Pantheon Web UI", version="0.1.0")
 
-    _pantheon: Dict[str, Optional[Pantheon]] = {"instance": None}
+    _pantheon: dict[str, Pantheon | None] = {"instance": None}
 
     def get_pantheon() -> Pantheon:
         if _pantheon["instance"] is None:
@@ -56,7 +55,7 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
         return HTMLResponse(index_file.read_text(encoding="utf-8"))
 
     @app.get("/api/roles")
-    async def list_roles() -> Dict[str, Any]:
+    async def list_roles() -> dict[str, Any]:
         try:
             p = get_pantheon()
         except Exception as e:
@@ -106,7 +105,7 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
         })
 
     @app.get("/api/health")
-    async def health() -> Dict[str, str]:
+    async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     return app

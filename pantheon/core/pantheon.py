@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
 
-from pantheon.core.base import Task, TaskResult
+from pantheon.core.base import Task
 from pantheon.core.hermes import Hermes
 from pantheon.core.router import Router
 from pantheon.llm import get_llm_client
@@ -25,8 +25,8 @@ class Pantheon:
 
     def __init__(
         self,
-        config_path: Optional[str] = None,
-        env_path: Optional[str] = None,
+        config_path: str | None = None,
+        env_path: str | None = None,
         verbose: bool = False,
     ) -> None:
         # Load .env if present (silently)
@@ -49,7 +49,7 @@ class Pantheon:
             self.log.setLevel("DEBUG")
 
         # Build LLM clients (one per provider)
-        self.llm_clients: Dict[str, Any] = self._build_llm_clients()
+        self.llm_clients: dict[str, Any] = self._build_llm_clients()
 
         # Build Router (Hermes's planner)
         hermes_cfg = self.config.get("pantheon", {}).get("hermes", {})
@@ -72,7 +72,7 @@ class Pantheon:
 
     # ---------- public API ----------
 
-    def ask(self, content: str, mode: str = "auto") -> Dict[str, Any]:
+    def ask(self, content: str, mode: str = "auto") -> dict[str, Any]:
         """Ask the Pantheon to do something.
 
         Args:
@@ -88,7 +88,7 @@ class Pantheon:
         task = Task(content=content, mode=mode)
         return self.hermes.dispatch(task)
 
-    def list_roles(self) -> List[str]:
+    def list_roles(self) -> list[str]:
         """Return names of all enabled roles."""
         return list(self.roles.keys())
 
@@ -126,14 +126,14 @@ class Pantheon:
         )
 
     @staticmethod
-    def _load_config(path: str) -> Dict[str, Any]:
-        with open(path, "r", encoding="utf-8") as f:
+    def _load_config(path: str) -> dict[str, Any]:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         return _expand_env_vars(data)
 
-    def _build_llm_clients(self) -> Dict[str, Any]:
+    def _build_llm_clients(self) -> dict[str, Any]:
         providers = self.config.get("llm_providers", {})
-        clients: Dict[str, Any] = {}
+        clients: dict[str, Any] = {}
         for name, cfg in providers.items():
             if not cfg.get("enabled", True):
                 continue
@@ -158,10 +158,10 @@ class Pantheon:
                 self.log.error("Failed to init provider '%s': %s", name, e)
         return clients
 
-    def _build_roles(self) -> Dict[str, Any]:
+    def _build_roles(self) -> dict[str, Any]:
         roles_cfg = self.config.get("pantheon", {}).get("roles", {})
         defaults = register_default_roles()
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
 
         # Always register all defaults; YAML can override config but not disable (yet)
         for role_name, role_cls in defaults.items():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pantheon.core.base import Plan, PlanStep
 
@@ -43,14 +43,14 @@ Rules:
 - Do not invent roles. Use only names from the provided list.
 - Output JSON only. No prose before or after."""
 
-    def __init__(self, llm_client: Any, hermes_model: Optional[str] = None) -> None:
+    def __init__(self, llm_client: Any, hermes_model: str | None = None) -> None:
         self.llm_client = llm_client
         self.hermes_model = hermes_model
 
     def plan(
         self,
         task: str,
-        available_roles: Dict[str, Dict[str, Any]],
+        available_roles: dict[str, dict[str, Any]],
     ) -> Plan:
         """Decide how to route a task.
 
@@ -85,7 +85,7 @@ Produce a JSON plan."""
     def summarize(
         self,
         original_task: str,
-        context: List[Dict[str, Any]],
+        context: list[dict[str, Any]],
     ) -> str:
         """Summarize a multi-step result into a final user-facing answer."""
         if not context:
@@ -118,7 +118,7 @@ Be concise, structured, and complete. Address the original task directly."""
     def _parse_plan(
         self,
         raw: str,
-        available_roles: Dict[str, Dict[str, Any]],
+        available_roles: dict[str, dict[str, Any]],
     ) -> Plan:
         """Parse the LLM's JSON output into a Plan object, with fallbacks."""
         data = self._extract_json(raw)
@@ -140,7 +140,7 @@ Be concise, structured, and complete. Address the original task directly."""
 
         if data.get("type") == "multi":
             steps_raw = data.get("steps", [])
-            steps: List[PlanStep] = []
+            steps: list[PlanStep] = []
             for s in steps_raw:
                 role = s.get("role")
                 if role not in available_roles:
@@ -163,7 +163,7 @@ Be concise, structured, and complete. Address the original task directly."""
         return Plan.single(role=fallback_role, reasoning=f"Unknown plan type: {raw[:200]}")
 
     @staticmethod
-    def _extract_json(raw: str) -> Optional[Dict[str, Any]]:
+    def _extract_json(raw: str) -> dict[str, Any] | None:
         """Extract a JSON object from a string, tolerating ```json fences and prose."""
         if not raw:
             return None

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import os
-from typing import Any, Dict, List
+from typing import Any
 
 from pantheon.llm.base import BaseLLMClient
 
@@ -26,7 +25,7 @@ class OpenAIClient(BaseLLMClient):
                 raise ImportError(
                     "openai package is required: pip install openai"
                 ) from e
-            kwargs: Dict[str, Any] = {}
+            kwargs: dict[str, Any] = {}
             if self.api_key:
                 kwargs["api_key"] = self.api_key
             if self.base_url:
@@ -36,7 +35,7 @@ class OpenAIClient(BaseLLMClient):
 
     def complete(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str,
         system: str = "",
         temperature: float = 0.3,

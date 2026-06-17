@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from pantheon.core.base import Role, Task, TaskResult, time_ms
 
@@ -34,13 +34,13 @@ class Hephaestus(Role):
     default_model = "claude-sonnet-4-20250514"
     default_provider = "anthropic"
     default_temperature = 0.1
-    tools: List[str] = ["terminal", "file", "patch"]
+    tools: list[str] = ["terminal", "file", "patch"]
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("system_prompt", HEPHAESTUS_SYSTEM_PROMPT)
         super().__init__(*args, **kwargs)
 
-    def run(self, task: Task, context: Optional[List[dict]] = None) -> TaskResult:
+    def run(self, task: Task, context: list[dict] | None = None) -> TaskResult:
         start = time_ms()
         context_block = self._format_context(context)
 

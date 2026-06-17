@@ -1,6 +1,5 @@
 """Tests for the Router (planner)."""
 
-import pytest
 
 from pantheon.core.router import Router
 from tests.conftest import MockLLMClient

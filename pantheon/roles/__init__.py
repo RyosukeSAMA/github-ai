@@ -1,9 +1,9 @@
 """Built-in Pantheon roles (the gods)."""
 
-from pantheon.roles.hephaestus import Hephaestus
-from pantheon.roles.athena import Athena
 from pantheon.roles.apollo import Apollo
+from pantheon.roles.athena import Athena
 from pantheon.roles.chronos import Chronos
+from pantheon.roles.hephaestus import Hephaestus
 
 _BUILTIN_ROLES = {
     "hephaestus": Hephaestus,

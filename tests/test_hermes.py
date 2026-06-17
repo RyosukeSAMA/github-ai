@@ -1,6 +1,5 @@
 """Tests for Hermes (orchestrator) end-to-end dispatching."""
 
-import pytest
 
 from pantheon.core.base import Task
 from pantheon.core.hermes import Hermes

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from pantheon.core.base import Role, Task, TaskResult, time_ms
 
@@ -27,13 +27,13 @@ class Chronos(Role):
     default_model = ""  # no LLM
     default_provider = ""
     default_temperature = 0.0
-    tools: List[str] = ["cronjob"]
+    tools: list[str] = ["cronjob"]
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("system_prompt", CHRONOS_SYSTEM_PROMPT)
         super().__init__(*args, **kwargs)
 
-    def run(self, task: Task, context: Optional[List[dict]] = None) -> TaskResult:
+    def run(self, task: Task, context: list[dict] | None = None) -> TaskResult:
         """Chronos doesn't actually call an LLM. It interprets scheduling intent.
 
         For v0.1 this returns a structured confirmation. Real cron scheduling

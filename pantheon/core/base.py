@@ -6,7 +6,7 @@ import abc
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -15,7 +15,7 @@ class Task:
 
     content: str
     mode: str = "auto"  # "auto" | "role:<name>" | "multi"
-    context: List[Dict[str, Any]] = field(default_factory=list)
+    context: list[dict[str, Any]] = field(default_factory=list)
     task_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
 
     def __post_init__(self) -> None:
@@ -33,8 +33,8 @@ class TaskResult:
     role: str
     content: str
     success: bool = True
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     duration_ms: int = 0
 
 
@@ -52,16 +52,16 @@ class Plan:
     """A multi-step plan produced by the Router for Hermes."""
 
     is_single_role: bool = False
-    single_role: Optional[str] = None
-    steps: List[PlanStep] = field(default_factory=list)
+    single_role: str | None = None
+    steps: list[PlanStep] = field(default_factory=list)
     reasoning: str = ""
 
     @classmethod
-    def single(cls, role: str, reasoning: str = "") -> "Plan":
+    def single(cls, role: str, reasoning: str = "") -> Plan:
         return cls(is_single_role=True, single_role=role, reasoning=reasoning)
 
     @classmethod
-    def multi(cls, steps: List[PlanStep], reasoning: str = "") -> "Plan":
+    def multi(cls, steps: list[PlanStep], reasoning: str = "") -> Plan:
         return cls(is_single_role=False, steps=steps, reasoning=reasoning)
 
 
@@ -81,15 +81,15 @@ class Role(abc.ABC):
     default_model: str = ""
     default_provider: str = ""
     default_temperature: float = 0.3
-    tools: List[str] = []
+    tools: list[str] = []
 
     def __init__(
         self,
         llm_client: Any,
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
-        system_prompt: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        system_prompt: str | None = None,
+        config: dict[str, Any] | None = None,
     ) -> None:
         if not self.name:
             raise ValueError(f"{type(self).__name__} must define `name`")
@@ -108,11 +108,11 @@ class Role(abc.ABC):
         )
 
     @abc.abstractmethod
-    def run(self, task: Task, context: Optional[List[Dict[str, Any]]] = None) -> TaskResult:
+    def run(self, task: Task, context: list[dict[str, Any]] | None = None) -> TaskResult:
         """Execute a task and return a TaskResult."""
         raise NotImplementedError
 
-    def _make_llm_call(self, messages: List[Dict[str, str]]) -> str:
+    def _make_llm_call(self, messages: list[dict[str, str]]) -> str:
         """Helper: make a synchronous LLM call."""
         if self.llm_client is None:
             raise RuntimeError(
@@ -126,7 +126,7 @@ class Role(abc.ABC):
             temperature=self.temperature,
         )
 
-    def _format_context(self, context: Optional[List[Dict[str, Any]]]) -> str:
+    def _format_context(self, context: list[dict[str, Any]] | None) -> str:
         """Format prior steps' context as a string."""
         if not context:
             return ""

@@ -1,8 +1,7 @@
 """Tests for individual roles (Hephaestus, Athena, Apollo, Chronos)."""
 
-import pytest
 
-from pantheon.core.base import Task, TaskResult
+from pantheon.core.base import Task
 from pantheon.roles import (
     Apollo,
     Athena,

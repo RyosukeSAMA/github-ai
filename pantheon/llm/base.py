@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class BaseLLMClient(abc.ABC):
@@ -12,14 +12,14 @@ class BaseLLMClient(abc.ABC):
     default_model: str = ""
     provider_name: str = ""
 
-    def __init__(self, api_key: str = "", base_url: Optional[str] = None) -> None:
+    def __init__(self, api_key: str = "", base_url: str | None = None) -> None:
         self.api_key = api_key
         self.base_url = base_url
 
     @abc.abstractmethod
     def complete(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str,
         system: str = "",
         temperature: float = 0.3,
