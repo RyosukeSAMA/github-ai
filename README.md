@@ -57,8 +57,27 @@ cp config/pantheon.example.yaml config/pantheon.yaml
 
 # 2. 复制环境变量模板并填入 API key
 cp .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY 和 ANTHROPIC_API_KEY
+# 编辑 .env，填入你的 API key（DEEPSEEK_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY）
 ```
+
+### 🎭 默认配置展示（理想样貌）
+
+`pantheon.example.yaml` 展示的是**理想配置**——每个神用各自最合适的模型：
+
+| 角色 | 任务 | 示例模型 |
+|------|------|----------|
+| 📨 Hermes | 调度/规划 | `claude-opus-4` |
+| 🔨 Hephaestus | 写代码 | `claude-sonnet-4` |
+| 🦉 Athena | 调研 | `gpt-4o` |
+| 🎵 Apollo | 创意/出图 | `gpt-image-1` |
+| ⏰ Chronos | 定时 | (无 LLM) |
+
+**但你需要根据自己持有的 API key 修改**。常见快速方案（只用一家）：
+
+- **只用 DeepSeek**（推荐入门，国内直连，注册送 500 万 tokens）：把所有 `provider: openai` + `model: deepseek-chat`，加 `base_url: https://api.deepseek.com/v1`
+- **只用 OpenAI**：把模型都改成 `gpt-4o`，用 OpenAI key
+- **只用 Anthropic**：把模型都改成 `claude-sonnet-4-20250514`，用 Anthropic key
+- **只用 Ollama**（完全免费）：本地跑 `llama3.1`，见 [`docs/setup.md`](docs/setup.md)
 
 ### 三种用法
 

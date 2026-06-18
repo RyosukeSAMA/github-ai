@@ -1,21 +1,67 @@
-# Pantheon configuration template.
-# Copy this file to pantheon.yaml and fill in your settings.
-# DO NOT commit your real pantheon.yaml (it's in .gitignore).
+# ============================================================================
+# Pantheon configuration — EXAMPLE / DEMO
+# ============================================================================
+#
+# This file demonstrates the IDEAL setup of Pantheon, where each god uses a
+# model best suited to its specialty:
+#
+#   📨 Hermes (orchestrator)  → Anthropic Claude Opus  (deep reasoning)
+#   🔨 Hephaestus (code)      → Anthropic Claude Sonnet (best code model)
+#   🦉 Athena (research)      → OpenAI GPT-4o           (broad knowledge)
+#   🎵 Apollo (creative)      → OpenAI GPT-Image-1     (image generation)
+#   ⏰ Chronos (scheduler)    → (no LLM needed)
+#
+# ⚠️  This is a DEMO configuration. To actually run Pantheon you need to:
+#
+#   1. Copy this file to `pantheon.yaml`:
+#        cp config/pantheon.example.yaml config/pantheon.yaml
+#
+#   2. Edit `pantheon.yaml` and replace each role's `model:` and `provider:`
+#      with providers/models YOU have API keys for. Below we list a few
+#      common "all-in-one" alternatives that work with just ONE provider.
+#
+#   3. Put your API keys in `.env` (see `.env.example`).
+#
+# ----------------------------------------------------------------------------
+# Common single-provider alternatives (pick one and replace below):
+#
+#   DeepSeek (cheap, Chinese-friendly, recommended for getting started):
+#     provider: openai, base_url: https://api.deepseek.com/v1
+#     model: deepseek-chat    (or deepseek-coder for code)
+#
+#   OpenAI (broad capabilities, US-based):
+#     provider: openai, base_url: https://api.openai.com/v1
+#     model: gpt-4o
+#
+#   Anthropic Claude (strong reasoning + code):
+#     provider: anthropic, base_url: https://api.anthropic.com
+#     model: claude-sonnet-4-20250514
+#
+#   Ollama (fully local, free, requires a running Ollama server):
+#     provider: ollama, base_url: http://localhost:11434
+#     model: llama3.1
+#
+# ============================================================================
 
 pantheon:
-  # Hermes is the orchestrator. Use your strongest model here.
+  # --------------------------------------------------------------------------
+  # Hermes — the orchestrator. Routes tasks to other gods.
+  # Recommended: a strong reasoning model.
+  # --------------------------------------------------------------------------
   hermes:
-    model: claude-sonnet-4-20250514
+    model: claude-opus-4-20250514
     provider: anthropic
     temperature: 0.2
     max_tokens: 4096
 
-  # Each role picks its own model. Different gods, different tools.
+  # --------------------------------------------------------------------------
+  # The five gods. Each has its own model + provider.
+  # --------------------------------------------------------------------------
   roles:
     hephaestus:
       name: "Hephaestus (锻造之神)"
       description: "Writes and refactors code"
-      model: claude-sonnet-4-20250514
+      model: claude-sonnet-4-20250514       # best at code
       provider: anthropic
       temperature: 0.1
       tools: []
@@ -24,52 +70,60 @@ pantheon:
     athena:
       name: "Athena (智慧之神)"
       description: "Researches and gathers information"
-      model: gpt-4o
+      model: gpt-4o                         # broad knowledge
       provider: openai
       temperature: 0.3
-      tools: [web_search, web_extract]
+      tools: []
       enabled: true
 
     apollo:
       name: "Apollo (艺术之神)"
-      description: "Generates images, audio, video"
-      model: gpt-4o
+      description: "Generates images, audio, and video"
+      model: gpt-image-1                    # image generation
       provider: openai
       temperature: 0.7
-      tools: [image_gen, tts]
+      tools: []
       enabled: true
 
     chronos:
       name: "Chronos (时间之神)"
-      description: "Schedules and runs periodic tasks"
-      model: none              # no LLM, pure scheduling
+      description: "Schedules and runs periodic tasks (no LLM)"
+      model: none
       provider: none
-      tools: [cronjob]
+      tools: []
       enabled: true
 
-# LLM providers. API keys are read from environment variables.
+# ============================================================================
+# LLM providers. Each role above references one of these by name.
+# API keys are read from environment variables; see .env.example.
+# ============================================================================
 llm_providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    base_url: https://api.openai.com/v1
-
   anthropic:
     api_key: ${ANTHROPIC_API_KEY}
     base_url: https://api.anthropic.com
+    enabled: true
+
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+    enabled: true
 
   ollama:
-    # For local models via Ollama. Uncomment to enable.
-    # base_url: http://localhost:11434
+    api_key: ""
     base_url: http://localhost:11434
-    enabled: false
+    enabled: false   # Set to true if you have Ollama running locally
 
-# Web UI settings
+# ============================================================================
+# Web UI
+# ============================================================================
 web:
   host: 127.0.0.1
   port: 8000
   reload: false
 
+# ============================================================================
 # Logging
+# ============================================================================
 logging:
   level: INFO
   format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
