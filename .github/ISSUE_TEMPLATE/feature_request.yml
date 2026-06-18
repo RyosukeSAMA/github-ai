@@ -1,0 +1,71 @@
+name: ✨ Feature Request
+description: Suggest a new role, command, or capability
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea for Pantheon? Tell us!
+
+  - type: dropdown
+    id: feature_type
+    attributes:
+      label: What kind of feature?
+      options:
+        - "New role / god (e.g. Ares for security audit)"
+        - "New CLI command"
+        - "New Web UI feature"
+        - "New LLM provider adapter"
+        - "Improvement to existing role"
+        - "Improvement to scheduler / Hermes"
+        - "Tool / integration (e.g. real image generation)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What's the user pain point? What can't you do today that you wish you could?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How do you imagine this working? CLI / SDK / Web UI?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you think about? Why is this one better?
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example usage
+      description: A short example of what this might look like in code or terminal.
+      placeholder: |
+        ```python
+        from pantheon import Pantheon
+        p = Pantheon()
+        result = p.ask(...)
+        ```
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to avoid duplicates
+          required: true
+        - label: This is a request for the project itself (not support / not a question)
+          required: true

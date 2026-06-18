@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ❓ Questions & Help
+    url: https://github.com/RyosukeSAMA/github-ai/discussions
+    about: For general questions, please use Discussions instead of Issues.
+  - name: 📖 Documentation
+    url: https://github.com/RyosukeSAMA/github-ai/tree/main/docs
+    about: Setup, architecture, and FAQ are in the docs/ folder.
+
+# Two templates available:
+#   1. 🐛 Bug Report      → bug_report.yml
+#   2. ✨ Feature Request → feature_request.yml

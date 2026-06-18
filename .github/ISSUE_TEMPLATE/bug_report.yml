@@ -1,0 +1,106 @@
+name: 🐛 Bug Report
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the template below so we can fix it quickly.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which component is broken?
+      description: Select the area where the problem occurred.
+      options:
+        - "CLI (pantheon ask / pantheon roles / pantheon web)"
+        - "Python SDK (from pantheon import Pantheon)"
+        - "Web UI (http://127.0.0.1:8000)"
+        - "Core: Hermes / Router / Pantheon facade"
+        - "A specific role (hephaestus, athena, apollo, chronos)"
+        - "LLM provider (OpenAI / Anthropic / DeepSeek / Ollama)"
+        - "Configuration (pantheon.yaml / .env)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: python_version
+    attributes:
+      label: Python version
+      options:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "Other (please specify in description)"
+    validations:
+      required: true
+
+  - type: input
+    id: install_method
+    attributes:
+      label: How did you install?
+      description: e.g. `pip install -e .`, `poetry install`, `uv pip install -e .`
+      placeholder: "pip install -e ."
+
+  - type: input
+    id: llm_provider
+    attributes:
+      label: Which LLM provider were you using?
+      placeholder: "DeepSeek (deepseek-chat)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior. Include the full error message / stack trace if any.
+      placeholder: |
+        I ran:
+        ```
+        pantheon ask --role hephaestus "Write a hello world"
+        ```
+
+        I expected it to print Python code, but instead it threw:
+        ```
+        AttributeError: ...
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the bug (1, 2, 3...).
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any error output. Use a code block. **Make sure to remove any API keys.**
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to make sure this isn't a duplicate
+          required: true
+        - label: I have removed any API keys from logs / code samples
+          required: true
+        - label: I am using the latest `main` branch (or latest release)
+          required: true

@@ -6,8 +6,10 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen)](.github/workflows/ci.yml)
+[![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![Status](https://img.shields.io/badge/status-alpha-yellow)]()
+[![GitHub release](https://img.shields.io/github/v/release/RyosukeSAMA/github-ai)](https://github.com/RyosukeSAMA/github-ai/releases)
+[![GitHub stars](https://img.shields.io/github/stars/RyosukeSAMA/github-ai)](https://github.com/RyosukeSAMA/github-ai/stargazers)
 
 [角色一览](#-角色一览) · [快速开始](#-快速开始) · [架构](docs/architecture.md) · [贡献](CONTRIBUTING.md)
 
