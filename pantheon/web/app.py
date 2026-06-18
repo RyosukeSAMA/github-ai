@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from pathlib import Path
 from typing import Any
 
@@ -199,7 +198,6 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     task = Task(content=req.task, mode=mode)
                     # Inject custom step hooks so we can stream
                     hermes = p.hermes
-                    original_run = None
                     emit("start", {"task": req.task, "mode": mode})
 
                     # For multi mode we need to interleave: send step_start/step_done
