@@ -3,402 +3,296 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🏛️ Pantheon</title>
-  <style>
-    :root {
-      --bg: #0f1115;
-      --panel: #161922;
-      --panel-2: #1d2230;
-      --text: #e6e9ef;
-      --dim: #8a93a6;
-      --accent: #6ea8ff;
-      --accent-2: #b48cff;
-      --success: #57c98c;
-      --error: #ff6b6b;
-      --border: #2a2f3d;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      display: flex;
-    }
-    .sidebar {
-      width: 240px;
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      padding: 20px;
-      overflow-y: auto;
-    }
-    .sidebar h2 {
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--dim);
-      margin-top: 24px;
-      margin-bottom: 10px;
-    }
-    .sidebar h1 {
-      font-size: 20px;
-      margin: 0 0 6px 0;
-    }
-    .sidebar .subtitle {
-      color: var(--dim);
-      font-size: 12px;
-      margin-bottom: 8px;
-    }
-    .role-item {
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .role-item:hover {
-      border-color: var(--accent);
-      transform: translateX(2px);
-    }
-    .role-item.selected {
-      border-color: var(--accent);
-      background: rgba(110, 168, 255, 0.1);
-    }
-    .role-item .name {
-      font-weight: 600;
-      font-size: 14px;
-    }
-    .role-item .desc {
-      font-size: 11px;
-      color: var(--dim);
-      margin-top: 4px;
-    }
-    .role-item .model {
-      font-size: 10px;
-      color: var(--accent-2);
-      margin-top: 4px;
-      font-family: monospace;
-    }
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-    }
-    .header {
-      padding: 14px 24px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: var(--panel);
-    }
-    .header .mode-pill {
-      background: var(--panel-2);
-      padding: 4px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-family: monospace;
-      color: var(--accent);
-      border: 1px solid var(--border);
-    }
-    .chat {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .message {
-      max-width: 80%;
-      padding: 14px 18px;
-      border-radius: 12px;
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-    .message.user {
-      align-self: flex-end;
-      background: var(--accent);
-      color: #0f1115;
-      border-bottom-right-radius: 2px;
-    }
-    .message.assistant {
-      align-self: flex-start;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-bottom-left-radius: 2px;
-    }
-    .message.system {
-      align-self: center;
-      background: transparent;
-      color: var(--dim);
-      font-size: 12px;
-      font-style: italic;
-      padding: 4px 0;
-    }
-    .message .role-tag {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--accent-2);
-      margin-bottom: 6px;
-    }
-    .input-area {
-      padding: 16px 24px;
-      border-top: 1px solid var(--border);
-      background: var(--panel);
-      display: flex;
-      gap: 10px;
-    }
-    .input-area textarea {
-      flex: 1;
-      background: var(--panel-2);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 14px;
-      font-family: inherit;
-      font-size: 14px;
-      resize: none;
-      min-height: 50px;
-      max-height: 200px;
-      outline: none;
-    }
-    .input-area textarea:focus {
-      border-color: var(--accent);
-    }
-    .input-area button {
-      background: var(--accent);
-      color: #0f1115;
-      border: none;
-      border-radius: 8px;
-      padding: 0 22px;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 14px;
-      transition: opacity .15s;
-    }
-    .input-area button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    .input-area button:hover:not(:disabled) {
-      opacity: 0.85;
-    }
-    .steps {
-      margin-top: 10px;
-      padding-left: 14px;
-      border-left: 2px solid var(--accent-2);
-    }
-    .step {
-      font-size: 13px;
-      color: var(--dim);
-      margin-bottom: 6px;
-    }
-    .step .role {
-      color: var(--accent);
-      font-weight: 600;
-    }
-    .loading-dots::after {
-      content: "…";
-      animation: dots 1.2s steps(4) infinite;
-    }
-    @keyframes dots {
-      0%, 20% { content: ""; }
-      40% { content: "."; }
-      60% { content: ".."; }
-      80%, 100% { content: "..."; }
-    }
-    code {
-      background: rgba(0,0,0,0.3);
-      padding: 2px 5px;
-      border-radius: 4px;
-      font-size: 13px;
-      font-family: "SF Mono", Menlo, monospace;
-    }
-    pre {
-      background: rgba(0,0,0,0.3);
-      padding: 10px;
-      border-radius: 6px;
-      overflow-x: auto;
-    }
-  </style>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <title>🏛️ Pantheon — Multi-AI Role Collaboration</title>
+
+  <!-- Third-party (CDN) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+  <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
+  <!-- ====== Animated background (Pantheon signature) ====== -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- ====== Sidebar (left) ====== -->
   <aside class="sidebar">
-    <h1>🏛️ Pantheon</h1>
-    <div class="subtitle">Multi-AI-role collaboration</div>
 
-    <h2>Mode</h2>
-    <div id="mode-auto" class="role-item selected" data-mode="auto">
-      <div class="name">🪄 Auto</div>
-      <div class="desc">Hermes picks the right god(s)</div>
-    </div>
-    <div id="mode-multi" class="role-item" data-mode="multi">
-      <div class="name">🧩 Multi-role</div>
-      <div class="desc">Force multi-step collaboration</div>
+    <!-- Brand -->
+    <div class="brand">
+      <span class="brand-logo">🏛️</span>
+      <div class="brand-text">
+        <h1>Pantheon</h1>
+        <p>Multi-AI collaboration</p>
+      </div>
     </div>
 
-    <h2>Gods</h2>
-    <div id="roles-list">
-      <div class="role-item" data-mode="auto"><div class="dim">Loading…</div></div>
+    <!-- New chat button -->
+    <button class="new-chat-btn" id="new-chat-btn">
+      <span class="icon">+</span>
+      <span>New Chat</span>
+    </button>
+
+    <!-- Mode chips (replaces role cards) -->
+    <div class="mode-section">
+      <h3 class="section-title">Mode</h3>
+      <div class="mode-list" id="mode-list">
+        <button class="mode-chip active" data-mode="auto">
+          <span class="chip-icon">🪄</span>
+          <span class="chip-body">
+            <span class="chip-name">Auto</span>
+            <span class="chip-hint">Hermes decides</span>
+          </span>
+        </button>
+        <button class="mode-chip" data-mode="multi">
+          <span class="chip-icon">🧩</span>
+          <span class="chip-body">
+            <span class="chip-name">Multi-role</span>
+            <span class="chip-hint">Force collaboration</span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- God list (your requested retention) -->
+    <div class="gods-section">
+      <h3 class="section-title">Gods</h3>
+      <div class="gods-list" id="gods-list">
+        <div class="god-row loading">
+          <span class="god-avatar">⏳</span>
+          <div class="god-info">
+            <div class="god-name">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar footer -->
+    <div class="sidebar-footer">
+      <button class="footer-btn" id="about-btn" title="About">
+        <span>ⓘ</span> About
+      </button>
+      <a class="footer-btn" href="https://github.com/RyosukeSAMA/github-ai" target="_blank" title="GitHub">
+        <span>★</span> GitHub
+      </a>
     </div>
   </aside>
 
+  <!-- ====== Main area ====== -->
   <main class="main">
-    <header class="header">
-      <div>
-        <strong>Chat</strong>
+
+    <!-- Top header -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="current-mode-pill" id="current-mode-pill">
+          <span class="mode-icon" id="topbar-mode-icon">🪄</span>
+          <span class="mode-name" id="topbar-mode-name">Auto</span>
+        </div>
+        <button class="topbar-btn" id="toggle-workspace" title="Toggle workspace panel">
+          <span>📋</span> <span class="topbar-btn-label">Workspace</span>
+        </button>
+        <button class="topbar-btn" id="toggle-settings" title="Toggle settings panel">
+          <span>⚙️</span> <span class="topbar-btn-label">Settings</span>
+        </button>
       </div>
-      <span id="mode-pill" class="mode-pill">auto</span>
+      <div class="topbar-right">
+        <div class="status-pill" id="provider-pill">
+          <span class="status-dot"></span>
+          <span id="provider-name">connecting…</span>
+        </div>
+      </div>
     </header>
 
-    <div id="chat" class="chat">
-      <div class="message system">
-        👋 Welcome. Pick a mode or god on the left, then type your task below.
+    <!-- Chat scroll area -->
+    <section class="chat" id="chat">
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">🏛️</div>
+        <h2>Welcome to the Pantheon</h2>
+        <p>Each god uses a model best suited to its specialty.<br>
+           Hermes will route your task to the right one.</p>
+        <div class="welcome-examples">
+          <button class="example-chip" data-prompt="Write a Python function to check if a string is a palindrome">💡 Write a palindrome checker</button>
+          <button class="example-chip" data-prompt="Compare PostgreSQL and MongoDB for a new project">💡 Compare Postgres vs MongoDB</button>
+          <button class="example-chip" data-prompt="Write a Midjourney prompt for a cyberpunk shrine at night">💡 Cyberpunk shrine prompt</button>
+          <button class="example-chip" data-prompt="调研 Python Web 框架趋势并写一个 FastAPI demo">💡 调研并写 FastAPI demo</button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <form id="form" class="input-area">
-      <textarea id="input" placeholder="Ask the Pantheon..." rows="2"></textarea>
-      <button id="send" type="submit">Send</button>
+    <!-- Bottom composer -->
+    <form class="composer" id="composer">
+      <div class="composer-inner">
+        <textarea
+          id="input"
+          placeholder="Ask the Pantheon…"
+          rows="1"
+          autocomplete="off"
+        ></textarea>
+        <button type="submit" id="send-btn" class="send-btn" title="Send (Enter)">
+          <span class="send-text">Send</span>
+          <span class="send-icon">➤</span>
+        </button>
+      </div>
+      <div class="composer-meta">
+        <span id="mode-display">Mode: <b>auto</b></span>
+        <span class="dot">·</span>
+        <span>Shift+Enter for new line</span>
+      </div>
     </form>
   </main>
 
-  <script>
-    let currentMode = "auto";
-    let currentRole = null;
+  <!-- ====== Workspace panel (right, collapsible) ====== -->
+  <aside class="workspace" id="workspace" hidden>
+    <div class="workspace-header">
+      <h3>📋 Workspace</h3>
+      <button class="workspace-toggle" id="workspace-close" title="Close">×</button>
+    </div>
+    <div class="workspace-body">
+      <section class="ws-section" id="ws-plan-section">
+        <h4>📝 Plan</h4>
+        <div class="ws-plan" id="ws-plan">
+          <span class="ws-empty">No plan yet — submit a task to see Hermes's plan</span>
+        </div>
+      </section>
 
-    // Load roles
-    fetch("/api/roles").then(r => r.json()).then(data => {
-      const list = document.getElementById("roles-list");
-      list.innerHTML = "";
-      for (const role of (data.roles || [])) {
-        const div = document.createElement("div");
-        div.className = "role-item";
-        div.dataset.mode = `role:${role.name}`;
-        div.innerHTML = `
-          <div class="name">${roleIcon(role.name)} ${role.name}</div>
-          <div class="desc">${escapeHtml(role.description)}</div>
-          <div class="model">${escapeHtml(role.model || "")}</div>
-        `;
-        div.addEventListener("click", () => selectMode(div.dataset.mode, div, role.name));
-        list.appendChild(div);
-      }
-    }).catch(err => {
-      document.getElementById("roles-list").innerHTML =
-        '<div class="role-item"><div class="desc" style="color:var(--error)">Failed to load roles</div></div>';
-    });
+      <section class="ws-section">
+        <h4>⚡ Steps</h4>
+        <ol class="ws-steps" id="ws-steps">
+          <li class="ws-step-empty">No steps yet</li>
+        </ol>
+      </section>
 
-    function roleIcon(name) {
-      return ({
-        hermes: "📨", hephaestus: "🔨", athena: "🦉",
-        apollo: "🎵", chronos: "⏰"
-      })[name] || "✨";
-    }
+      <section class="ws-section">
+        <h4>🖥 Output</h4>
+        <pre class="ws-output" id="ws-output"><code>// output will appear here</code></pre>
+      </section>
+    </div>
+  </aside>
 
-    function escapeHtml(s) {
-      return String(s || "").replace(/[&<>"']/g, c => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      })[c]);
-    }
+  <!-- ====== Settings panel (right, collapsible) ====== -->
+  <aside class="workspace settings-panel" id="settings-panel" hidden>
+    <div class="workspace-header">
+      <h3>⚙️ Settings</h3>
+      <button class="workspace-toggle" id="settings-close" title="Close">×</button>
+    </div>
+    <div class="workspace-body">
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="models">
+          <span>🧠</span> Models
+        </button>
+        <button class="settings-tab" data-tab="display">
+          <span>🎨</span> Display
+        </button>
+        <button class="settings-tab" data-tab="info">
+          <span>ⓘ</span> Info
+        </button>
+      </div>
 
-    function selectMode(mode, el, roleName) {
-      currentMode = mode;
-      currentRole = roleName || null;
-      document.querySelectorAll(".role-item").forEach(e => e.classList.remove("selected"));
-      el.classList.add("selected");
-      document.getElementById("mode-pill").textContent = mode;
-    }
+      <!-- Models tab -->
+      <div class="settings-pane active" data-pane="models" id="settings-models">
+        <p class="settings-hint">
+          Click any god to switch its model. Changes apply to the next request
+          (config is held in memory for this session; restart the server to persist to <code>config/pantheon.yaml</code>).
+        </p>
+        <div class="settings-roles" id="settings-roles">
+          <!-- Populated by JS -->
+        </div>
+      </div>
 
-    document.getElementById("mode-auto").addEventListener("click", e => selectMode("auto", e.currentTarget));
-    document.getElementById("mode-multi").addEventListener("click", e => selectMode("multi", e.currentTarget));
+      <!-- Display tab -->
+      <div class="settings-pane" data-pane="display" id="settings-display">
+        <p class="settings-hint">
+          Display preferences are saved locally in your browser.
+        </p>
+        <div class="setting-row">
+          <label>Theme</label>
+          <div class="setting-control" data-control="theme">
+            <button class="opt-btn active" data-action="theme" data-value="dark">Dark</button>
+            <button class="opt-btn" data-action="theme" data-value="light">Light</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>Font size</label>
+          <div class="setting-control" data-control="fontSize">
+            <button class="opt-btn" data-action="fontSize" data-value="sm">Small</button>
+            <button class="opt-btn active" data-action="fontSize" data-value="md">Medium</button>
+            <button class="opt-btn" data-action="fontSize" data-value="lg">Large</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>Animated background</label>
+          <div class="setting-control" data-control="animatedBg">
+            <button class="opt-btn active" data-action="animatedBg" data-value="on">On</button>
+            <button class="opt-btn" data-action="animatedBg" data-value="off">Off</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>Density</label>
+          <div class="setting-control" data-control="density">
+            <button class="opt-btn active" data-action="density" data-value="comfortable">Comfortable</button>
+            <button class="opt-btn" data-action="density" data-value="compact">Compact</button>
+          </div>
+        </div>
+      </div>
 
-    const chat = document.getElementById("chat");
-    const form = document.getElementById("form");
-    const input = document.getElementById("input");
-    const sendBtn = document.getElementById("send");
+      <!-- Info tab -->
+      <div class="settings-pane" data-pane="info" id="settings-info">
+        <dl class="config-list">
+          <dt>Version</dt><dd>v0.1.1</dd>
+          <dt>Python</dt><dd id="settings-py">—</dd>
+          <dt>Loaded roles</dt><dd id="settings-roles-count">0</dd>
+          <dt>API status</dt><dd id="settings-status">—</dd>
+        </dl>
+        <h4 class="settings-h4">Resources</h4>
+        <ul class="links-list">
+          <li><a href="https://github.com/RyosukeSAMA/github-ai" target="_blank">📦 GitHub</a></li>
+          <li><a href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md" target="_blank">📖 Setup Guide</a></li>
+          <li><a href="https://github.com/RyosukeSAMA/github-ai/issues" target="_blank">🐛 Report Issue</a></li>
+        </ul>
+      </div>
+    </div>
+  </aside>
 
-    function appendMessage(role, content, opts = {}) {
-      const div = document.createElement("div");
-      div.className = `message ${role}`;
-      if (opts.tag) {
-        const t = document.createElement("span");
-        t.className = "role-tag";
-        t.textContent = opts.tag;
-        div.appendChild(t);
-      }
-      const c = document.createElement("span");
-      c.textContent = content;
-      div.appendChild(c);
-      if (opts.steps && opts.steps.length) {
-        const s = document.createElement("div");
-        s.className = "steps";
-        opts.steps.forEach(step => {
-          const sd = document.createElement("div");
-          sd.className = "step";
-          sd.innerHTML = `<span class="role">${step.role}</span>: ${escapeHtml(step.content.slice(0, 200))}`;
-          s.appendChild(sd);
-        });
-        div.appendChild(s);
-      }
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-      return div;
-    }
+  <!-- ====== About modal (replaces settings button) ====== -->
+  <div class="modal-backdrop" id="about-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🏛️ About Pantheon</h2>
+        <button class="modal-close" id="about-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <h3>Configuration</h3>
+          <dl class="config-list">
+            <dt>LLM Provider</dt><dd id="about-provider">—</dd>
+            <dt>Loaded Roles</dt><dd id="about-roles">0</dd>
+            <dt>API Status</dt><dd id="about-status">—</dd>
+          </dl>
+        </div>
+        <div class="modal-section">
+          <h3>Gods &amp; Models</h3>
+          <ul class="about-roles-list" id="about-roles-list"></ul>
+        </div>
+        <div class="modal-section">
+          <h3>Resources</h3>
+          <ul class="links-list">
+            <li><a href="https://github.com/RyosukeSAMA/github-ai" target="_blank">📦 GitHub Repository</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md" target="_blank">📖 Setup Guide</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai/issues" target="_blank">🐛 Report Issue</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai/discussions" target="_blank">💬 Discussions</a></li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <code>v0.1.1 · MIT License · © 2024 RyosukeSAMA</code>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-
-      appendMessage("user", text);
-      input.value = "";
-      sendBtn.disabled = true;
-
-      const loading = appendMessage("assistant", "Thinking", { tag: currentMode });
-      const textNode = loading.querySelector("span:last-child");
-      textNode.classList.add("loading-dots");
-
-      try {
-        const body = { task: text, mode: currentMode };
-        if (currentMode.startsWith("role:")) {
-          body.role = currentMode.split(":", 2)[1];
-          body.mode = "auto";
-        }
-        const resp = await fetch("/api/ask", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err.detail || `HTTP ${resp.status}`);
-        }
-        const data = await resp.json();
-        loading.remove();
-        appendMessage("assistant", data.content, { tag: data.mode, steps: data.steps });
-      } catch (err) {
-        loading.remove();
-        appendMessage("assistant", `❌ Error: ${err.message}`, { tag: "error" });
-      } finally {
-        sendBtn.disabled = false;
-        input.focus();
-      }
-    });
-
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        form.dispatchEvent(new Event("submit"));
-      }
-    });
-  </script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
