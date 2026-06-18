@@ -67,3 +67,6 @@ logs/
 # ----- Build artifacts -----
 *.whl
 *.tar.gz
+
+# ----- GitHub meta (user-specific) -----
+.github/FUNDING.yml
