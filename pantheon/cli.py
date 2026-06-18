@@ -100,10 +100,14 @@ def ask(
     if result.get("steps"):
         console.print(f"[bold]Steps ({len(result['steps'])}):[/bold]")
         for i, step in enumerate(result["steps"], 1):
-            role_name = step.get("role", "?")
-            status = "✓" if step.get("success", True) else "✗"
-            color = "green" if step.get("success", True) else "red"
-            console.print(f"  [{color}]{status}[/{color}] [cyan]{role_name}[/cyan]: {step.get('content', '')[:120]}...")
+            # step is a TaskResult dataclass; access via attributes
+            role_name = getattr(step, "role", "?")
+            success = getattr(step, "success", True)
+            content = getattr(step, "content", "") or ""
+            status = "✓" if success else "✗"
+            color = "green" if success else "red"
+            preview = content[:120] + ("..." if len(content) > 120 else "")
+            console.print(f"  [{color}]{status}[/{color}] [cyan]{role_name}[/cyan]: {preview}")
         console.print()
 
     console.print(Panel(
