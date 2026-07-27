@@ -10,7 +10,7 @@ from pantheon.llm.base import BaseLLMClient
 class AnthropicClient(BaseLLMClient):
     """Calls Anthropic's Messages API."""
 
-    default_model = "claude-sonnet-4-20250514"
+    default_model = "claude-sonnet-4-6"
     provider_name = "anthropic"
 
     def __init__(self, api_key: str = "", base_url: str | None = None) -> None:

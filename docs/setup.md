@@ -7,8 +7,9 @@ This is the practical "how do I actually get Pantheon running" guide. If anythin
 - **Python 3.10+** (3.11 recommended)
 - **pip** or **poetry** or **uv**
 - **API keys** for at least one provider:
-  - `OPENAI_API_KEY` (for Athena, Apollo by default)
-  - `ANTHROPIC_API_KEY` (for Hermes, Hephaestus by default)
+  - `OPENAI_API_KEY` (for OpenAI-backed roles)
+  - `ANTHROPIC_API_KEY` (for Claude-backed roles)
+  - `DEEPSEEK_API_KEY` (for DeepSeek's OpenAI-compatible endpoint)
   - or a local **Ollama** install
 
 ## 2. Installation
@@ -61,17 +62,17 @@ Open `config/pantheon.yaml`. The interesting section is under `pantheon.roles`:
 pantheon:
   roles:
     hephaestus:
-      model: claude-sonnet-4-20250514      # change if you want
+      model: claude-sonnet-4-6             # change if you want
       provider: anthropic
       temperature: 0.1                     # lower = more deterministic
     athena:
-      model: gpt-4o
+      model: gpt-5.5
       provider: openai
       temperature: 0.3
 ```
 
 You can:
-- Change the **model** for any role (e.g. switch Hephaestus to `gpt-4o`).
+- Change the **model** for any role (e.g. switch everything to `deepseek-v4-flash`).
 - Change the **provider** (e.g. use Anthropic for everything).
 - Change the **temperature** (lower = more focused, higher = more creative).
 - Set `enabled: false` to disable a role.
@@ -87,12 +88,37 @@ pantheon ask --role hephaestus "Write a hello world in Python"
 # List enabled roles
 pantheon roles
 
+# List built-in and local skills
+pantheon skills
+
+# Explicitly invoke one skill
+pantheon ask --skill fix-and-verify "Fix the null handling bug and verify it"
+
 # Start the Web UI
 pantheon web
 # Open http://127.0.0.1:8000
 ```
 
-## 6. Common configuration scenarios
+The default host is loopback-only. The Web UI includes file writing and terminal
+execution, so enable `Settings -> Security` and restrict network access before
+starting it with `--host 0.0.0.0` or exposing it through a remote server.
+
+## 6. Skills
+
+Pantheon loads six built-in `SKILL.md` workflows and any local skills stored in
+`.pantheon/skills/`. In the Web UI, open `Settings -> Integrations -> Skills`,
+then click `Use` or enter:
+
+```text
+/skill research-with-sources Compare the latest supported models
+```
+
+Role-specific Skills route directly to their assigned god in Auto mode.
+Shared/council Skills remain available to Hermes for multi-role planning.
+Built-ins are read-only but can be disabled. Skills created in the UI are local
+folders and can be edited or deleted.
+
+## 7. Common configuration scenarios
 
 ### "I only have an OpenAI key"
 
@@ -101,17 +127,17 @@ Edit `config/pantheon.yaml` to point Hermes and Hephaestus at OpenAI:
 ```yaml
 pantheon:
   hermes:
-    model: gpt-4o
+    model: gpt-5.5
     provider: openai
   roles:
     hephaestus:
-      model: gpt-4o
+      model: gpt-5.5
       provider: openai
     athena:
-      model: gpt-4o
+      model: gpt-5.5
       provider: openai
     apollo:
-      model: gpt-4o
+      model: gpt-5.4-mini
       provider: openai
 ```
 
@@ -152,7 +178,7 @@ llm_providers:
     base_url: https://my-proxy.example.com/v1
 ```
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 ### "No API key for provider 'openai'"
 
@@ -186,7 +212,7 @@ You didn't install with `pip install -e .` (or equivalent). Re-run that step.
 
 `pip install -e ".[dev]"` should pull these in. If not, `pip install openai anthropic`.
 
-## 8. Running tests
+## 9. Running tests
 
 ```bash
 pytest                          # all tests
@@ -197,7 +223,7 @@ pytest --cov=pantheon           # with coverage
 
 Tests do **not** require API keys (they use a mock LLM client).
 
-## 9. What's next?
+## 10. What's next?
 
 - Read [architecture.md](architecture.md) to understand how it all fits together.
 - Read the role docs in [roles/](roles/) to understand each god.

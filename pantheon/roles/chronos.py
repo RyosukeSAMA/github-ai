@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from pantheon.core.base import Role, Task, TaskResult, time_ms
+from pantheon.core.scheduler import ScheduleParseError, parse_schedule_request
 
 log = logging.getLogger(__name__)
 
@@ -34,27 +35,65 @@ class Chronos(Role):
         super().__init__(*args, **kwargs)
 
     def run(self, task: Task, context: list[dict] | None = None) -> TaskResult:
-        """Chronos doesn't actually call an LLM. It interprets scheduling intent.
-
-        For v0.1 this returns a structured confirmation. Real cron scheduling
-        can be plugged into the config (e.g. APScheduler) in a future version.
-        """
+        """Interpret scheduling intent and create a local scheduled job when possible."""
         start = time_ms()
         try:
-            content = (
-                f"[Chronos] Received scheduling request:\n"
-                f"  - Task: {task.content}\n"
-                f"  - Received at: {datetime.utcnow().isoformat()}Z\n\n"
-                f"Note: This is v0.1 — Chronos confirms the request but does not "
-                f"persist a real cron job yet. Use the planned `cronjob` tool "
-                f"(APScheduler integration) to enable actual scheduling."
-            )
+            scheduler = self.config.get("scheduler") if isinstance(self.config, dict) else None
+            spec = parse_schedule_request(task.content)
+            job = scheduler.add_job(spec) if scheduler is not None else None
+
+            if job:
+                next_run = job.get("next_run_at_iso") or "not scheduled"
+                content = (
+                    "[Chronos] Scheduled task created.\n"
+                    f"- Job: {job['title']}\n"
+                    f"- Schedule: {job['schedule_type']}\n"
+                    f"- Next run: {next_run}\n"
+                    f"- Mode: {job.get('mode', 'auto')}\n"
+                    f"- Job ID: {job['id']}"
+                )
+                metadata = {
+                    "scheduled": True,
+                    "job": job,
+                    "scheduled_at": datetime.utcnow().isoformat(),
+                }
+            else:
+                content = (
+                    "[Chronos] Schedule parsed.\n"
+                    f"- Task: {spec.prompt}\n"
+                    f"- Schedule: {spec.schedule_type}\n"
+                    f"- Next run: {datetime.fromtimestamp(spec.run_at).isoformat() if spec.run_at else 'not scheduled'}\n\n"
+                    "This Chronos instance has no scheduler attached, so no job was persisted."
+                )
+                metadata = {
+                    "scheduled": False,
+                    "schedule": spec.__dict__,
+                    "scheduled_at": datetime.utcnow().isoformat(),
+                }
+
             return TaskResult(
                 role=self.name,
                 content=content,
                 success=True,
                 duration_ms=time_ms() - start,
-                metadata={"scheduled_at": datetime.utcnow().isoformat()},
+                metadata=metadata,
+            )
+        except ScheduleParseError as e:
+            content = (
+                "[Chronos] I could not create a schedule from that request.\n"
+                f"- Reason: {e}\n\n"
+                "Try one of these forms:\n"
+                "- every 10 minutes, remind me to drink water\n"
+                "- in 30 minutes, ask Athena to summarize my notes\n"
+                "- daily at 09:00, ask Apollo to draft a status message\n"
+                "- 每天 9:00 提醒我查看任务"
+            )
+            return TaskResult(
+                role=self.name,
+                content=content,
+                success=False,
+                error=str(e),
+                duration_ms=time_ms() - start,
             )
         except Exception as e:
             log.exception("Chronos run failed")

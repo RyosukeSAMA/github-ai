@@ -6,8 +6,9 @@ from pantheon.core.base import Plan, PlanStep, Role, Task, TaskResult, time_ms
 
 
 def test_task_validates_mode():
-    t = Task(content="hi", mode="auto")
+    t = Task(content="hi", mode="auto", skill="fix-and-verify")
     assert t.mode == "auto"
+    assert t.skill == "fix-and-verify"
 
     t2 = Task(content="hi", mode="role:hephaestus")
     assert t2.mode == "role:hephaestus"
@@ -28,9 +29,10 @@ def test_task_generates_id():
 
 
 def test_plan_single():
-    p = Plan.single("hephaestus", reasoning="code task")
+    p = Plan.single("hephaestus", reasoning="code task", skill="fix-and-verify")
     assert p.is_single_role is True
     assert p.single_role == "hephaestus"
+    assert p.single_skill == "fix-and-verify"
 
 
 def test_plan_multi():

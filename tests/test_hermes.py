@@ -1,7 +1,10 @@
 """Tests for Hermes (orchestrator) end-to-end dispatching."""
 
 
+from pathlib import Path
+
 from pantheon.core.base import Task
+from pantheon.core.extensions import SkillStore
 from pantheon.core.hermes import Hermes
 from pantheon.core.router import Router
 from tests.conftest import MockLLMClient
@@ -46,6 +49,37 @@ def test_hermes_routes_to_explicit_role():
     assert "research" in result["content"]
 
 
+def test_hermes_injects_role_scoped_memory():
+    mock = MockLLMClient()
+    mock.add_response("code result")
+    hermes, _ = _build_hermes(mock)
+
+    def memory_provider(content, role):
+        assert content == "build it"
+        if role == "hephaestus":
+            return (
+                "Relevant memories:\n"
+                "- [user_profile/global] prefer Chinese\n"
+                "- [agent/hephaestus] keep existing architecture",
+                [
+                    {"id": "global-1", "role": "", "content": "prefer Chinese"},
+                    {"id": "he-1", "role": "hephaestus", "content": "keep existing architecture"},
+                ],
+            )
+        return "", []
+
+    hermes.memory_context_provider = memory_provider
+    result = hermes.dispatch(Task(content="build it", mode="role:hephaestus"))
+
+    assert result["memory_matches"] == [
+        {"id": "global-1", "role": "", "content": "prefer Chinese"},
+        {"id": "he-1", "role": "hephaestus", "content": "keep existing architecture"},
+    ]
+    user_msg = mock.calls[0]["messages"][0]["content"]
+    assert "prefer Chinese" in user_msg
+    assert "keep existing architecture" in user_msg
+
+
 def test_hermes_handles_unknown_explicit_role():
     mock = MockLLMClient()
     hermes, _ = _build_hermes(mock)
@@ -76,6 +110,61 @@ def test_hermes_dispatches_multi_role():
     assert len(result["steps"]) == 2
     assert "Summary" in result["content"]
     assert "research" in result["content"].lower() or "implement" in result["content"].lower()
+
+
+def test_hermes_reports_multi_role_progress_before_each_call():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "multi", "reasoning": "research then build", '
+        '"steps": ['
+        '{"role": "athena", "task": "research X"},'
+        '{"role": "hephaestus", "task": "implement X"}'
+        ']}'
+    )
+    mock.add_response("Research complete.")
+    mock.add_response("Implementation complete.")
+    mock.add_response("Final synthesis.")
+    hermes, _ = _build_hermes(mock)
+    events: list[tuple[str, dict]] = []
+
+    result = hermes.dispatch(
+        Task(content="research and implement X", mode="multi"),
+        on_event=lambda event, data: events.append((event, data)),
+    )
+
+    names = [event for event, _ in events]
+    assert names == [
+        "plan_start",
+        "plan_ready",
+        "step_start",
+        "step_done",
+        "step_start",
+        "step_done",
+        "summary_start",
+        "summary_done",
+    ]
+    plan = events[1][1]
+    assert [step["role"] for step in plan["steps"]] == ["athena", "hephaestus"]
+    assert events[2][1]["index"] == 0
+    assert events[2][1]["total"] == 2
+    assert events[4][1]["index"] == 1
+    assert result["content"] == "Final synthesis."
+
+
+def test_multi_mode_forces_council_when_router_returns_single():
+    mock = MockLLMClient()
+    mock.add_response('{"type": "single", "role": "hephaestus", "reasoning": "code"}')
+    mock.add_response("Research framing")
+    mock.add_response("Implementation detail")
+    mock.add_response("Creative review")
+    mock.add_response("Council summary")
+
+    hermes, _ = _build_hermes(mock)
+    result = hermes.dispatch(Task(content="build and polish this", mode="multi"))
+
+    assert result["mode"] == "multi"
+    assert len(result["steps"]) >= 2
+    assert "Council summary" in result["content"]
 
 
 def test_hermes_passes_context_between_steps():
@@ -136,3 +225,24 @@ def test_hermes_role_descriptions():
     assert "apollo" in descs
     # Chronos wasn't registered
     assert "chronos" not in descs
+
+
+def test_explicit_role_skill_routes_without_planner_and_records_match(tmp_path):
+    mock = MockLLMClient()
+    mock.add_response("fixed and verified")
+    hermes, _ = _build_hermes(mock)
+    builtins = Path(__file__).resolve().parents[1] / "pantheon" / "skills"
+    store = SkillStore(tmp_path / "skills", builtin_path=builtins)
+    hermes.skill_context_provider = store.context_block
+    hermes.skill_catalog_provider = store.catalog_for_roles
+    hermes.skill_lookup_provider = store.get
+
+    result = hermes.dispatch(Task(
+        content="修复这个 bug 并验证",
+        skill="fix-and-verify",
+    ))
+
+    assert result["steps"][0].role == "hephaestus"
+    assert result["skill_matches"][0]["id"] == "fix-and-verify"
+    assert result["skill_matches"][0]["invocation"] == "explicit"
+    assert "Fix and Verify" in mock.calls[0]["messages"][0]["content"]

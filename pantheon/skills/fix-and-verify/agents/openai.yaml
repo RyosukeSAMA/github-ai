@@ -1,0 +1,5 @@
+interface:
+  display_name: "Fix and Verify"
+  short_description: "Implement a focused code fix and verify the result"
+  brand_color: "#D98364"
+  default_prompt: "Use $fix-and-verify to diagnose, implement, and test this change."

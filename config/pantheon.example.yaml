@@ -5,10 +5,10 @@
 # This file demonstrates the IDEAL setup of Pantheon, where each god uses a
 # model best suited to its specialty:
 #
-#   📨 Hermes (orchestrator)  → Anthropic Claude Opus  (deep reasoning)
-#   🔨 Hephaestus (code)      → Anthropic Claude Sonnet (best code model)
-#   🦉 Athena (research)      → OpenAI GPT-4o           (broad knowledge)
-#   🎵 Apollo (creative)      → OpenAI GPT-Image-1     (image generation)
+#   📨 Hermes (orchestrator)  → Anthropic Claude Opus 4.8 (deep reasoning)
+#   🔨 Hephaestus (code)      → Anthropic Claude Sonnet 4.6 (balanced code)
+#   🦉 Athena (research)      → OpenAI GPT-5.5 (broad knowledge)
+#   🎵 Apollo (creative)      → OpenAI GPT-5.4 mini (drafting / creative text)
 #   ⏰ Chronos (scheduler)    → (no LLM needed)
 #
 # ⚠️  This is a DEMO configuration. To actually run Pantheon you need to:
@@ -26,16 +26,16 @@
 # Common single-provider alternatives (pick one and replace below):
 #
 #   DeepSeek (cheap, Chinese-friendly, recommended for getting started):
-#     provider: openai, base_url: https://api.deepseek.com/v1
-#     model: deepseek-chat    (or deepseek-coder for code)
+#     provider: openai, base_url: https://api.deepseek.com
+#     model: deepseek-v4-flash    (or deepseek-v4-pro for harder tasks)
 #
 #   OpenAI (broad capabilities, US-based):
 #     provider: openai, base_url: https://api.openai.com/v1
-#     model: gpt-4o
+#     model: gpt-5.5
 #
 #   Anthropic Claude (strong reasoning + code):
 #     provider: anthropic, base_url: https://api.anthropic.com
-#     model: claude-sonnet-4-20250514
+#     model: claude-sonnet-4-6
 #
 #   Ollama (fully local, free, requires a running Ollama server):
 #     provider: ollama, base_url: http://localhost:11434
@@ -49,7 +49,7 @@ pantheon:
   # Recommended: a strong reasoning model.
   # --------------------------------------------------------------------------
   hermes:
-    model: claude-opus-4-20250514
+    model: claude-opus-4-8
     provider: anthropic
     temperature: 0.2
     max_tokens: 4096
@@ -61,7 +61,7 @@ pantheon:
     hephaestus:
       name: "Hephaestus (锻造之神)"
       description: "Writes and refactors code"
-      model: claude-sonnet-4-20250514       # best at code
+      model: claude-sonnet-4-6              # balanced code / speed
       provider: anthropic
       temperature: 0.1
       tools: []
@@ -70,7 +70,7 @@ pantheon:
     athena:
       name: "Athena (智慧之神)"
       description: "Researches and gathers information"
-      model: gpt-4o                         # broad knowledge
+      model: gpt-5.5                        # broad knowledge
       provider: openai
       temperature: 0.3
       tools: []
@@ -79,7 +79,7 @@ pantheon:
     apollo:
       name: "Apollo (艺术之神)"
       description: "Generates images, audio, and video"
-      model: gpt-image-1                    # image generation
+      model: gpt-5.4-mini                   # creative text / drafting
       provider: openai
       temperature: 0.7
       tools: []

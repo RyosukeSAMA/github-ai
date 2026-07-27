@@ -1,0 +1,5 @@
+interface:
+  display_name: "Research with Sources"
+  short_description: "Research current facts and return traceable sources"
+  brand_color: "#6F9BE8"
+  default_prompt: "Use $research-with-sources to verify this question with reliable sources."

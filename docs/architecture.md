@@ -19,6 +19,7 @@ Pantheon is built around three layers:
         ┌───────▼─────────────────────────────────┐
         │   Hermes orchestrator (core/hermes.py)  │
         │   - understands the task                 │
+        │   - selects role-scoped SKILL.md methods │
         │   - picks single role or multi plan      │
         │   - runs the plan                        │
         │   - summarizes results                   │
@@ -47,7 +48,7 @@ The three entry points (CLI / Web / SDK) all call the **same `Pantheon.ask()` me
 
 When a user calls `p.ask("write a Python decorator")`:
 
-1. **Task construction** (`core/base.py:Task`): A `Task` object is created with the user's content and mode (default `auto`).
+1. **Task construction** (`core/base.py:Task`): A `Task` object is created with the user's content, mode (default `auto`), and optional explicit Skill id.
 
 2. **Hermes dispatch** (`core/hermes.py:Hermes.dispatch`):
    - If mode is `role:<name>`, jump to step 5 with that role.
@@ -55,11 +56,15 @@ When a user calls `p.ask("write a Python decorator")`:
 
 3. **Router plans** (`core/router.py:Router.plan`):
    - Calls the LLM with a special planner system prompt.
+   - Includes the enabled Skill catalog for each god.
    - The LLM returns JSON describing either:
      - `{type: "single", role: "..."}` — one god handles it, or
      - `{type: "multi", steps: [...]}` — sequence of gods.
 
-4. **Execution** (`core/hermes.py:Hermes._run_*`):
+4. **Skill selection and execution** (`core/hermes.py:Hermes._run_*`):
+   - An explicit Skill is validated against its assigned gods.
+   - Otherwise the role receives at most one matching implicit Skill.
+   - Skill instructions are injected only for the selected step and recorded in `TaskResult.metadata`.
    - **Single**: the named role's `run()` is called once, result returned.
    - **Multi**: each step's role is called in order; each step receives the prior steps' results as `context`. The final step's result is the immediate answer.
 
@@ -81,8 +86,8 @@ When a user calls `p.ask("write a Python decorator")`:
 ### Why allow per-role models?
 
 Different tasks favor different models:
-- **Claude Sonnet** is strong at code → Hephaestus uses it.
-- **GPT-4o** is solid at tool use + multimodal → Athena & Apollo use it.
+- **Claude Sonnet 4.6** is strong at code → Hephaestus uses it.
+- **GPT-5.5 / GPT-5.4 mini** cover broad research and creative drafting → Athena & Apollo use them.
 - **No LLM at all** → Chronos doesn't need one.
 
 This matches the user's intuition that "different roles should use different tools."
@@ -106,6 +111,7 @@ All three share the same `Pantheon.ask()` so there's one source of truth.
 | `Router` | `core/router.py` | LLM-driven planner |
 | `Role` (ABC) | `core/base.py` | Base class for all gods |
 | `Task` / `TaskResult` / `Plan` | `core/base.py` | Data classes |
+| `SkillStore` | `core/extensions.py` | Built-in/local SKILL.md registry and role matching |
 | `BaseLLMClient` (ABC) | `llm/base.py` | LLM provider interface |
 | `OpenAIClient` / `AnthropicClient` / `OllamaClient` | `llm/` | Provider implementations |
 
@@ -120,7 +126,7 @@ from pantheon.core.base import Role, Task, TaskResult
 class Ares(Role):
     name = "ares"
     description = "Security auditor"
-    default_model = "claude-sonnet-4-20250514"
+    default_model = "claude-sonnet-4-6"
     default_provider = "anthropic"
     default_temperature = 0.2
 
@@ -149,14 +155,32 @@ The YAML schema is documented in `config/pantheon.example.yaml`.
 - **Planner returns invalid JSON**: Router falls back to picking the first available role.
 - **LLM call fails** (network, rate limit, etc.): the role catches it, returns a `TaskResult` with `success=False, error=...`. The dispatch continues for multi-role tasks (subsequent steps still run).
 
+## Skill layout
+
+Pantheon ships read-only built-ins under `pantheon/skills/<skill-id>/`. User
+skills live under `.pantheon/skills/<skill-id>/`.
+
+Each folder contains:
+
+```text
+skill-id/
+├── SKILL.md
+├── pantheon.json
+└── agents/openai.yaml
+```
+
+`SKILL.md` contains portable instructions. `pantheon.json` contains role
+assignment, trigger phrases, version, and workflow type. Disabling a built-in
+does not edit the packaged file; the override is stored in
+`.pantheon/skill_state.json`.
+
 ## Performance
 
-- Each `Pantheon.ask()` creates the orchestrator on demand. For Web UI, it's created **once** and reused across requests.
+- `Pantheon()` creates one orchestrator and Skill registry. Reuse that instance across requests.
 - For high-throughput use, wrap `Pantheon()` in your own long-lived instance.
 
 ## What's intentionally NOT here
 
 - **No agent-to-agent messaging**: avoids complexity and infinite loops.
-- **No persistent memory**: every ask is stateless. (v0.2 may add session memory.)
-- **No vector DB**: Athena could benefit from RAG, but it's not required for v0.1.
+- **No vector DB dependency**: local long-term memory currently uses SQLite and bounded text matching.
 - **No streaming output yet**: results are returned all at once. (Trivial to add — modify `Role.run` to yield chunks.)

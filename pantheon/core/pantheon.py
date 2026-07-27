@@ -11,6 +11,7 @@ import yaml
 from dotenv import load_dotenv
 
 from pantheon.core.base import Task
+from pantheon.core.extensions import SkillStore
 from pantheon.core.hermes import Hermes
 from pantheon.core.router import Router
 from pantheon.llm import get_llm_client
@@ -69,10 +70,23 @@ class Pantheon:
 
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
+        workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
+        self.skill_store = SkillStore(
+            workspace_root / ".pantheon" / "skills",
+            legacy_path=workspace_root / ".pantheon" / "skills.json",
+        )
+        self.hermes.skill_context_provider = self.skill_store.context_block
+        self.hermes.skill_catalog_provider = self.skill_store.catalog_for_roles
+        self.hermes.skill_lookup_provider = self.skill_store.get
 
     # ---------- public API ----------
 
-    def ask(self, content: str, mode: str = "auto") -> dict[str, Any]:
+    def ask(
+        self,
+        content: str,
+        mode: str = "auto",
+        skill: str | None = None,
+    ) -> dict[str, Any]:
         """Ask the Pantheon to do something.
 
         Args:
@@ -81,11 +95,12 @@ class Pantheon:
               - "auto" (default): Hermes picks the right role(s).
               - "role:<name>": Force a specific role.
               - "multi": Force multi-role decomposition.
+            skill: Optional installed skill id to invoke explicitly.
 
         Returns:
             Dict with keys: mode, plan, content, steps.
         """
-        task = Task(content=content, mode=mode)
+        task = Task(content=content, mode=mode, skill=skill)
         return self.hermes.dispatch(task)
 
     def list_roles(self) -> list[str]:

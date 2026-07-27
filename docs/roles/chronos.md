@@ -1,61 +1,65 @@
-# ⏰ Chronos — The Scheduler
+# Chronos - The Scheduler
 
-> *The personification of time. Neither created nor destroyed; only transformed.*
+Chronos is the local scheduling role. It does not use an LLM. Its job is to parse simple scheduling requests, persist them locally, and run them later through Pantheon.
 
-Chronos doesn't do creative or analytical work. He runs things **on time**. He's the only god that doesn't use an LLM.
+## What Chronos Does
 
-## Personality
+- Parses natural-language schedule requests.
+- Creates local jobs in `.pantheon/chronos_jobs.json`.
+- Runs due jobs from the FastAPI web server background loop.
+- Can route a scheduled job back through Auto, Multi-role, or a direct god role.
+- Exposes jobs in the Web UI Workspace Activity panel.
 
-Mechanical. Reliable. Logs everything. Doesn't improvise.
+## Supported Phrases
 
-## Powers
+Examples:
 
-- Receives scheduling intent (cron expressions, periodic tasks)
-- Will eventually run real cron jobs (planned for v0.2; in v0.1 he just confirms the request)
-
-## Limits
-
-- Does **not** write code, research, or create — he's infrastructure, not intelligence.
-- In **v0.1**, Chronos is a stub. He confirms the request and timestamps it, but does **not** actually persist a cron job. Use APScheduler / cron / systemd timers directly for now.
-
-## How it works (v0.1)
-
-When you call `p.ask("...", mode="role:chronos")`, Chronos returns a confirmation message:
-
+```text
+every 10 minutes remind me to drink water
+in 30 minutes ask Athena to summarize my notes
+daily at 09:00 ask Apollo to draft a status message
+10分钟后提醒我开会
+每天 9:00 提醒我查看任务
 ```
-[Chronos] Received scheduling request:
-  - Task: ...
-  - Received at: 2024-...Z
 
-Note: This is v0.1 — Chronos confirms the request but does not
-persist a real cron job yet.
+Chronos infers direct roles from phrases such as `ask Athena`, `ask Apollo`, `让火神`, or `让雅典娜`. Otherwise the job runs in Auto routing.
+
+## Web UI Usage
+
+1. Click `Chronos` in the left Pantheon list, or run `/chronos`, `/schedule`, or `/timer`.
+2. Send a scheduling request.
+3. Open Workspace -> Activity.
+4. Check the `Chronos Jobs` section.
+5. Use `Run now`, `Pause`, `Resume`, or `Delete` as needed.
+
+## Storage
+
+Runtime jobs are stored under the current workspace:
+
+```text
+.pantheon/chronos_jobs.json
 ```
+
+This directory is ignored by Git because it is local runtime state, not source code.
 
 ## Configuration
+
+Chronos should remain model-free:
 
 ```yaml
 pantheon:
   roles:
     chronos:
-      # No LLM, no model/provider needed.
       enabled: true
+      provider: none
+      model: none
 ```
 
-## Roadmap for Chronos
+The Web UI attaches the local scheduler automatically when the FastAPI app starts.
 
-In v0.2, Chronos will:
-- Parse cron expressions and natural-language scheduling ("every weekday at 9 AM")
-- Persist jobs to a local SQLite DB
-- Run them via APScheduler
-- Send results back to other roles when triggered
+## Limits
 
-## Example
-
-```python
-result = p.ask("Every weekday at 9 AM, ask Athena for the latest AI news", mode="role:chronos")
-print(result["content"])
-```
-
-## Customizing Chronos
-
-Subclass `Chronos` and override `run()` to actually schedule. See [`pantheon/roles/chronos.py`](../../pantheon/roles/chronos.py).
+- The scheduler runs only while the Pantheon web server is running.
+- This is not a system daemon yet. If the machine sleeps or the server is stopped, jobs will resume when the server is running again.
+- The first parser supports common interval, relative, daily, and one-time clock expressions. Full cron expressions are not implemented yet.
+- Jobs execute by calling Pantheon again, so scheduled tasks that need model output still require the relevant API keys to be configured.

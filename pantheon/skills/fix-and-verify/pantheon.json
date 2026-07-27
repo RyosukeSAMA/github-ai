@@ -1,0 +1,21 @@
+{
+  "id": "fix-and-verify",
+  "display_name": "Fix and Verify",
+  "roles": ["hephaestus"],
+  "version": "1.0.0",
+  "kind": "role",
+  "trigger_terms": [
+    "fix bug",
+    "debug",
+    "regression",
+    "failing test",
+    "implement fix",
+    "verify change",
+    "修复",
+    "报错",
+    "bug",
+    "测试失败",
+    "排查原因"
+  ],
+  "allow_implicit_invocation": true
+}

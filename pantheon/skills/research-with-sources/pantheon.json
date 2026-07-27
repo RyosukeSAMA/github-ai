@@ -1,0 +1,22 @@
+{
+  "id": "research-with-sources",
+  "display_name": "Research with Sources",
+  "roles": ["athena"],
+  "version": "1.0.0",
+  "kind": "role",
+  "trigger_terms": [
+    "research",
+    "with sources",
+    "fact check",
+    "latest",
+    "compare",
+    "verify",
+    "citations",
+    "调研",
+    "查证",
+    "最新",
+    "来源",
+    "对比"
+  ],
+  "allow_implicit_invocation": true
+}

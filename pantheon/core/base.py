@@ -15,6 +15,7 @@ class Task:
 
     content: str
     mode: str = "auto"  # "auto" | "role:<name>" | "multi"
+    skill: str | None = None
     context: list[dict[str, Any]] = field(default_factory=list)
     task_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
 
@@ -45,6 +46,7 @@ class PlanStep:
     role: str
     task: str
     description: str = ""
+    skill: str = ""
 
 
 @dataclass
@@ -53,12 +55,23 @@ class Plan:
 
     is_single_role: bool = False
     single_role: str | None = None
+    single_skill: str | None = None
     steps: list[PlanStep] = field(default_factory=list)
     reasoning: str = ""
 
     @classmethod
-    def single(cls, role: str, reasoning: str = "") -> Plan:
-        return cls(is_single_role=True, single_role=role, reasoning=reasoning)
+    def single(
+        cls,
+        role: str,
+        reasoning: str = "",
+        skill: str | None = None,
+    ) -> Plan:
+        return cls(
+            is_single_role=True,
+            single_role=role,
+            single_skill=skill,
+            reasoning=reasoning,
+        )
 
     @classmethod
     def multi(cls, steps: list[PlanStep], reasoning: str = "") -> Plan:

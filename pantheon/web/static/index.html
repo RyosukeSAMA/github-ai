@@ -4,17 +4,130 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
-  <title>🏛️ Pantheon — Multi-AI Role Collaboration</title>
+  <title>Pantheon - Multi-agent workspace</title>
 
   <!-- Third-party (CDN) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 
-  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/app.css?v=0.2.0" />
+  <style>
+    html.file-open body {
+      display: block;
+      min-height: 100vh;
+      margin: 0;
+      background: #0a0a0b;
+      color: #f0f1f2;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    }
+    html.file-open body > :not(.file-open-warning) {
+      display: none !important;
+    }
+    .file-open-warning {
+      display: none;
+    }
+    html.file-open .file-open-warning {
+      display: flex;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .file-open-warning-card {
+      width: min(560px, 100%);
+      border: 1px solid #24262d;
+      border-radius: 8px;
+      background: #111113;
+      padding: 24px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+    }
+    .file-open-warning h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+    }
+    .file-open-warning p {
+      margin: 0 0 14px;
+      color: #a2a5ad;
+      line-height: 1.6;
+    }
+    .file-open-warning a {
+      color: #7aa2f7;
+    }
+    .file-open-warning code {
+      display: block;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px solid #24262d;
+      border-radius: 6px;
+      background: #0a0a0b;
+      color: #f0f1f2;
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-x: auto;
+    }
+  </style>
+  <script>
+    if (window.location.protocol === 'file:') {
+      document.documentElement.classList.add('file-open');
+      window.addEventListener('DOMContentLoaded', function () {
+        var warning = document.getElementById('file-open-warning');
+        if (warning) warning.hidden = false;
+      });
+    }
+  </script>
 </head>
 <body>
-  <!-- ====== Animated background (Pantheon signature) ====== -->
+  <div class="file-open-warning" id="file-open-warning" hidden>
+    <div class="file-open-warning-card">
+      <h1>Pantheon needs the web server</h1>
+      <p>
+        This page was opened as a local file. The Pantheon UI needs FastAPI so it can load
+        styles, roles, workspace files, previews, and terminal output.
+      </p>
+      <p>
+        Start the server, then open
+        <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.
+      </p>
+      <code>pantheon web --host 127.0.0.1 --port 8000</code>
+    </div>
+  </div>
+
+  <div class="login-screen" id="login-screen" hidden>
+    <form class="login-card" id="login-form">
+      <div class="login-brand">
+        <span class="login-brand-mark" aria-hidden="true">
+          <img src="/static/avatars/hermes.png" alt="" />
+        </span>
+        <div>
+          <h1>Pantheon</h1>
+          <p>Local workspace access</p>
+        </div>
+      </div>
+      <p class="login-copy">
+        Sign in to unlock your local multi-agent workspace.
+      </p>
+      <div class="login-field">
+        <label for="login-username">Username</label>
+        <div class="login-input-wrap">
+          <span class="login-input-icon" aria-hidden="true">ID</span>
+          <input id="login-username" class="setting-input" type="text" autocomplete="username" />
+        </div>
+      </div>
+      <div class="login-field">
+        <label for="login-password">Password</label>
+        <div class="login-input-wrap">
+          <span class="login-input-icon" aria-hidden="true">KEY</span>
+          <input id="login-password" class="setting-input" type="password" autocomplete="current-password" />
+        </div>
+      </div>
+      <p class="login-status" id="login-status" hidden></p>
+      <button class="primary-btn login-submit" id="login-submit" type="submit">Login</button>
+      <div class="login-footnote">Protected by a local session cookie.</div>
+    </form>
+  </div>
+
+  <!-- ====== App background ====== -->
   <div class="bg-grid"></div>
   <div class="bg-glow bg-glow-1"></div>
   <div class="bg-glow bg-glow-2"></div>
@@ -24,10 +137,10 @@
 
     <!-- Brand -->
     <div class="brand">
-      <span class="brand-logo">🏛️</span>
+      <span class="brand-logo">P</span>
       <div class="brand-text">
         <h1>Pantheon</h1>
-        <p>Multi-AI collaboration</p>
+        <p>Agent workspace</p>
       </div>
     </div>
 
@@ -37,30 +150,48 @@
       <span>New Chat</span>
     </button>
 
-    <!-- Mode chips (replaces role cards) -->
-    <div class="mode-section">
-      <h3 class="section-title">Mode</h3>
-      <div class="mode-list" id="mode-list">
-        <button class="mode-chip active" data-mode="auto">
-          <span class="chip-icon">🪄</span>
-          <span class="chip-body">
-            <span class="chip-name">Auto</span>
-            <span class="chip-hint">Hermes decides</span>
-          </span>
-        </button>
-        <button class="mode-chip" data-mode="multi">
-          <span class="chip-icon">🧩</span>
-          <span class="chip-body">
-            <span class="chip-name">Multi-role</span>
-            <span class="chip-hint">Force collaboration</span>
+    <!-- Conversations -->
+    <div class="chats-section">
+      <h3 class="section-title">Conversations</h3>
+      <div class="chat-list" id="chat-list">
+        <button class="chat-row active" type="button">
+          <span class="chat-row-mark"></span>
+          <span class="chat-row-body">
+            <span class="chat-row-title">Current chat</span>
+            <span class="chat-row-meta">Auto routing</span>
           </span>
         </button>
       </div>
     </div>
 
+    <!-- Mode chips (replaces role cards) -->
+    <div class="mode-section">
+      <h3 class="section-title">Mode</h3>
+      <div class="mode-list mode-toggle" id="mode-list" role="group" aria-label="Conversation mode">
+        <button class="mode-chip active" data-mode="auto" type="button" aria-pressed="true">
+          <span class="chip-icon">A</span>
+          <span class="chip-body">
+            <span class="chip-name">Auto</span>
+            <span class="chip-hint">Route</span>
+          </span>
+        </button>
+        <button class="mode-chip" data-mode="multi" type="button" aria-pressed="false">
+          <span class="chip-icon">M</span>
+          <span class="chip-body">
+            <span class="chip-name">Multi-role</span>
+            <span class="chip-hint">Council</span>
+          </span>
+        </button>
+      </div>
+      <div class="mode-brief" id="mode-brief">
+        <div class="mode-brief-title">Auto routing</div>
+        <p>Hermes chooses the best god or starts a collaboration when the task needs it.</p>
+      </div>
+    </div>
+
     <!-- God list (your requested retention) -->
     <div class="gods-section">
-      <h3 class="section-title">Gods</h3>
+      <h3 class="section-title">Pantheon</h3>
       <div class="gods-list" id="gods-list">
         <div class="god-row loading">
           <span class="god-avatar">⏳</span>
@@ -73,12 +204,18 @@
 
     <!-- Sidebar footer -->
     <div class="sidebar-footer">
-      <button class="footer-btn" id="about-btn" title="About">
-        <span>ⓘ</span> About
-      </button>
-      <a class="footer-btn" href="https://github.com/RyosukeSAMA/github-ai" target="_blank" title="GitHub">
-        <span>★</span> GitHub
-      </a>
+      <div class="sidebar-footer-actions">
+        <button class="footer-btn" id="about-btn" title="About">
+          <span>ⓘ</span> About
+        </button>
+        <a class="footer-btn" href="https://github.com/RyosukeSAMA/github-ai" target="_blank" rel="noopener noreferrer" title="GitHub">
+          <svg class="github-mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 3.87c.68 0 1.36.09 2 .26 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+          </svg>
+          GitHub
+        </a>
+      </div>
+      <div class="sidebar-version">UI v0.2.0</div>
     </div>
   </aside>
 
@@ -88,18 +225,28 @@
     <!-- Top header -->
     <header class="topbar">
       <div class="topbar-left">
-        <div class="current-mode-pill" id="current-mode-pill">
-          <span class="mode-icon" id="topbar-mode-icon">🪄</span>
+        <button class="current-mode-pill" id="current-mode-pill" type="button" title="Toggle Auto / Multi-role">
+          <span class="mode-icon" id="topbar-mode-icon">A</span>
           <span class="mode-name" id="topbar-mode-name">Auto</span>
-        </div>
+        </button>
         <button class="topbar-btn" id="toggle-workspace" title="Toggle workspace panel">
-          <span>📋</span> <span class="topbar-btn-label">Workspace</span>
+          <span class="topbar-symbol">W</span> <span class="topbar-btn-label">Workspace</span>
         </button>
         <button class="topbar-btn" id="toggle-settings" title="Toggle settings panel">
-          <span>⚙️</span> <span class="topbar-btn-label">Settings</span>
+          <span class="topbar-symbol">S</span> <span class="topbar-btn-label">Settings</span>
         </button>
       </div>
       <div class="topbar-right">
+        <button class="topbar-btn export-btn" id="export-chat" title="Export chat as Markdown (⌘+Shift+E)">
+          <svg class="export-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M8 1.75a.75.75 0 0 1 .75.75v6.19l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V2.5A.75.75 0 0 1 8 1.75Z"/>
+            <path d="M3 11.25a.75.75 0 0 1 .75.75v.75h8.5V12a.75.75 0 0 1 1.5 0v1.5a.75.75 0 0 1-.75.75H3a.75.75 0 0 1-.75-.75V12a.75.75 0 0 1 .75-.75Z"/>
+          </svg>
+          <span class="export-copy">
+            <span class="export-label">Export</span>
+            <span class="export-format">Markdown</span>
+          </span>
+        </button>
         <div class="status-pill" id="provider-pill">
           <span class="status-dot"></span>
           <span id="provider-name">connecting…</span>
@@ -110,22 +257,34 @@
     <!-- Chat scroll area -->
     <section class="chat" id="chat">
       <div class="welcome" id="welcome">
-        <div class="welcome-icon">🏛️</div>
-        <h2>Welcome to the Pantheon</h2>
-        <p>Each god uses a model best suited to its specialty.<br>
-           Hermes will route your task to the right one.</p>
+        <p class="welcome-eyebrow">New session</p>
+        <h2>Start with a concrete task.</h2>
+        <p class="welcome-tagline">Choose a mode on the left, or use one of these prompts to test the workflow.</p>
         <div class="welcome-examples">
-          <button class="example-chip" data-prompt="Write a Python function to check if a string is a palindrome">💡 Write a palindrome checker</button>
-          <button class="example-chip" data-prompt="Compare PostgreSQL and MongoDB for a new project">💡 Compare Postgres vs MongoDB</button>
-          <button class="example-chip" data-prompt="Write a Midjourney prompt for a cyberpunk shrine at night">💡 Cyberpunk shrine prompt</button>
-          <button class="example-chip" data-prompt="调研 Python Web 框架趋势并写一个 FastAPI demo">💡 调研并写 FastAPI demo</button>
+          <button class="example-chip" data-prompt="Write a Python function to check if a string is a palindrome">Write a palindrome checker</button>
+          <button class="example-chip" data-prompt="Compare PostgreSQL and MongoDB for a new project">Compare Postgres vs MongoDB</button>
+          <button class="example-chip" data-prompt="Write a Midjourney prompt for a cyberpunk shrine at night">Draft a cyberpunk shrine prompt</button>
+          <button class="example-chip" data-prompt="调研 Python Web 框架趋势并写一个 FastAPI demo">调研并写 FastAPI demo</button>
         </div>
       </div>
     </section>
 
     <!-- Bottom composer -->
     <form class="composer" id="composer">
+      <input id="attachment-input" type="file" multiple hidden />
       <div class="composer-inner">
+        <button type="button" id="attach-btn" class="composer-tool-btn" data-composer-tool="attach" title="Attach files" aria-label="Attach files" onpointerdown="window.pantheonComposerTool && window.pantheonComposerTool(event, 'attach')" onclick="window.pantheonComposerTool && window.pantheonComposerTool(event, 'attach')">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.9-9.9a4 4 0 0 1 5.66 5.66l-9.9 9.9a2 2 0 0 1-2.83-2.83l8.49-8.49" />
+          </svg>
+        </button>
+        <button type="button" id="voice-btn" class="composer-tool-btn" data-composer-tool="voice" title="Voice input" aria-label="Voice input" onpointerdown="window.pantheonComposerTool && window.pantheonComposerTool(event, 'voice')" onclick="window.pantheonComposerTool && window.pantheonComposerTool(event, 'voice')">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <path d="M12 19v3" />
+          </svg>
+        </button>
         <textarea
           id="input"
           placeholder="Ask the Pantheon…"
@@ -137,10 +296,14 @@
           <span class="send-icon">➤</span>
         </button>
       </div>
+      <div class="slash-command-menu" id="slash-command-menu" role="listbox" aria-label="Slash commands" hidden></div>
+      <div class="composer-attachments" id="composer-attachments" hidden></div>
       <div class="composer-meta">
         <span id="mode-display">Mode: <b>auto</b></span>
         <span class="dot">·</span>
         <span>Shift+Enter for new line</span>
+        <span class="dot composer-status-dot" hidden>·</span>
+        <span id="composer-status" class="composer-status" hidden></span>
       </div>
     </form>
   </main>
@@ -148,59 +311,438 @@
   <!-- ====== Workspace panel (right, collapsible) ====== -->
   <aside class="workspace" id="workspace" hidden>
     <div class="workspace-header">
-      <h3>📋 Workspace</h3>
+      <div class="workspace-title">
+        <h3>Workspace</h3>
+        <span class="workspace-state" id="workspace-state">Idle</span>
+      </div>
       <button class="workspace-toggle" id="workspace-close" title="Close">×</button>
     </div>
-    <div class="workspace-body">
-      <section class="ws-section" id="ws-plan-section">
-        <h4>📝 Plan</h4>
-        <div class="ws-plan" id="ws-plan">
-          <span class="ws-empty">No plan yet — submit a task to see Hermes's plan</span>
+    <div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Workspace tools">
+      <button class="workspace-tab active" data-ws-tab="activity" type="button">Activity</button>
+      <button class="workspace-tab" data-ws-tab="preview" type="button">Preview</button>
+      <button class="workspace-tab" data-ws-tab="files" type="button">Files</button>
+      <button class="workspace-tab" data-ws-tab="terminal" type="button">Terminal</button>
+    </div>
+    <div class="workspace-body workspace-tool-body">
+      <div class="ws-pane active" data-ws-pane="activity">
+        <section class="ws-task-card" id="ws-task-card">
+          <div>
+            <span class="ws-task-kicker">Current task</span>
+            <h4 id="ws-task-title">Awaiting task</h4>
+          </div>
+          <div class="ws-task-meta">
+            <span id="ws-task-mode">Idle</span>
+            <span id="ws-task-elapsed">0.0s</span>
+          </div>
+        </section>
+
+        <section class="ws-section" id="ws-plan-section">
+          <h4>Plan</h4>
+          <div class="ws-plan" id="ws-plan">
+            <span class="ws-empty">No plan yet</span>
+          </div>
+        </section>
+
+        <section class="ws-section">
+          <h4>Timeline</h4>
+          <ol class="ws-steps" id="ws-steps">
+            <li class="ws-step-empty">No steps yet</li>
+          </ol>
+        </section>
+
+        <section class="ws-section ws-chronos-section">
+          <h4>
+            Chronos Jobs
+            <button class="ws-copy-btn" id="chronos-refresh" type="button">Refresh</button>
+          </h4>
+          <div class="chronos-jobs" id="chronos-jobs">
+            <span class="ws-empty">No scheduled jobs yet</span>
+          </div>
+        </section>
+      </div>
+
+      <div class="ws-pane ws-preview-pane" data-ws-pane="preview">
+        <div class="ws-toolbar ws-preview-toolbar">
+          <div class="ws-preview-meta">
+            <span class="ws-preview-status-line">
+              <span id="ws-preview-status">No preview</span>
+              <span class="ws-preview-hint" id="ws-preview-hint" hidden>unstyled HTML</span>
+            </span>
+            <span id="ws-preview-viewport">Desktop · 100%</span>
+          </div>
+          <div class="ws-preview-controls">
+            <div class="ws-segmented" aria-label="Preview viewport">
+              <button class="active" data-preview-device="desktop" type="button">Desktop</button>
+              <button data-preview-device="mobile" type="button">Mobile</button>
+            </div>
+            <select class="ws-preview-zoom" id="ws-preview-zoom" aria-label="Preview zoom">
+              <option value="0.5">50%</option>
+              <option value="0.75">75%</option>
+              <option value="1" selected>100%</option>
+              <option value="1.25">125%</option>
+            </select>
+            <button class="ws-copy-btn" id="ws-reload-preview" type="button" disabled>Reload</button>
+            <button class="ws-copy-btn" id="ws-download-preview" type="button" disabled>Download</button>
+            <button class="ws-copy-btn" id="ws-open-preview" type="button" disabled>Open</button>
+          </div>
         </div>
-      </section>
+        <div class="ws-preview-shell" id="ws-preview-shell" data-device="desktop">
+          <iframe id="ws-preview-frame" title="Workspace preview" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>
+          <div class="ws-preview-empty" id="ws-preview-empty">
+            <div class="ws-preview-empty-card">
+              <span>Preview</span>
+              <strong>No HTML preview</strong>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <section class="ws-section">
-        <h4>⚡ Steps</h4>
-        <ol class="ws-steps" id="ws-steps">
-          <li class="ws-step-empty">No steps yet</li>
-        </ol>
-      </section>
+      <div class="ws-pane ws-files-pane" data-ws-pane="files">
+        <div class="ws-toolbar ws-files-toolbar">
+          <button class="ws-copy-btn" id="ws-files-up" type="button">Up</button>
+          <span class="ws-path" id="ws-files-path">/</span>
+          <button class="ws-copy-btn" id="ws-refresh-files" type="button">Refresh</button>
+        </div>
+        <ul class="ws-files" id="ws-files">
+          <li class="ws-file-empty">Loading files…</li>
+        </ul>
+        <section class="ws-file-inspector">
+          <div class="ws-file-inspector-head">
+            <div class="ws-file-selected">
+              <span id="ws-file-selected-kind">FILE</span>
+              <strong id="ws-file-selected-name">No file selected</strong>
+              <small id="ws-file-selected-meta">Select a file to inspect it.</small>
+            </div>
+            <div class="ws-file-actions">
+              <button class="ws-copy-btn" id="ws-copy-file-path" type="button" disabled>Copy path</button>
+              <button class="ws-copy-btn" id="ws-copy-file-content" type="button" disabled>Copy content</button>
+              <button class="ws-copy-btn" id="ws-preview-file" type="button" disabled>Preview</button>
+            </div>
+          </div>
+          <pre class="ws-file-view" id="ws-file-view"><code>Select a file to preview it here.</code></pre>
+        </section>
+      </div>
 
-      <section class="ws-section">
-        <h4>🖥 Output</h4>
-        <pre class="ws-output" id="ws-output"><code>// output will appear here</code></pre>
-      </section>
+      <div class="ws-pane ws-terminal-pane" data-ws-pane="terminal">
+        <div class="ws-toolbar ws-terminal-toolbar">
+          <span class="ws-path" id="ws-terminal-cwd">/</span>
+          <div class="ws-terminal-actions">
+            <button class="ws-copy-btn" id="ws-copy-output" title="Copy terminal output" type="button">Copy</button>
+            <button class="ws-copy-btn" id="ws-clear-output" title="Clear terminal output" type="button">Clear</button>
+          </div>
+        </div>
+        <pre class="ws-output" id="ws-output"><code>No terminal output yet</code></pre>
+        <div class="ws-terminal-hints" id="ws-terminal-hints" hidden></div>
+        <form class="ws-command" id="ws-command-form">
+          <span class="ws-prompt">$</span>
+          <textarea id="ws-command-input" rows="1" autocomplete="off" spellcheck="false" placeholder="Run a local command… Shift+Enter for newline"></textarea>
+          <button class="ws-copy-btn" id="ws-run-command" type="submit">Run</button>
+        </form>
+      </div>
     </div>
   </aside>
 
   <!-- ====== Settings panel (right, collapsible) ====== -->
   <aside class="workspace settings-panel" id="settings-panel" hidden>
     <div class="workspace-header">
-      <h3>⚙️ Settings</h3>
+      <h3>Settings</h3>
       <button class="workspace-toggle" id="settings-close" title="Close">×</button>
     </div>
     <div class="workspace-body">
       <div class="settings-tabs">
-        <button class="settings-tab active" data-tab="models">
-          <span>🧠</span> Models
+        <button class="settings-tab active" data-tab="setup">
+          <span>Setup</span>
+        </button>
+        <button class="settings-tab" data-tab="models">
+          <span>Models</span>
+        </button>
+        <button class="settings-tab" data-tab="security">
+          <span>Security</span>
+        </button>
+        <button class="settings-tab" data-tab="memory">
+          <span>Memory</span>
+        </button>
+        <button class="settings-tab" data-tab="integrations">
+          <span>Integrations</span>
         </button>
         <button class="settings-tab" data-tab="display">
-          <span>🎨</span> Display
+          <span>Display</span>
         </button>
         <button class="settings-tab" data-tab="info">
-          <span>ⓘ</span> Info
+          <span>Info</span>
         </button>
       </div>
 
-      <!-- Models tab -->
-      <div class="settings-pane active" data-pane="models" id="settings-models">
+      <!-- Setup tab -->
+      <div class="settings-pane active" data-pane="setup" id="settings-setup">
         <p class="settings-hint">
-          Click any god to switch its model. Changes apply to the next request
-          (config is held in memory for this session; restart the server to persist to <code>config/pantheon.yaml</code>).
+          Configure Pantheon for local use. API keys are saved to <code>.env</code>;
+          provider and model choices are saved to <code>config/pantheon.yaml</code>.
+        </p>
+
+        <div class="setup-status" id="setup-status">
+          <div>
+            <span class="setup-kicker">Current setup</span>
+            <strong id="setup-status-title">Loading...</strong>
+          </div>
+          <span class="setup-pill" id="setup-status-pill">checking</span>
+        </div>
+        <div class="setup-role-list" id="setup-role-list">
+          <!-- Populated by JS -->
+        </div>
+
+        <form class="setup-form" id="setup-form">
+          <div class="setting-row setting-row-stack">
+            <label for="setup-provider">Provider</label>
+            <div class="setting-control setting-control-wide">
+              <select class="setting-select setting-select-wide" id="setup-provider"></select>
+            </div>
+            <p class="settings-hint setup-provider-note" id="setup-provider-note"></p>
+          </div>
+
+          <div class="setting-row setting-row-stack">
+            <label for="setup-model">Default model</label>
+            <select class="setting-select setting-select-wide" id="setup-model"></select>
+            <label class="setting-check setup-custom-check">
+              <input id="setup-use-custom-model" type="checkbox" />
+              <span>
+                <strong>Use custom model ID</strong>
+                <small>For advanced users or models not listed above.</small>
+              </span>
+            </label>
+            <input class="setting-input" id="setup-custom-model" type="text" autocomplete="off" spellcheck="false" placeholder="provider-specific-model-id" hidden />
+          </div>
+
+          <div class="setting-row setting-row-stack">
+            <label for="setup-base-url">Base URL</label>
+            <input class="setting-input" id="setup-base-url" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com" />
+          </div>
+
+          <div class="setting-row setting-row-stack">
+            <label for="setup-api-key">API key</label>
+            <div class="setup-secret-row">
+              <input class="setting-input" id="setup-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste once, then save" />
+              <button class="ghost-btn" type="button" id="setup-toggle-key">Show</button>
+            </div>
+            <p class="setup-muted" id="setup-key-status">No key status yet</p>
+          </div>
+
+          <label class="setting-check">
+            <input id="setup-apply-roles" type="checkbox" checked />
+            <span>
+              <strong>Use this model for all chat agents</strong>
+              <small>Hermes, Hephaestus, Athena, and Apollo will use it. Chronos is unchanged.</small>
+            </span>
+          </label>
+
+          <div class="setup-check-result" id="setup-check-result" hidden></div>
+
+          <div class="setup-actions">
+            <button class="ghost-btn" type="button" id="setup-check">Check setup</button>
+            <button class="ghost-btn" type="button" id="setup-test">Test API</button>
+            <button class="primary-btn" type="submit" id="setup-save">Save local config</button>
+          </div>
+        </form>
+
+        <dl class="config-list setup-paths">
+          <dt>Config</dt><dd id="setup-config-path">—</dd>
+          <dt>Secrets</dt><dd id="setup-env-path">—</dd>
+        </dl>
+      </div>
+
+      <!-- Models tab -->
+      <div class="settings-pane" data-pane="models" id="settings-models">
+        <p class="settings-hint">
+          Override a god's model for this chat only. Use <code>Setup</code> when you want
+          to save provider/model choices to local config.
         </p>
         <div class="settings-roles" id="settings-roles">
           <!-- Populated by JS -->
         </div>
+      </div>
+
+      <!-- Security tab -->
+      <div class="settings-pane" data-pane="security" id="settings-security">
+        <p class="settings-hint">
+          Optional local login lock. When enabled, the UI requires a username and password before using chat, Settings, Workspace, Files, Preview, or Terminal.
+        </p>
+
+        <div class="setup-status security-status" id="security-status">
+          <div>
+            <span class="setup-kicker">Local login</span>
+            <strong id="security-status-title">Loading...</strong>
+          </div>
+          <span class="setup-pill" id="security-status-pill">checking</span>
+        </div>
+
+        <form class="setup-form" id="security-form">
+          <label class="setting-check">
+            <input id="security-enabled" type="checkbox" />
+            <span>
+              <strong>Require login for this UI</strong>
+              <small>Recommended if the server is reachable from another device.</small>
+            </span>
+          </label>
+
+          <div class="setting-row setting-row-stack">
+            <label for="security-username">Username</label>
+            <input class="setting-input" id="security-username" type="text" autocomplete="username" placeholder="admin" />
+          </div>
+
+          <div class="setting-row setting-row-stack">
+            <label for="security-password">Password</label>
+            <input class="setting-input" id="security-password" type="password" autocomplete="new-password" placeholder="Set a new password or leave blank to keep current" />
+            <p class="setup-muted" id="security-password-hint">Minimum 8 characters when setting or changing the password.</p>
+          </div>
+
+          <div class="setup-check-result" id="security-result" hidden></div>
+
+          <div class="security-actions">
+            <button class="ghost-btn" type="button" id="security-logout">Logout</button>
+            <button class="primary-btn" type="submit" id="security-save">Save security</button>
+          </div>
+        </form>
+
+        <dl class="config-list setup-paths">
+          <dt>Secrets</dt><dd id="security-env-path">—</dd>
+          <dt>Session</dt><dd id="security-session">—</dd>
+        </dl>
+      </div>
+
+      <!-- Memory tab -->
+      <div class="settings-pane" data-pane="memory" id="settings-memory">
+        <p class="settings-hint">
+          Local long-term memory is saved in <code>.pantheon/memory.sqlite</code>.
+          Use it for stable preferences, project facts, and notes you want agents to reuse.
+        </p>
+
+        <div class="setup-status memory-status" id="memory-status">
+          <div>
+            <span class="setup-kicker">Local memory</span>
+            <strong id="memory-status-title">Loading...</strong>
+          </div>
+          <span class="setup-pill" id="memory-status-pill">checking</span>
+        </div>
+
+        <form class="setup-form" id="memory-form">
+          <label class="setting-check">
+            <input id="memory-enabled" type="checkbox" checked />
+            <span>
+              <strong>Use memory in agent context</strong>
+              <small>Relevant memories are injected before each task.</small>
+            </span>
+          </label>
+
+          <label class="setting-check">
+            <input id="memory-auto-capture" type="checkbox" />
+            <span>
+              <strong>Auto-save task summaries</strong>
+              <small>Off by default. Manual /remember is safer for clean memory.</small>
+            </span>
+          </label>
+
+          <div class="setting-row setting-row-stack">
+            <label for="memory-content">New memory</label>
+            <textarea class="setting-input memory-textarea" id="memory-content" rows="3" spellcheck="true" placeholder="Remember that..."></textarea>
+          </div>
+
+          <div class="setting-row setting-row-stack">
+            <label for="memory-kind">Kind</label>
+            <select class="setting-select setting-select-wide" id="memory-kind">
+              <option value="note">Note</option>
+              <option value="user_profile">User profile</option>
+              <option value="project">Project</option>
+              <option value="agent">Agent</option>
+              <option value="task">Task</option>
+            </select>
+          </div>
+
+          <div class="setting-row setting-row-stack">
+            <label for="memory-role">Role scope</label>
+            <select class="setting-select setting-select-wide" id="memory-role">
+              <option value="">Global</option>
+              <option value="hermes">Hermes</option>
+              <option value="hephaestus">Hephaestus</option>
+              <option value="athena">Athena</option>
+              <option value="apollo">Apollo</option>
+              <option value="chronos">Chronos</option>
+            </select>
+          </div>
+
+          <div class="setup-actions memory-actions">
+            <button class="ghost-btn" type="button" id="memory-refresh">Refresh</button>
+            <button class="ghost-btn" type="button" id="memory-clear">Clear all</button>
+            <button class="primary-btn" type="submit" id="memory-save">Save memory</button>
+          </div>
+        </form>
+
+        <h4 class="settings-h4 memory-section-title">
+          Suggested
+          <span id="memory-suggestion-count">0</span>
+        </h4>
+        <div class="memory-list memory-suggestion-list" id="memory-suggestion-list">
+          <span class="settings-hint">No suggestions yet.</span>
+        </div>
+
+        <div class="memory-search-row">
+          <input class="setting-input" id="memory-search" type="search" autocomplete="off" placeholder="Search memories..." />
+        </div>
+
+        <h4 class="settings-h4 memory-section-title">Saved memories</h4>
+        <div class="memory-list" id="memory-list">
+          <span class="settings-hint">No memories yet.</span>
+        </div>
+
+        <dl class="config-list setup-paths">
+          <dt>Store</dt><dd id="memory-path">—</dd>
+          <dt>Count</dt><dd id="memory-count">—</dd>
+        </dl>
+      </div>
+
+      <!-- Integrations tab -->
+      <div class="settings-pane" data-pane="integrations" id="settings-integrations">
+        <p class="settings-hint">
+          Connect real tools, install local capability packs, create reusable
+          skills, and expose a token-protected webhook for incoming tasks.
+        </p>
+
+        <div class="setup-status integrations-status" id="integrations-status">
+          <div>
+            <span class="setup-kicker">Extension center</span>
+            <strong id="integrations-status-title">Loading...</strong>
+          </div>
+          <span class="setup-pill" id="integrations-status-pill">checking</span>
+        </div>
+
+        <div class="integration-nav" id="integration-nav" role="tablist" aria-label="Integration areas">
+          <button class="integration-nav-btn active" type="button" data-integration-section="mcp">
+            <span>MCP</span>
+            <small id="integration-count-mcp">0</small>
+          </button>
+          <button class="integration-nav-btn" type="button" data-integration-section="plugins">
+            <span>Plugins</span>
+            <small id="integration-count-plugins">0</small>
+          </button>
+          <button class="integration-nav-btn" type="button" data-integration-section="skills">
+            <span>Skills</span>
+            <small id="integration-count-skills">0</small>
+          </button>
+          <button class="integration-nav-btn" type="button" data-integration-section="channels">
+            <span>Channels</span>
+            <small id="integration-count-channels">0</small>
+          </button>
+        </div>
+
+        <div class="integration-list" id="integration-list">
+          <span class="settings-hint">Loading integrations...</span>
+        </div>
+
+        <dl class="config-list setup-paths">
+          <dt>Config</dt><dd id="integrations-config-path">—</dd>
+          <dt>Secrets</dt><dd id="integrations-env-path">—</dd>
+          <dt>Plugins</dt><dd id="integrations-plugins-path">—</dd>
+          <dt>Skills</dt><dd id="integrations-skills-path">—</dd>
+        </dl>
       </div>
 
       <!-- Display tab -->
@@ -224,44 +766,85 @@
           </div>
         </div>
         <div class="setting-row">
-          <label>Animated background</label>
-          <div class="setting-control" data-control="animatedBg">
-            <button class="opt-btn active" data-action="animatedBg" data-value="on">On</button>
-            <button class="opt-btn" data-action="animatedBg" data-value="off">Off</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label>Density</label>
-          <div class="setting-control" data-control="density">
-            <button class="opt-btn active" data-action="density" data-value="comfortable">Comfortable</button>
-            <button class="opt-btn" data-action="density" data-value="compact">Compact</button>
+          <label for="voice-language">Voice language</label>
+          <div class="setting-control">
+            <select class="setting-select" id="voice-language">
+              <option value="auto">Auto</option>
+              <option value="zh-CN">中文（普通话）</option>
+              <option value="zh-TW">中文（繁體）</option>
+              <option value="en-US">English (US)</option>
+              <option value="en-GB">English (UK)</option>
+              <option value="ja-JP">日本語</option>
+              <option value="ko-KR">한국어</option>
+              <option value="fr-FR">Français</option>
+              <option value="de-DE">Deutsch</option>
+              <option value="es-ES">Español</option>
+            </select>
           </div>
         </div>
       </div>
 
       <!-- Info tab -->
       <div class="settings-pane" data-pane="info" id="settings-info">
-        <dl class="config-list">
-          <dt>Version</dt><dd>v0.1.1</dd>
-          <dt>Python</dt><dd id="settings-py">—</dd>
-          <dt>Loaded roles</dt><dd id="settings-roles-count">0</dd>
-          <dt>API status</dt><dd id="settings-status">—</dd>
-        </dl>
-        <h4 class="settings-h4">Resources</h4>
-        <ul class="links-list">
-          <li><a href="https://github.com/RyosukeSAMA/github-ai" target="_blank">📦 GitHub</a></li>
-          <li><a href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md" target="_blank">📖 Setup Guide</a></li>
-          <li><a href="https://github.com/RyosukeSAMA/github-ai/issues" target="_blank">🐛 Report Issue</a></li>
-        </ul>
+        <div class="info-stack">
+          <section class="info-card">
+            <div class="info-card-head">
+              <span class="setup-kicker">About</span>
+              <span class="setup-pill ok" id="info-version-pill">v0.2.0</span>
+            </div>
+            <dl class="config-list info-list">
+              <dt>UI</dt><dd id="info-ui-version">v0.2.0</dd>
+              <dt>Backend</dt><dd id="info-backend-version">—</dd>
+              <dt>Python</dt><dd id="info-python-version">—</dd>
+            </dl>
+          </section>
+
+          <section class="info-card">
+            <div class="info-card-head">
+              <span class="setup-kicker">Local paths</span>
+            </div>
+            <dl class="config-list info-list">
+              <dt>Config</dt><dd id="info-config-path">—</dd>
+              <dt>Secrets</dt><dd id="info-env-path">—</dd>
+              <dt>Workspace</dt><dd id="info-workspace-path">—</dd>
+            </dl>
+          </section>
+
+          <section class="info-card">
+            <div class="setup-status info-setup-card">
+              <div>
+                <span class="setup-kicker">Current setup</span>
+                <strong id="info-setup-title">Loading...</strong>
+              </div>
+              <span class="setup-pill" id="info-setup-pill">checking</span>
+            </div>
+            <dl class="config-list info-list">
+              <dt>Provider</dt><dd id="info-provider">—</dd>
+              <dt>Model</dt><dd id="info-model">—</dd>
+              <dt>Agents</dt><dd id="info-agents">—</dd>
+            </dl>
+          </section>
+
+          <section class="info-card">
+            <div class="info-card-head">
+              <span class="setup-kicker">Support</span>
+            </div>
+            <div class="info-support-actions">
+              <button class="ghost-btn" id="info-copy-diagnostics" type="button">Copy diagnostics</button>
+              <a class="info-support-link" href="https://github.com/RyosukeSAMA/github-ai" target="_blank" rel="noopener noreferrer">GitHub</a>
+              <a class="info-support-link" href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md" target="_blank" rel="noopener noreferrer">Setup Guide</a>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   </aside>
 
-  <!-- ====== About modal (replaces settings button) ====== -->
+  <!-- ====== About modal ====== -->
   <div class="modal-backdrop" id="about-modal" hidden>
     <div class="modal">
       <div class="modal-header">
-        <h2>🏛️ About Pantheon</h2>
+        <h2>About Pantheon</h2>
         <button class="modal-close" id="about-close">×</button>
       </div>
       <div class="modal-body">
@@ -280,19 +863,51 @@
         <div class="modal-section">
           <h3>Resources</h3>
           <ul class="links-list">
-            <li><a href="https://github.com/RyosukeSAMA/github-ai" target="_blank">📦 GitHub Repository</a></li>
-            <li><a href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md" target="_blank">📖 Setup Guide</a></li>
-            <li><a href="https://github.com/RyosukeSAMA/github-ai/issues" target="_blank">🐛 Report Issue</a></li>
-            <li><a href="https://github.com/RyosukeSAMA/github-ai/discussions" target="_blank">💬 Discussions</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai" target="_blank">GitHub Repository</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md" target="_blank">Setup Guide</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai/issues" target="_blank">Report Issue</a></li>
+            <li><a href="https://github.com/RyosukeSAMA/github-ai/discussions" target="_blank">Discussions</a></li>
           </ul>
         </div>
         <div class="modal-footer">
-          <code>v0.1.1 · MIT License · © 2024 RyosukeSAMA</code>
+          <code>v0.2.0 · MIT License · © 2024 RyosukeSAMA</code>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <!-- ====== MCP approval modal ====== -->
+  <div class="modal-backdrop" id="mcp-approval-modal" hidden>
+    <div class="modal mcp-approval-dialog" role="dialog" aria-modal="true" aria-labelledby="mcp-approval-title">
+      <div class="modal-header">
+        <div>
+          <span class="setup-kicker">MCP tool request</span>
+          <h2 id="mcp-approval-title">Allow this action?</h2>
+        </div>
+        <button class="modal-close" id="mcp-approval-close" type="button" aria-label="Deny and close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="mcp-approval-summary">
+          <span class="mcp-risk" id="mcp-approval-risk">unknown risk</span>
+          <strong id="mcp-approval-tool">Tool</strong>
+        </div>
+        <dl class="config-list mcp-approval-details">
+          <dt>God</dt><dd id="mcp-approval-role">—</dd>
+          <dt>Server</dt><dd id="mcp-approval-server">—</dd>
+          <dt>Tool</dt><dd id="mcp-approval-tool-id">—</dd>
+        </dl>
+        <div class="mcp-approval-arguments">
+          <span>Arguments</span>
+          <pre id="mcp-approval-args">{}</pre>
+        </div>
+        <div class="mcp-approval-actions">
+          <button class="ghost-btn" id="mcp-approval-deny" type="button">Deny</button>
+          <button class="primary-btn" id="mcp-approval-allow" type="button">Allow once</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=0.2.0"></script>
 </body>
 </html>

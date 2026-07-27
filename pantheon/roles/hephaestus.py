@@ -31,7 +31,7 @@ You do NOT: do web research (ask Athena), generate images (ask Apollo), or sched
 class Hephaestus(Role):
     name = "hephaestus"
     description = "Writes and refactors code (Python, JS/TS, Go, Rust, Bash)"
-    default_model = "claude-sonnet-4-20250514"
+    default_model = "claude-sonnet-4-6"
     default_provider = "anthropic"
     default_temperature = 0.1
     tools: list[str] = ["terminal", "file", "patch"]

@@ -12,7 +12,7 @@ It's a memorable mental model: each "god" has a domain (Hephaestus = forge = cod
 
 ### Is Pantheon production-ready?
 
-**No.** It's at v0.1 (alpha). The architecture is sound but lacks production features: auth, persistent memory, observability, rate limiting, etc. Use it for experiments and prototypes.
+**No.** v0.2 is still alpha. It now includes an optional local login lock and persistent local memory, but it is not a multi-user security boundary and does not yet provide production-grade rate limiting, audit logs, or distributed execution. Use it for local experiments and prototypes.
 
 ### How is this different from LangChain / AutoGen / CrewAI?
 
@@ -32,7 +32,7 @@ No. Set the provider per role in `pantheon.yaml`. You can run everything on one 
 
 ### Can I use a model not in the dropdown?
 
-Yes. Edit the role's `model:` field to whatever string your provider accepts (e.g. `gpt-4-turbo`, `claude-opus-4-...`). The framework doesn't validate model names — it just passes them through.
+Yes. In Web Setup, enable `Use custom model ID`, or edit the role's `model:` field directly. Pantheon passes that ID to the provider, so an invalid or unavailable model will fail when the API is tested or called.
 
 ### Can I add a new provider (e.g. Cohere, Mistral)?
 
@@ -54,7 +54,7 @@ In `pantheon.yaml`:
 ```yaml
 pantheon:
   hermes:
-    model: gpt-4o
+    model: gpt-5.5
     provider: openai
 ```
 
@@ -64,15 +64,15 @@ Use your strongest model here — Hermes's planning quality bounds the whole sys
 
 ### Can I stream the output?
 
-Not in v0.1. Each role's `run()` returns a `TaskResult` once. Adding streaming is a small change: have `run()` yield chunks. PRs welcome.
+The Web UI streams lifecycle, planning, tool, and completion events over SSE. The current LLM adapters still return each model response as one completed result rather than provider-level token chunks.
 
 ### Can roles call each other?
 
-Only via Hermes in `multi` mode. There's no direct role-to-role messaging in v0.1. This avoids infinite loops.
+Only via Hermes in `multi` mode. There is no unrestricted role-to-role conversation loop; Hermes owns the plan, executes the steps, and synthesizes the result.
 
 ### Can I save conversation history?
 
-Not built-in. v0.2 will add session memory. For now, pass `context` yourself in multi-step custom flows.
+Yes in the Web UI. Conversations are stored in the browser's `localStorage`, while confirmed long-term memories are stored in `.pantheon/memory.sqlite`. CLI and SDK callers should still manage their own conversation transcript when they need full session history.
 
 ### Can I use Pantheon from a FastAPI / Django app?
 

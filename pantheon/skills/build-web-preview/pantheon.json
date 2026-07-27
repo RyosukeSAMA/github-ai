@@ -1,0 +1,22 @@
+{
+  "id": "build-web-preview",
+  "display_name": "Build Web Preview",
+  "roles": ["apollo", "hephaestus"],
+  "version": "1.0.0",
+  "kind": "council",
+  "trigger_terms": [
+    "build webpage",
+    "website",
+    "landing page",
+    "portfolio",
+    "dashboard",
+    "html preview",
+    "responsive ui",
+    "网页",
+    "网站",
+    "个人主页",
+    "页面",
+    "HTML"
+  ],
+  "allow_implicit_invocation": true
+}

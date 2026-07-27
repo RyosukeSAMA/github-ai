@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Apollo">
+  <defs>
+    <linearGradient id="bg" x1="14" y1="10" x2="84" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#493155"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="28" y1="16" x2="72" y2="78" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#efd6ff"/>
+      <stop offset="1" stop-color="#b48ead"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="26" fill="url(#bg)"/>
+  <path d="M27 70c5-13 13-20 21-20s16 7 21 20v7H27v-7Z" fill="#211728"/>
+  <circle cx="48" cy="40" r="14" fill="url(#violet)"/>
+  <path d="M32 34c7-14 25-17 33 0-10-4-23-4-33 0Z" fill="#281a32"/>
+  <path d="M48 15v15M34 20l8 13M62 20l-8 13M24 32l14 5M72 37l14-5" stroke="#d9b6d5" stroke-width="4" stroke-linecap="round"/>
+  <path d="M36 62c12-8 24-8 34 0" fill="none" stroke="#b48ead" stroke-width="4" stroke-linecap="round"/>
+  <path d="M39 45c5 4 13 4 18 0" fill="none" stroke="#4f315b" stroke-width="3" stroke-linecap="round"/>
+</svg>

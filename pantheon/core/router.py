@@ -23,6 +23,7 @@ Output ONLY valid JSON in one of two shapes:
 {
   "type": "single",
   "role": "<role_name>",
+  "skill": "<optional_skill_id>",
   "reasoning": "Why this role can handle it alone"
 }
 
@@ -31,7 +32,12 @@ Output ONLY valid JSON in one of two shapes:
   "type": "multi",
   "reasoning": "Why multiple roles are needed",
   "steps": [
-    {"role": "<role_name>", "task": "<specific task for this role>", "description": "<short note>"},
+    {
+      "role": "<role_name>",
+      "skill": "<optional_skill_id>",
+      "task": "<specific task for this role>",
+      "description": "<short note>"
+    },
     ...
   ]
 }
@@ -41,6 +47,8 @@ Rules:
 - The last step's result should be the user-facing answer.
 - Be concise in `task` strings; do not repeat the user's full prompt.
 - Do not invent roles. Use only names from the provided list.
+- Use only skill ids listed for the selected role. Omit `skill` when no listed skill fits.
+- When a requested skill is supplied, route it to a compatible role and preserve its id.
 - Output JSON only. No prose before or after."""
 
     def __init__(self, llm_client: Any, hermes_model: str | None = None) -> None:
@@ -51,6 +59,7 @@ Rules:
         self,
         task: str,
         available_roles: dict[str, dict[str, Any]],
+        requested_skill: str = "",
     ) -> Plan:
         """Decide how to route a task.
 
@@ -61,15 +70,25 @@ Rules:
         Returns:
             A Plan object.
         """
-        role_descriptions = "\n".join(
-            f"- {name}: {info.get('description', '(no description)')}"
-            for name, info in available_roles.items()
-        )
+        role_lines: list[str] = []
+        for name, info in available_roles.items():
+            skills = info.get("skills") or []
+            skill_text = ", ".join(
+                f"${skill.get('id')} ({skill.get('description') or skill.get('name')})"
+                for skill in skills
+                if skill.get("id")
+            )
+            suffix = f"\n  Skills: {skill_text}" if skill_text else ""
+            role_lines.append(
+                f"- {name}: {info.get('description', '(no description)')}{suffix}"
+            )
+        role_descriptions = "\n".join(role_lines)
 
         user_prompt = f"""Available gods:
 {role_descriptions}
 
 User task: {task}
+Requested skill: {f"${requested_skill}" if requested_skill else "(none)"}
 
 Produce a JSON plan."""
 
@@ -80,7 +99,7 @@ Produce a JSON plan."""
             temperature=0.1,
         )
 
-        return self._parse_plan(raw, available_roles)
+        return self._parse_plan(raw, available_roles, requested_skill=requested_skill)
 
     def summarize(
         self,
@@ -119,6 +138,7 @@ Be concise, structured, and complete. Address the original task directly."""
         self,
         raw: str,
         available_roles: dict[str, dict[str, Any]],
+        requested_skill: str = "",
     ) -> Plan:
         """Parse the LLM's JSON output into a Plan object, with fallbacks."""
         data = self._extract_json(raw)
@@ -136,7 +156,17 @@ Be concise, structured, and complete. Address the original task directly."""
             if role not in available_roles:
                 # pick first available
                 role = next(iter(available_roles.keys()), None)
-            return Plan.single(role=role, reasoning=data.get("reasoning", ""))
+            skill = self._valid_skill(
+                role,
+                str(data.get("skill") or ""),
+                requested_skill,
+                available_roles,
+            )
+            return Plan.single(
+                role=role,
+                reasoning=data.get("reasoning", ""),
+                skill=skill,
+            )
 
         if data.get("type") == "multi":
             steps_raw = data.get("steps", [])
@@ -150,6 +180,12 @@ Be concise, structured, and complete. Address the original task directly."""
                         role=role,
                         task=s.get("task", ""),
                         description=s.get("description", ""),
+                        skill=self._valid_skill(
+                            role,
+                            str(s.get("skill") or ""),
+                            requested_skill,
+                            available_roles,
+                        ) or "",
                     )
                 )
             if not steps:
@@ -161,6 +197,28 @@ Be concise, structured, and complete. Address the original task directly."""
         # Unknown type → single fallback
         fallback_role = next(iter(available_roles.keys()), None)
         return Plan.single(role=fallback_role, reasoning=f"Unknown plan type: {raw[:200]}")
+
+    @staticmethod
+    def _valid_skill(
+        role: str | None,
+        proposed_skill: str,
+        requested_skill: str,
+        available_roles: dict[str, dict[str, Any]],
+    ) -> str | None:
+        if not role or role not in available_roles:
+            return None
+        allowed = {
+            str(item.get("id") or "").strip().lower()
+            for item in available_roles[role].get("skills") or []
+            if item.get("id")
+        }
+        proposed = proposed_skill.strip().lower().lstrip("$")
+        requested = requested_skill.strip().lower().lstrip("$")
+        if proposed and proposed in allowed:
+            return proposed
+        if requested and requested in allowed:
+            return requested
+        return None
 
     @staticmethod
     def _extract_json(raw: str) -> dict[str, Any] | None:

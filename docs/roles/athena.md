@@ -21,7 +21,7 @@ A senior research analyst. Calm, rigorous, allergic to hand-waving. Cites source
 - Does **not** write code — for that, ask Hephaestus.
 - Does **not** generate images/audio — that's Apollo.
 - Does **not** schedule tasks — that's Chronos.
-- Athena does not have tool-use fully wired up by default in v0.1. To enable web search, you must configure the tools. (See Configuration below.)
+- In the Web UI, Athena can use MCP tools that the user has connected and explicitly allowed for her role. CLI and SDK tool orchestration remain more limited. (See Configuration below.)
 
 ## System prompt
 
@@ -48,10 +48,10 @@ Full source: [`pantheon/roles/athena.py`](../../pantheon/roles/athena.py).
 pantheon:
   roles:
     athena:
-      model: gpt-4o
+      model: gpt-5.5
       provider: openai
       temperature: 0.3            # a bit of variation is fine
-      # tools: [web_search, web_extract]   # not wired up in v0.1
+      # tools: [web_search, web_extract]   # requires a configured tool integration
 ```
 
 ## Example

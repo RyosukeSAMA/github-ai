@@ -58,6 +58,12 @@ def ask(
         "-m",
         help="Force multi-role collaboration mode.",
     ),
+    skill: str | None = typer.Option(
+        None,
+        "--skill",
+        "-s",
+        help="Invoke an installed skill by id.",
+    ),
     config: str | None = typer.Option(
         None, "--config", "-c", help="Path to pantheon.yaml."
     ),
@@ -79,10 +85,12 @@ def ask(
 
     if not raw:
         console.print(f"\n[dim]Mode:[/dim] [cyan]{mode}[/cyan]")
+        if skill:
+            console.print(f"[dim]Skill:[/dim] [magenta]${skill.lstrip('$')}[/magenta]")
         console.print(f"[dim]Task:[/dim] {task}\n")
 
     try:
-        result = p.ask(task, mode=mode)
+        result = p.ask(task, mode=mode, skill=skill)
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
         if verbose:
@@ -138,6 +146,29 @@ def list_roles(
     console.print()
 
 
+@app.command("skills")
+def list_skills(
+    config: str | None = typer.Option(None, "--config", "-c"),
+) -> None:
+    """List installed built-in and local skills."""
+    try:
+        p = Pantheon(config_path=config)
+    except FileNotFoundError as e:
+        console.print(f"[red]✗[/red] {e}")
+        raise typer.Exit(code=1)
+
+    console.print("\n[bold]Installed skills:[/bold]\n")
+    for skill in p.skill_store.list():
+        state = "active" if skill.get("enabled", True) else "off"
+        roles = ", ".join(skill.get("roles") or ["global"])
+        console.print(
+            f"  [magenta]${skill['id']}[/magenta]  "
+            f"[dim]{skill.get('source', 'local')} · {state} · {roles}[/dim]"
+        )
+        console.print(f"      {skill.get('description', '')}")
+    console.print()
+
+
 @app.command("web")
 def web(
     host: str = typer.Option("127.0.0.1", "--host", "-h"),
@@ -158,6 +189,11 @@ def web(
     app_instance = create_app(config_path=config)
     console.print("\n[bold green]🏛️ Pantheon Web UI[/bold green]")
     console.print(f"   [cyan]http://{host}:{port}[/cyan]\n")
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        console.print(
+            "[bold yellow]Warning:[/bold yellow] this exposes file and terminal APIs to "
+            "the network. Enable Settings -> Security and restrict network access.\n"
+        )
 
     uvicorn.run(app_instance, host=host, port=port, reload=reload, log_level="info")
 

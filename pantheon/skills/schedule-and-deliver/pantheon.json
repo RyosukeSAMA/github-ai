@@ -1,0 +1,21 @@
+{
+  "id": "schedule-and-deliver",
+  "display_name": "Schedule and Deliver",
+  "roles": ["chronos"],
+  "version": "1.0.0",
+  "kind": "role",
+  "trigger_terms": [
+    "schedule",
+    "remind me",
+    "every day",
+    "every week",
+    "in 10 minutes",
+    "cron",
+    "定时",
+    "提醒我",
+    "每天",
+    "每周",
+    "分钟后"
+  ],
+  "allow_implicit_invocation": true
+}
