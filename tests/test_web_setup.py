@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import yaml
 from fastapi.testclient import TestClient
 
@@ -322,7 +324,7 @@ def test_info_reports_local_runtime_paths(tmp_path, monkeypatch) -> None:
     data = resp.json()
     assert data["ui_version"] == "0.2.0"
     assert data["backend_version"] == "0.2.0"
-    assert data["python_version"].startswith("3.11")
+    assert data["python_version"] == sys.version.split()[0]
     assert data["workspace_path"] == str(tmp_path)
     assert data["config_path"] == str(tmp_path / "config" / "pantheon.yaml")
     assert data["env_path"] == str(tmp_path / ".env")
