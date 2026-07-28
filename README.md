@@ -90,6 +90,31 @@ cp .env.example .env
 
 ## 神祇角色
 
+Pantheon 用神祇身份表达清晰的职责边界：Hermes 负责编排，Hephaestus 负责构建，Athena 负责研究，Apollo 负责创意，Chronos 负责时间与调度。
+
+<p align="center">
+  <a href="docs/images/posters/pantheon.webp">
+    <img src="docs/images/posters/pantheon.webp" alt="Pantheon multi-agent system concept poster" width="420">
+  </a>
+</p>
+
+<p align="center"><sub>Pantheon 品牌概念图。README 顶部的 Web UI 截图展示当前真实产品界面。</sub></p>
+
+### 五神概念海报
+
+<p align="center">
+  <a href="docs/images/posters/hermes.webp"><img src="docs/images/posters/hermes.webp" alt="Hermes — orchestration and routing" width="30%"></a>
+  <a href="docs/images/posters/hephaestus.webp"><img src="docs/images/posters/hephaestus.webp" alt="Hephaestus — engineering and building" width="30%"></a>
+  <a href="docs/images/posters/athena.webp"><img src="docs/images/posters/athena.webp" alt="Athena — research and reasoning" width="30%"></a>
+</p>
+
+<p align="center">
+  <a href="docs/images/posters/apollo.webp"><img src="docs/images/posters/apollo.webp" alt="Apollo — creative direction" width="30%"></a>
+  <a href="docs/images/posters/chronos.webp"><img src="docs/images/posters/chronos.webp" alt="Chronos — scheduling and time" width="30%"></a>
+</p>
+
+<p align="center"><sub>点击海报查看大图。角色图用于表达产品定位；实际模型、联网能力和媒体生成能力取决于用户配置的 Provider、Skills 与 MCP 工具。</sub></p>
+
 下列模型是 `config/pantheon.example.yaml` 中的示例默认值。Hermes、Hephaestus、Athena 和 Apollo 都可以在 Settings 中分别设置不同 Provider 和模型。
 
 | 神祇 | 专长 | 示例模型 | 可执行工具边界 |
