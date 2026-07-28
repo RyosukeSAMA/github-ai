@@ -1,0 +1,21 @@
+{
+  "id": "review-code-change",
+  "display_name": "Review Code Change",
+  "roles": ["athena", "hephaestus"],
+  "version": "1.0.0",
+  "kind": "shared",
+  "trigger_terms": [
+    "code review",
+    "review diff",
+    "review pull request",
+    "find bugs",
+    "regression risk",
+    "security review",
+    "代码审查",
+    "审查改动",
+    "检查代码",
+    "风险",
+    "遗漏测试"
+  ],
+  "allow_implicit_invocation": true
+}

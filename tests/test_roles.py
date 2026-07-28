@@ -60,7 +60,7 @@ def test_chronos_runs_without_llm():
     result = c.run(Task(content="Every day at 9 AM, ping Athena"))
     assert result.role == "chronos"
     assert "Chronos" in result.content
-    assert "Received" in result.content
+    assert "Schedule parsed" in result.content
     assert result.success is True
 
 

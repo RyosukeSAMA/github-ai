@@ -14,6 +14,28 @@ def test_router_parses_single_plan():
     assert plan.single_role == "hephaestus"
 
 
+def test_router_preserves_only_skills_allowed_for_selected_role():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "single", "role": "hephaestus", '
+        '"skill": "fix-and-verify", "reasoning": "code"}'
+    )
+    router = Router(llm_client=mock, hermes_model="mock")
+    plan = router.plan(
+        "Fix this bug",
+        {
+            "hephaestus": {
+                "description": "code",
+                "skills": [{"id": "fix-and-verify", "description": "fix bugs"}],
+            },
+        },
+        requested_skill="fix-and-verify",
+    )
+
+    assert plan.single_skill == "fix-and-verify"
+    assert "$fix-and-verify" in mock.calls[0]["messages"][0]["content"]
+
+
 def test_router_parses_multi_plan():
     mock = MockLLMClient()
     mock.add_response("""

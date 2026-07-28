@@ -8,9 +8,9 @@ from pantheon.llm.base import BaseLLMClient
 
 
 class OpenAIClient(BaseLLMClient):
-    """Calls OpenAI's Chat Completions API. Works for OpenAI-compatible endpoints too."""
+    """Calls OpenAI APIs. Uses Chat Completions for compatible endpoints."""
 
-    default_model = "gpt-4o"
+    default_model = "gpt-5.5"
     provider_name = "openai"
 
     def __init__(self, api_key: str = "", base_url: str | None = None) -> None:
@@ -33,6 +33,28 @@ class OpenAIClient(BaseLLMClient):
             self._client = OpenAI(**kwargs)
         return self._client
 
+    def _uses_official_openai_endpoint(self) -> bool:
+        if not self.base_url:
+            return True
+        return "api.openai.com" in self.base_url
+
+    def _uses_responses_api(self, model: str) -> bool:
+        return self._uses_official_openai_endpoint() and (model or self.default_model).startswith("gpt-5")
+
+    @staticmethod
+    def _flatten_response_text(resp: Any) -> str:
+        output_text = getattr(resp, "output_text", None)
+        if output_text:
+            return str(output_text).strip()
+
+        parts: list[str] = []
+        for item in getattr(resp, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                text = getattr(content, "text", None)
+                if text:
+                    parts.append(str(text))
+        return "".join(parts).strip()
+
     def complete(
         self,
         messages: list[dict[str, str]],
@@ -46,8 +68,21 @@ class OpenAIClient(BaseLLMClient):
         if system:
             full_messages = [{"role": "system", "content": system}] + full_messages
 
+        target_model = model or self.default_model
+        if self._uses_responses_api(target_model):
+            response_kwargs = dict(kwargs)
+            response_kwargs.pop("max_tokens", None)
+            response_kwargs.pop("temperature", None)
+            resp = client.responses.create(
+                model=target_model,
+                input=list(messages),
+                instructions=system or None,
+                **response_kwargs,
+            )
+            return self._flatten_response_text(resp)
+
         resp = client.chat.completions.create(
-            model=model or self.default_model,
+            model=target_model,
             messages=full_messages,
             temperature=temperature,
             **kwargs,

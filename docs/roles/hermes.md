@@ -39,7 +39,7 @@ The actual implementation: [`pantheon/core/hermes.py`](../../pantheon/core/herme
 ```yaml
 pantheon:
   hermes:
-    model: claude-sonnet-4-20250514   # use a strong model
+    model: claude-opus-4-8            # use a strong model
     provider: anthropic
     temperature: 0.2                  # low; planning should be deterministic
     max_tokens: 4096

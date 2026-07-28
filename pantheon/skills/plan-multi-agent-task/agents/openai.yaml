@@ -1,0 +1,5 @@
+interface:
+  display_name: "Plan Multi-Agent Task"
+  short_description: "Decompose complex work into a focused god council"
+  brand_color: "#D4A84E"
+  default_prompt: "Use $plan-multi-agent-task to coordinate this task across the right gods."

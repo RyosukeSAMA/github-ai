@@ -42,3 +42,19 @@ class MockLLMClient:
 @pytest.fixture
 def mock_llm():
     return MockLLMClient()
+
+
+UI_AUTH_ENV_KEYS = (
+    "PANTHEON_UI_AUTH_ENABLED",
+    "PANTHEON_UI_USERNAME",
+    "PANTHEON_UI_PASSWORD",
+    "PANTHEON_UI_PASSWORD_HASH",
+    "PANTHEON_UI_SESSION_SECRET",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolate_ui_auth_env(monkeypatch):
+    """Keep a local .env login lock from leaking across tests."""
+    for key in UI_AUTH_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)

@@ -21,7 +21,7 @@ A creative director with range. Knows when to be epic, when to be playful, when 
 - Does **not** verify facts — for research, ask Athena.
 - Does **not** write production code — for that, ask Hephaestus.
 - Does **not** schedule tasks — that's Chronos.
-- In v0.1, Apollo generates the **prompts/artifacts** (text output). Actual image/audio generation requires wiring the `image_gen`, `tts`, `video_gen` tools — not in v0.1.
+- Apollo currently generates **prompts and artifacts** as text output. Actual image/audio generation requires wiring approved `image_gen`, `tts`, or `video_gen` tools.
 
 ## System prompt
 
@@ -47,7 +47,7 @@ Full source: [`pantheon/roles/apollo.py`](../../pantheon/roles/apollo.py).
 pantheon:
   roles:
     apollo:
-      model: gpt-4o
+      model: gpt-5.4-mini
       provider: openai
       temperature: 0.7            # higher = more creative
 ```

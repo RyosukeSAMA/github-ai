@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Hephaestus">
+  <defs>
+    <linearGradient id="bg" x1="12" y1="8" x2="82" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#51231c"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="26" y1="20" x2="70" y2="78" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd0a6"/>
+      <stop offset="1" stop-color="#d08770"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="26" fill="url(#bg)"/>
+  <path d="M25 70c5-14 14-21 23-21s18 7 23 21v7H25v-7Z" fill="#271916"/>
+  <circle cx="48" cy="39" r="15" fill="url(#ember)"/>
+  <path d="M32 33c6-12 26-16 36 1-11-5-26-5-36-1Z" fill="#2a1511"/>
+  <path d="M29 19h38l-5 15H34l-5-15Z" fill="#3a2722"/>
+  <path d="M31 21h34" stroke="#f0b08d" stroke-width="4" stroke-linecap="round"/>
+  <path d="M65 55 80 70m0-14L65 70" stroke="#d08770" stroke-width="5" stroke-linecap="round"/>
+  <path d="M39 46c5 4 13 4 18 0" fill="none" stroke="#59281e" stroke-width="3" stroke-linecap="round"/>
+</svg>

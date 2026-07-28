@@ -1,0 +1,5 @@
+interface:
+  display_name: "Review Code Change"
+  short_description: "Review code changes for defects, risk, and coverage"
+  brand_color: "#7C8CA5"
+  default_prompt: "Use $review-code-change to review this code change and report actionable findings."

@@ -30,7 +30,7 @@ You do NOT: write code (ask Hephaestus), generate images (ask Apollo), or schedu
 class Athena(Role):
     name = "athena"
     description = "Researches and gathers information; fact-checks; summarizes"
-    default_model = "gpt-4o"
+    default_model = "gpt-5.5"
     default_provider = "openai"
     default_temperature = 0.3
     tools: list[str] = ["web_search", "web_extract"]

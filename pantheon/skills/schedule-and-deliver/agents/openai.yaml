@@ -1,0 +1,5 @@
+interface:
+  display_name: "Schedule and Deliver"
+  short_description: "Turn natural-language timing into a persistent local job"
+  brand_color: "#52B788"
+  default_prompt: "Use $schedule-and-deliver to create and confirm this scheduled task."

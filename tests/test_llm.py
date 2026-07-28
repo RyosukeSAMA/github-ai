@@ -50,6 +50,30 @@ def test_openai_complete():
         )
     assert result == "hello from gpt"
     fake_client.chat.completions.create.assert_called_once()
+    fake_client.responses.create.assert_not_called()
+
+
+def test_openai_latest_models_use_responses_api():
+    fake_response = MagicMock()
+    fake_response.output_text = "hello from responses"
+
+    fake_client = MagicMock()
+    fake_client.responses.create.return_value = fake_response
+
+    with patch("openai.OpenAI", return_value=fake_client):
+        c = OpenAIClient(api_key="sk-test")
+        result = c.complete(
+            messages=[{"role": "user", "content": "hi"}],
+            model="gpt-5.5",
+            system="be brief",
+            temperature=0.2,
+        )
+    assert result == "hello from responses"
+    fake_client.responses.create.assert_called_once()
+    call_kwargs = fake_client.responses.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-5.5"
+    assert call_kwargs["instructions"] == "be brief"
+    fake_client.chat.completions.create.assert_not_called()
 
 
 def test_anthropic_complete():
@@ -77,7 +101,7 @@ def test_anthropic_complete():
 
 def test_openai_uses_default_model_when_empty():
     c = OpenAIClient(api_key="sk-test")
-    assert c.default_model == "gpt-4o"
+    assert c.default_model == "gpt-5.5"
 
 
 def test_anthropic_uses_default_model_when_empty():

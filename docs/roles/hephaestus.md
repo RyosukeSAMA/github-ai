@@ -50,7 +50,7 @@ Full source: [`pantheon/roles/hephaestus.py`](../../pantheon/roles/hephaestus.py
 pantheon:
   roles:
     hephaestus:
-      model: claude-sonnet-4-20250514
+      model: claude-sonnet-4-6
       provider: anthropic
       temperature: 0.1          # low; we want correct code
 ```

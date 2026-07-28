@@ -61,6 +61,7 @@ dmypy.json
 # ----- Project-specific -----
 config/pantheon.yaml
 config/*.local.yaml
+.pantheon/
 logs/
 *.log
 

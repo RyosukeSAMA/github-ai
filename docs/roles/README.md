@@ -6,10 +6,10 @@ This directory contains detailed profiles for each role (god) in Pantheon.
 
 | God | Domain | Default Model |
 |-----|--------|---------------|
-| 📨 [Hermes](hermes.md) | Orchestration, planning, summarization | Claude Sonnet |
-| 🔨 [Hephaestus](hephaestus.md) | Code writing and refactoring | Claude Sonnet |
-| 🦉 [Athena](athena.md) | Research and information synthesis | GPT-4o |
-| 🎵 [Apollo](apollo.md) | Creative content, images, audio | GPT-4o |
+| 📨 [Hermes](hermes.md) | Orchestration, planning, summarization | Claude Opus 4.8 |
+| 🔨 [Hephaestus](hephaestus.md) | Code writing and refactoring | Claude Sonnet 4.6 |
+| 🦉 [Athena](athena.md) | Research and information synthesis | GPT-5.5 |
+| 🎵 [Apollo](apollo.md) | Creative content, images, audio | GPT-5.4 mini |
 | ⏰ [Chronos](chronos.md) | Scheduling and time-based tasks | (no LLM) |
 
 Each profile describes:

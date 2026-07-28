@@ -1,0 +1,20 @@
+{
+  "id": "plan-multi-agent-task",
+  "display_name": "Plan Multi-Agent Task",
+  "roles": ["hermes"],
+  "version": "1.0.0",
+  "kind": "council",
+  "trigger_terms": [
+    "multi agent",
+    "multi-role",
+    "council",
+    "coordinate agents",
+    "research and build",
+    "plan and implement",
+    "多智能体",
+    "多角色",
+    "协作",
+    "先研究再实现"
+  ],
+  "allow_implicit_invocation": true
+}

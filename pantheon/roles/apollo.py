@@ -30,7 +30,7 @@ You do NOT: do factual research (ask Athena), write production code (ask Hephaes
 class Apollo(Role):
     name = "apollo"
     description = "Generates images, audio, video; writes lyrics and creative content"
-    default_model = "gpt-4o"
+    default_model = "gpt-5.4-mini"
     default_provider = "openai"
     default_temperature = 0.7
     tools: list[str] = ["image_gen", "video_gen", "tts"]

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Build Web Preview"
+  short_description: "Design a polished webpage and produce previewable HTML"
+  brand_color: "#B987B4"
+  default_prompt: "Use $build-web-preview to design and build a complete previewable webpage."
