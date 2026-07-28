@@ -2133,7 +2133,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                         queue.get(),
                         timeout=min(1.0, STREAM_HEARTBEAT_SECONDS),
                     )
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     now = time.monotonic()
                     if now - last_heartbeat >= STREAM_HEARTBEAT_SECONDS:
                         progress = {
@@ -2352,7 +2352,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
                     try:
                         item = await asyncio.wait_for(queue.get(), timeout=0.1)
-                    except TimeoutError:
+                    except asyncio.TimeoutError:
                         continue
                     if item is None:
                         continue
