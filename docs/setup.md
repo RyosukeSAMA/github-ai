@@ -5,7 +5,7 @@ This is the practical "how do I actually get Pantheon running" guide. If anythin
 ## 1. Requirements
 
 - **Python 3.10+** (3.11 recommended)
-- **pip** or **poetry** or **uv**
+- **pip** or **uv**
 - **API keys** for at least one provider:
   - `OPENAI_API_KEY` (for OpenAI-backed roles)
   - `ANTHROPIC_API_KEY` (for Claude-backed roles)
@@ -14,24 +14,22 @@ This is the practical "how do I actually get Pantheon running" guide. If anythin
 
 ## 2. Installation
 
-### Option A: pip (simplest)
+### Option A: pip with a virtual environment (recommended)
 
 ```bash
 git clone https://github.com/RyosukeSAMA/github-ai.git
 cd github-ai
-pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
 ```
 
-### Option B: poetry
+### Option B: uv (fast)
 
 ```bash
-poetry install
-poetry shell
-```
-
-### Option C: uv (fast)
-
-```bash
+uv venv
+source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
 
@@ -165,9 +163,16 @@ pantheon:
        # ... etc
    ```
 
-### "I want to mix: Anthropic for code, OpenAI for research, Suno for music"
+### "I want different providers for different gods"
 
-Set each role's `provider` and `model` independently in `pantheon.yaml`. The framework doesn't care.
+Set each role's registered `provider` and `model` independently in
+`pantheon.yaml`. The provider must be one Pantheon currently supports: OpenAI,
+Anthropic, DeepSeek through the OpenAI-compatible adapter, or Ollama.
+
+Apollo can prepare creative direction, prompts, lyrics, and storyboards with a
+chat model. Generating an actual image, audio track, or video requires a
+separately configured MCP tool or other integration; Pantheon does not include
+a built-in Suno provider.
 
 ### "I want to add a custom base URL (e.g. Azure OpenAI, OpenRouter)"
 

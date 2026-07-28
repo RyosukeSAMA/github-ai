@@ -18,7 +18,7 @@ consider opening an Issue first to discuss.
 ## 🧪 How was this tested?
 
 <!-- Be specific. Examples:
-     - All 52 existing unit tests still pass (pytest output attached)
+     - All existing unit tests pass (pytest output attached)
      - Added 3 new tests in tests/test_roles.py
      - Manually tested with `pantheon ask --role hephaestus "..."` using DeepSeek
 -->
@@ -41,11 +41,12 @@ consider opening an Issue first to discuss.
 - [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md)
 - [ ] I have added tests that prove my fix / feature works
 - [ ] New and existing unit tests pass locally (`pytest`)
-- [ ] `ruff check pantheon/ tests/` reports no issues
+- [ ] `ruff check .` reports no issues
+- [ ] `node --check pantheon/web/static/app.js` passes when JavaScript changed
 - [ ] I have updated relevant documentation (README, docs/, docstrings)
 - [ ] My change does **not** introduce any security issues
 - [ ] I have **not** committed any API keys, `.env`, or secrets
-- [ ] I have **not** modified `pantheon.yaml` or any user config
+- [ ] I have **not** committed local `pantheon.yaml` or other user config
 
 ## 📸 Screenshots / output (if applicable)
 

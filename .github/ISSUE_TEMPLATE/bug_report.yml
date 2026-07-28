@@ -16,9 +16,13 @@ body:
       label: Which component is broken?
       description: Select the area where the problem occurred.
       options:
-        - "CLI (pantheon ask / pantheon roles / pantheon web)"
+        - "Web UI: chat, sessions, composer, or display"
+        - "Workspace: Activity, Preview, Files, or Terminal"
+        - "Memory or Chronos scheduling"
+        - "Integrations: Skills, MCP, Plugins, or Channels"
+        - "Setup, API test, or local login security"
+        - "CLI (pantheon ask / pantheon roles / pantheon skills)"
         - "Python SDK (from pantheon import Pantheon)"
-        - "Web UI (http://127.0.0.1:8000)"
         - "Core: Hermes / Router / Pantheon facade"
         - "A specific role (hephaestus, athena, apollo, chronos)"
         - "LLM provider (OpenAI / Anthropic / DeepSeek / Ollama)"
@@ -43,8 +47,8 @@ body:
     id: install_method
     attributes:
       label: How did you install?
-      description: e.g. `pip install -e .`, `poetry install`, `uv pip install -e .`
-      placeholder: "pip install -e ."
+      description: e.g. `python -m pip install -e .` or `uv pip install -e .`
+      placeholder: "python -m pip install -e ."
 
   - type: input
     id: llm_provider

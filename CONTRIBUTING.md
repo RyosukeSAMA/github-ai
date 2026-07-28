@@ -7,22 +7,28 @@
 1. **Fork** 本仓库
 2. **Clone** 你的 fork：
    ```bash
-   git clone https://github.com/RyosukeSAMA/github-ai.git
+   git clone https://github.com/<your-github-username>/github-ai.git
    cd github-ai
+   git remote add upstream https://github.com/RyosukeSAMA/github-ai.git
    ```
-3. **创建分支**：
+3. **创建虚拟环境并安装开发依赖**：
    ```bash
-   git checkout -b feat/your-feature
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python -m pip install --upgrade pip
+   python -m pip install -e ".[dev]"
    ```
-4. **装依赖**：
+4. **从最新 `main` 创建分支**：
    ```bash
-   pip install -e ".[dev]"
-   # 或：poetry install
+   git fetch upstream
+   git checkout -b feat/your-feature upstream/main
    ```
 5. **改代码 + 写测试**
-6. **跑测试**：
+6. **运行发布前检查**：
    ```bash
+   ruff check .
    pytest
+   node --check pantheon/web/static/app.js
    ```
 7. **提交**（用 Conventional Commits）：
    ```bash
@@ -41,9 +47,10 @@
 
 1. 在 `pantheon/roles/` 下创建 `<name>.py`
 2. 继承 `Role` 基类（见 `pantheon/core/base.py`）
-3. 在 `config/pantheon.example.yaml` 注册
-4. 在 `docs/roles/<name>.md` 写角色设定文档
-5. 在 `tests/test_roles.py` 加测试
+3. 在 `pantheon/roles/__init__.py` 注册内置角色
+4. 在 `config/pantheon.example.yaml` 添加示例配置
+5. 在 `docs/roles/<name>.md` 写角色设定文档
+6. 在 `tests/test_roles.py` 加测试
 
 ### B. 改进调度逻辑
 
@@ -61,6 +68,7 @@
 1. 在 `pantheon/llm/` 下实现 `<provider>_client.py`
 2. 继承 `BaseLLMClient`
 3. 在 `pantheon/llm/__init__.py` 注册
+4. 为错误处理、默认模型和自定义 Base URL 添加测试
 
 ### D. 修 bug / 改进文档
 
@@ -79,10 +87,13 @@
 
 ## ✅ 提交前检查清单
 
-- [ ] 代码能通过 `pytest`
+- [ ] `ruff check .` 无错误
+- [ ] `pytest` 全部通过
+- [ ] 修改 JavaScript 时，`node --check pantheon/web/static/app.js` 通过
 - [ ] 新功能加了测试
 - [ ] 公共 API 加了 docstring
 - [ ] README/文档更新了（如有需要）
+- [ ] 没有提交 `.env`、API Key、Token 或本地 `config/pantheon.yaml`
 
 ## 🤝 行为准则
 

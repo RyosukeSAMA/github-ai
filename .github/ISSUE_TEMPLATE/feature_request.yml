@@ -16,12 +16,16 @@ body:
       label: What kind of feature?
       options:
         - "New role / god (e.g. Ares for security audit)"
-        - "New CLI command"
-        - "New Web UI feature"
+        - "Chat, session, or Workspace improvement"
+        - "Memory or Chronos scheduling"
+        - "Skill or Plugin workflow"
+        - "MCP tool or server integration"
+        - "Channel or webhook integration"
         - "New LLM provider adapter"
+        - "New CLI or Python SDK capability"
         - "Improvement to existing role"
-        - "Improvement to scheduler / Hermes"
-        - "Tool / integration (e.g. real image generation)"
+        - "Hermes routing or multi-agent planning"
+        - "Security, privacy, or deployment"
         - "Other"
     validations:
       required: true
