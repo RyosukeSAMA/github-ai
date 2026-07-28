@@ -1,325 +1,317 @@
-# 🏛️ Pantheon
+# Pantheon
 
-> **A multi-AI-role collaboration framework.** Each god has a specialty; Hermes orchestrates.
+> 一个本地多 Agent 工作区：Hermes 负责规划，专业神祇分工执行。
 
 <div align="center">
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
+[![Version](https://img.shields.io/badge/version-0.2.0-6366f1.svg)](CHANGELOG.md)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
-[![Status](https://img.shields.io/badge/status-alpha-yellow)]()
-[![GitHub release](https://img.shields.io/github/v/release/RyosukeSAMA/github-ai)](https://github.com/RyosukeSAMA/github-ai/releases)
-[![GitHub stars](https://img.shields.io/github/stars/RyosukeSAMA/github-ai)](https://github.com/RyosukeSAMA/github-ai/stargazers)
+[![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-d6a84b.svg)](#current-boundaries)
 
-[角色一览](#-角色一览) · [快速开始](#-快速开始) · [架构](docs/architecture.md) · [贡献](CONTRIBUTING.md)
+[快速开始](#quick-start) · [神祇角色](#agent-roles) · [扩展中心](#integrations) · [架构](#architecture) · [文档](#documentation)
 
 </div>
 
----
+![Pantheon Web UI](docs/images/pantheon-web-ui.jpg)
 
-## ✨ 它能做什么
+Pantheon 把一个需求变成可观察、可控制的本地协作流程。使用 **Auto** 让 Hermes 自动选择合适的神，切换到 **Multi-role** 发起明确的多角色协作，也可以直接与某位神对话。同一套运行时同时支持 Web UI、CLI 和 Python SDK。
 
-把"找一个 AI 干活"变成"调用一支虚拟团队"：
+## 当前能力
 
-- 🔨 **专业化分工**：写代码、调研、出图、定时任务——每个角色用最擅长的模型和工具
-- 📨 **智能调度**：Hermes 主神理解你的任务，自动决定派给谁
-- 🧩 **多角色协作**：复杂任务会被拆解，多个角色依次执行，最后汇总
-- 🧰 **真实工作区**：在 Web UI 中查看实时 Activity、预览 HTML、管理文件并运行终端命令
-- 🧠 **可控扩展**：本地长期记忆、标准 Skills、MCP 工具审批、Plugin prompt packs 与 Webhook
-- 🎯 **三种入口**：命令行、Web UI、Python SDK，随你挑
-- 🔌 **可扩展**：新增一个角色只需要写一个 Python 文件 + 在 YAML 注册
+| 模块 | 当前实现 |
+|---|---|
+| 多 Agent 调度 | Auto 自动路由、指定角色和强制 Multi-role 计划 |
+| Agent 工作区 | 实时 Activity、HTML Preview、文件浏览/编辑和 Terminal |
+| 会话 | 多会话、首条消息自动命名、Markdown 导出、附件和 `/` 命令 |
+| Memory | 本地 SQLite、角色范围、自然语言记忆识别和保存建议 |
+| Chronos | 持久化的单次/周期任务和运行记录 |
+| 扩展 | 6 个内置 Skills、本地 Skills、Plugin prompt packs、MCP 工具和 Webhook |
+| 本地配置 | Provider/模型向导、配置检查、API 测试和可选登录锁 |
 
-## 👥 角色一览
+Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保存在所选工作区，会话和显示偏好保存在当前浏览器。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
-| 角色 | 神祇 | 职责 | 默认模型 | 工具 |
-|------|------|------|----------|------|
-| 📨 **Hermes** | 信使之神 | 总协调、任务理解、结果汇总 | Claude Opus 4.8 | 调度 |
-| 🔨 **Hephaestus** | 锻造之神 | 写代码、改 bug、重构 | Claude Sonnet 4.6 | terminal, file, patch |
-| 🦉 **Athena** | 智慧之神 | 联网调研、文献综述、问答 | GPT-5.5 | web_search, web_extract |
-| 🎵 **Apollo** | 光明/艺术之神 | 出图、视频、音乐 | GPT-5.4 mini | image_gen, video_gen, tts |
-| ⏰ **Chronos** | 时间之神 | 定时任务、周期执行 | (无 LLM) | cronjob |
+<a id="quick-start"></a>
 
-📖 每个角色的详细设定见 [`docs/roles/`](docs/roles/)。
+## 快速开始
 
-## 🚀 快速开始
+### 环境要求
 
-### 安装
+- Python 3.10 或更高版本
+- Git
+- 至少一个支持的模型 Provider，或正在运行的 Ollama
+- 推荐 macOS 或 Linux；Windows 用户目前建议使用 WSL
+
+### 安装并启动
 
 ```bash
 git clone https://github.com/RyosukeSAMA/github-ai.git
 cd github-ai
-pip install -e ".[dev]"
-```
 
-### 配置
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
 
-方式 A：用 Web UI 配置（推荐新手）
-
-```bash
 pantheon web
 ```
 
-打开 `http://127.0.0.1:8000/`，进入 `Settings → Setup`：
+打开 <http://127.0.0.1:8000/>，进入 **Settings → Setup**：
 
-- 选择 DeepSeek / OpenAI / Anthropic / Ollama
-- 填入默认模型和 API key
-- 点击 `Save local config`
+1. 选择 DeepSeek、OpenAI、Anthropic 或 Ollama。
+2. 选择模型，并在需要时输入 API key。
+3. 依次运行 **Check setup** 和 **Test API**。
+4. 点击 **Save local config**。
 
-Web UI 会把 API key 写入本地 `.env`，把 provider、base URL、模型写入 `config/pantheon.yaml`。
+Web UI 会把 API key 保存到本地 `.env`，把 Provider、Base URL 和模型选择写入 `config/pantheon.yaml`。修改后端配置后，如需完整重载运行时，请重启 `pantheon web`。
 
-方式 B：手动配置文件
+<details>
+<summary>手动配置文件</summary>
 
 ```bash
-# 1. 复制配置模板
 cp config/pantheon.example.yaml config/pantheon.yaml
-
-# 2. 复制环境变量模板并填入 API key
 cp .env.example .env
-# 编辑 .env，填入你的 API key（DEEPSEEK_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY）
 ```
 
-### 🎭 默认配置展示（理想样貌）
+在 `.env` 中填写所需密钥，并在 `config/pantheon.yaml` 中设置匹配的 Provider、模型和 Base URL。不要提交这两个本地文件。
 
-`pantheon.example.yaml` 展示的是**理想配置**——每个神用各自最合适的模型：
+</details>
 
-| 角色 | 任务 | 示例模型 |
-|------|------|----------|
-| 📨 Hermes | 调度/规划 | `claude-opus-4-8` |
-| 🔨 Hephaestus | 写代码 | `claude-sonnet-4-6` |
-| 🦉 Athena | 调研 | `gpt-5.5` |
-| 🎵 Apollo | 创意/表达 | `gpt-5.4-mini` |
-| ⏰ Chronos | 定时 | (无 LLM) |
+### 第一次使用
 
-**但你需要根据自己持有的 API key 修改**。常见快速方案（只用一家）：
+1. 点击 **New Chat**，保持 **Auto** 模式。
+2. 输入一个具体任务，例如：`制作一个响应式个人主页，并输出完整 HTML`。
+3. 打开 **Workspace** 查看 Hermes 计划、当前 Agent 和执行步骤。
+4. 在 **Preview** 预览 HTML，在 **Files** 查看保存的产物，在 **Terminal** 执行本地命令。
+5. 在输入框键入 `/`，可以使用 `/multi`、`/schedule`、`/memory`、`/skills`、`/preview` 等命令。
 
-- **只用 DeepSeek**（推荐入门）：把所有 `provider: openai` + `model: deepseek-v4-flash`，加 `base_url: https://api.deepseek.com`
-- **只用 OpenAI**：把模型都改成 `gpt-5.5`，用 OpenAI key
-- **只用 Anthropic**：把模型都改成 `claude-sonnet-4-6`，用 Anthropic key
-- **只用 Ollama**（完全免费）：本地跑 `llama3.1`，见 [`docs/setup.md`](docs/setup.md)
+<a id="agent-roles"></a>
 
-### 三种用法
+## 神祇角色
 
-**命令行（CLI）**
+下列模型是 `config/pantheon.example.yaml` 中的示例默认值。Hermes、Hephaestus、Athena 和 Apollo 都可以在 Settings 中分别设置不同 Provider 和模型。
+
+| 神祇 | 专长 | 示例模型 | 可执行工具边界 |
+|---|---|---|---|
+| **Hermes** | 规划、路由、协调和结果汇总 | Claude Opus 4.8 | 调度已配置的 Agent 和获准扩展 |
+| **Hephaestus** | 代码生成、调试、重构和审查 | Claude Sonnet 4.6 | 文件或终端改动通过 Workspace 或已授权 MCP 完成 |
+| **Athena** | 调研整理、对比、事实核查和摘要 | GPT-5.5 | 实时联网需要已授权的 MCP 或 Provider 工具 |
+| **Apollo** | 创意策划、写作、图片提示词和分镜 | GPT-5.4 mini | 真正生成图片、音频或视频需要外部工具 |
+| **Chronos** | 单次和周期本地任务 | 无 LLM | 仅在 Pantheon Web 服务运行时执行 |
+
+角色 Prompt 本身不会自动获得外部工具。第三方工具必须先连接，再分配给对应神，并通过 MCP 策略授权后，Pantheon 才会执行。
+
+## Workspace
+
+右侧 Workspace 是任务的操作视图：
+
+- **Activity**：显示当前任务、Hermes 计划、执行中的神、耗时、Skills、Memory 命中、MCP 调用、审批和完成状态。
+- **Preview**：在沙箱 iframe 中渲染完整 HTML 和消息产物，支持桌面/移动视图与缩放。
+- **Files**：在工作区根目录内浏览、打开、编辑、保存、下载和预览文件。
+- **Terminal**：流式显示本地命令输出，保留命令历史，支持取消，并在识别到风险命令时要求确认。
+
+生成的代码默认只是消息 Artifact。只有用户点击 **Save to Files**，或获准工具执行写入后，代码才会变成本地文件。这可以避免普通聊天输出意外修改项目。
+
+## Memory 与定时任务
+
+### Memory
+
+Memory 保存在 `.pantheon/memory.sqlite`，可以设为全局，或只作用于 Hermes、Hephaestus、Athena、Apollo、Chronos 中的某个角色。
+
+- 说“记住……”或使用 `/remember` 可以明确保存记忆。
+- Pantheon 可以从普通对话中提出记忆建议，由用户一键确认。
+- 可选的自动捕获会保存简短的任务/结果摘要；默认关闭，避免记忆库被噪声污染。
+- 使用 `/memories <关键词>` 或 **Settings → Memory** 搜索、编辑、置顶和删除记忆。
+
+### Chronos
+
+Chronos 会把支持的自然语言时间表达转换为持久化任务，并保存到 `.pantheon/chronos_jobs.json`。选择 Chronos 或使用 `/schedule`，可以创建、查看、暂停、恢复、立即运行和删除任务。
+
+定时任务会在重启后恢复，但它是本地调度器：Pantheon Web 服务停止期间不会执行任务。
+
+<a id="integrations"></a>
+
+## Integrations 扩展中心
+
+Integrations 提供的是真实本地能力，不是静态展示开关。
+
+| 模块 | 状态 | 当前作用 |
+|---|---|---|
+| **Skills** | 可用 | 加载标准 `SKILL.md`；支持自动匹配、显式 `/skill` 调用、6 个内置 Skill 和可编辑本地 Skill |
+| **MCP** | 可用 | 连接 stdio 或 Streamable HTTP server，发现工具、分配神祇，并设置自动执行/每次审批策略 |
+| **Plugins** | 可用 | 把启用的本地 Prompt Pack 注入指定 Agent 上下文；不会执行任意 Python 插件代码 |
+| **Channels** | Webhook 可用 | 通过 `/api/channels/webhook` 接收带 Token 的脚本或服务任务 |
+
+### 内置 Skills
+
+- `plan-multi-agent-task`：Hermes 把复杂需求拆成有顺序的多神计划。
+- `fix-and-verify`：Hephaestus 定位、修复并验证一个具体缺陷。
+- `research-with-sources`：Athena 区分证据与推断，并给出可追踪来源。
+- `build-web-preview`：Apollo 与 Hephaestus 设计并实现可预览网页。
+- `review-code-change`：Athena 与 Hephaestus 审查代码改动中的具体风险。
+- `schedule-and-deliver`：Chronos 把时间要求转换为持久化本地任务。
+
+### MCP 使用流程
+
+1. 打开 **Settings → Integrations → MCP**，添加一个 Server。
+2. 点击 **Test connection** 发现工具。
+3. 只启用需要的工具，并指定允许使用它们的神。
+4. 选择自动执行或每次调用审批。
+5. 开启 **Let agents use approved tools**，然后在普通对话中描述任务。
+
+GitHub、Context7 和 Figma Desktop 是连接表单预设，不是 Pantheon 内置账号或托管 MCP 服务。用户仍需提供凭据，并准备对应的本地或远程 Server。
+
+Channels 当前只提供 Webhook 入口。钉钉、企业微信、微信、QQ、Slack、Teams 等原生适配器属于后续计划，目前尚未内置。
+
+## CLI 与 Python SDK
+
+### CLI
 
 ```bash
-# 单角色模式：把任务派给指定角色
-pantheon ask --role hephaestus "写一个 Python 快速排序"
+# 让 Hermes 自动决定路由
+pantheon ask "调研一个主题并整理可靠证据"
 
-# 自动模式：让 Hermes 决定派给谁
-pantheon ask "调研 2025 年 LLM 发展趋势"
+# 直接交给指定神
+pantheon ask --role hephaestus "写一个 Python 回文检查器"
 
-# 多角色协作：强制串行多步
-pantheon ask --multi "调研 LLM 趋势并出一份报告（含图表）"
+# 强制执行有顺序的多 Agent 计划
+pantheon ask --multi "调研一个 AI 产品、设计页面并生成 HTML"
 
-# 查看并显式使用标准 Skill
+# 查看并显式调用 Skill
 pantheon skills
-pantheon ask --skill fix-and-verify "修复空值错误并给出验证结果"
-
-# 启动 Web UI
-pantheon web
-# 然后访问 http://127.0.0.1:8000
+pantheon ask --skill fix-and-verify "修复空值处理回归"
 ```
 
-**Python SDK**
+### Python SDK
 
 ```python
 from pantheon import Pantheon
 
-p = Pantheon()
+pantheon = Pantheon()
 
-# 自动派单
-result = p.ask("写一个装饰器")
+result = pantheon.ask("设计并实现一个响应式个人主页", mode="multi")
 print(result["content"])
 
-# 指定角色
-result = p.ask("写代码", mode="role:hephaestus")
-print(result["content"])
-
-# 多角色协作
-result = p.ask("调研趋势并出报告", mode="multi")
 for step in result["steps"]:
-    print(f"[{step.role}] {step.content}")
-
-# 显式使用一个内置或本地 Skill
-result = p.ask("修复空值错误并验证", skill="fix-and-verify")
-print(result["skill_matches"])
+    print(step.role, step.duration_ms, step.success)
 ```
 
-**Web UI**
+## 本地数据与安全
 
-```bash
-pantheon web
-```
+| 位置 | 保存内容 |
+|---|---|
+| 浏览器 `localStorage` | 会话历史、显示偏好和部分 UI 状态 |
+| `.env` | API key、Webhook Token 和本地登录配置 |
+| `config/pantheon.yaml` | Provider、模型、角色、Web 和日志配置 |
+| `.pantheon/memory.sqlite` | 长期记忆和记忆建议 |
+| `.pantheon/chronos_jobs.json` | Chronos 任务和运行状态 |
+| `.pantheon/mcp_servers.json` | MCP Server 与策略；密钥只保存环境变量名引用 |
+| `.pantheon/plugins.json` | 本地 Plugin Prompt Packs |
+| `.pantheon/skills/` | 本地标准 Skills |
 
-打开浏览器访问 `http://127.0.0.1:8000`，会有一个聊天界面：左侧角色列表，右侧对话窗口。输入 `/` 可以选择命令；输入 `/skill <id> <任务>`，或在 `Settings -> Integrations -> Skills` 点击 `Use`，可以显式调用工作流。
-
-Web UI 的 Workspace、Preview、Files、Terminal、会话模式切换和测试说明见 [`docs/web-ui.md`](docs/web-ui.md)。
+仓库内的这些本地文件均已加入 `.gitignore`，应继续保留在本机。
 
 > [!IMPORTANT]
-> Web UI 内含文件写入和终端执行能力。默认只监听 `127.0.0.1`；如果改用
-> `0.0.0.0` 或对外暴露端口，请先在 `Settings -> Security` 开启本地登录锁，
-> 并使用防火墙或反向代理限制访问。
+> Pantheon 包含文件写入和终端执行 API，默认只监听 `127.0.0.1`。使用 `0.0.0.0`、局域网地址、NAS、远程服务器或反向代理前，请先在 **Settings → Security** 开启登录锁，并增加防火墙或代理访问控制。当前登录锁面向单个本地操作者，不是公网多用户鉴权系统。
 
-## 🏛️ 架构总览
+<a id="current-boundaries"></a>
 
-```
-┌──────────────────────────────────────────────────┐
-│              用户交互层（3 入口共享逻辑）           │
-├──────────────────────────────────────────────────┤
-│   CLI (Typer)   │   Web UI (FastAPI)   │   SDK   │
-└────────┬────────┴──────────┬───────────┴────┬────┘
-         └───────────────────┼─────────────────┘
-                  ┌─────────▼─────────┐
-                  │ Pantheon (统一门面) │
-                  └─────────┬─────────┘
-                  ┌─────────▼─────────┐
-                  │ Hermes (主协调器)  │
-                  │ - 任务理解          │
-                  │ - Skill 选择         │
-                  │ - 角色选派          │
-                  │ - 多步编排          │
-                  │ - 结果汇总          │
-                  └─────────┬─────────┘
-        ┌──────────┬────────┼────────┬──────────┐
-        ▼          ▼        ▼        ▼          ▼
-     🔨 Hephae  🦉 Athena 🎵 Apollo ⏰ Chronos  ...
-        │          │        │        │
-        └──────────┴────────┴────────┘
-                  │
-       ┌──────────▼──────────┐
-       │ LLM 适配层          │
-       │ (OpenAI/Anthropic/  │
-       │  Ollama)            │
-       └─────────────────────┘
-```
+## 当前边界
 
-完整架构说明见 [`docs/architecture.md`](docs/architecture.md)。
+Pantheon v0.2.0 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
-## 🛠 自定义 / 新增角色
+- Chat Agent 为同步执行；Multi-role 会按计划顺序执行步骤，而不是并行运行。
+- 附件会在支持时转换为文本上下文，并不是通用的多模态模型文件上传。
+- 语音输入依赖浏览器 SpeechRecognition，不同浏览器和语言的支持程度不同。
+- HTML Preview 使用沙箱，但仍应把生成页面视为不可信内容。
+- Plugin Pack 是 Prompt 型扩展，不包含任意可执行插件或插件市场。
+- Security 登录锁是本地单用户保护，不是生产级身份管理。
 
-1. 在 `pantheon/roles/` 下新建 `<name>.py`：
+<a id="architecture"></a>
 
-```python
-from pantheon.core.base import Role
+## 架构
 
-class Ares(Role):
-    name = "ares"
-    description = "Security auditor god"
-    system_prompt = """You are a security expert..."""
-    # 在 pantheon.yaml 里覆盖 model/tools
+```text
+                    CLI · Web UI · Python SDK
+                              │
+                       Pantheon 统一入口
+                              │
+                  Hermes 路由与任务编排
+              ┌───────────────┼────────────────┐
+              │               │                │
+       Skills / Memory   Plugin 上下文    已授权 MCP 工具
+              │               │                │
+              └───────────────┼────────────────┘
+                              │
+       Hephaestus · Athena · Apollo · Chronos
+                              │
+                    已配置的 LLM Provider
+
+Web 运行时：SSE Activity · Workspace · Preview · Files · Terminal
+本地状态：.env · pantheon.yaml · .pantheon/ · 浏览器会话
 ```
 
-2. 在 `config/pantheon.yaml` 注册：
+运行时负责路由、角色执行、Memory/Skill 上下文注入、MCP 审批与调用、结果汇总和 SSE 进度事件。详细流程见 [docs/architecture.md](docs/architecture.md)。
 
-```yaml
-pantheon:
-  roles:
-    ares:
-      model: claude-sonnet-4-6
-      provider: anthropic
-      tools: [terminal, file]
+## 项目结构
+
+```text
+pantheon/
+├── cli.py                 # Typer CLI
+├── core/
+│   ├── pantheon.py        # CLI / Web / SDK 共用入口
+│   ├── hermes.py          # 编排与流式事件
+│   ├── router.py          # Auto 与 Multi-role 计划
+│   ├── extensions.py      # Skills、Plugins 与 MCP
+│   ├── memory.py          # SQLite Memory
+│   └── scheduler.py       # 持久化 Chronos 任务
+├── llm/                   # OpenAI-compatible、Anthropic、Ollama 客户端
+├── roles/                 # Hermes、Hephaestus、Athena、Apollo、Chronos
+├── skills/                # 6 个内置标准 Skills
+└── web/
+    ├── app.py             # FastAPI、SSE、Setup、Auth 与本地 API
+    └── static/            # Web UI 与神祇头像
 ```
 
-3. 在 `pantheon/roles/__init__.py` 导出。
+## 测试
 
-## 📦 项目结构
-
-```
-github-ai/
-├── README.md
-├── LICENSE                       # MIT
-├── CONTRIBUTING.md
-├── pyproject.toml
-├── requirements.txt
-├── .gitignore
-├── .env.example
-│
-├── pantheon/                     # 核心代码包
-│   ├── __init__.py
-│   ├── sdk.py                    # Python SDK
-│   ├── cli.py                    # CLI (Typer)
-│   ├── core/                     # 调度核心
-│   │   ├── pantheon.py
-│   │   ├── hermes.py
-│   │   ├── router.py
-│   │   ├── base.py
-│   │   ├── extensions.py        # Skills / Plugins / MCP
-│   │   ├── memory.py            # 本地长期记忆
-│   │   └── scheduler.py         # Chronos 持久化任务
-│   ├── llm/                      # LLM 适配层
-│   │   ├── base.py
-│   │   ├── openai_client.py
-│   │   ├── anthropic_client.py
-│   │   └── ollama_client.py
-│   ├── roles/                    # 各角色
-│   │   ├── hermes.py
-│   │   ├── hephaestus.py
-│   │   ├── athena.py
-│   │   ├── apollo.py
-│   │   └── chronos.py
-│   ├── skills/                   # 内置标准 SKILL.md 工作流
-│   └── web/
-│       ├── app.py                # FastAPI + SSE + 本地 API
-│       └── static/               # HTML / CSS / JS / 神祇头像
-│
-├── config/
-│   └── pantheon.example.yaml     # 配置模板
-│
-├── docs/                         # 文档
-│   ├── architecture.md
-│   ├── setup.md
-│   ├── web-ui.md
-│   ├── faq.md
-│   └── roles/
-│       ├── hermes.md
-│       ├── hephaestus.md
-│       ├── athena.md
-│       ├── apollo.md
-│       └── chronos.md
-│
-├── tests/                        # 测试
-│   ├── test_hermes.py
-│   ├── test_memory.py
-│   ├── test_scheduler.py
-│   └── test_web_*.py
-│
-└── .github/
-    └── workflows/
-        └── ci.yml                # CI
-```
-
-## 🧪 测试
+普通使用不需要安装开发依赖：
 
 ```bash
-pytest                          # 跑全部测试
-pytest --cov=pantheon           # 带覆盖率
-pytest tests/test_hermes.py     # 单个文件
+python -m pip install -e ".[dev]"
+ruff check .
+pytest
 ```
 
-## 📖 文档导航
+GitHub Actions 的 CI 矩阵覆盖 Python 3.10、3.11 和 3.12。
+
+<a id="documentation"></a>
+
+## 文档
 
 | 文档 | 内容 |
-|------|------|
-| [docs/setup.md](docs/setup.md) | 详细安装配置手册、踩坑记录 |
-| [docs/architecture.md](docs/architecture.md) | 架构设计、调度逻辑详解 |
-| [docs/web-ui.md](docs/web-ui.md) | Web UI、Workspace、Memory 与 Integrations 使用说明 |
-| [docs/faq.md](docs/faq.md) | 常见问题 |
-| [docs/roles/](docs/roles/) | 每个角色的详细人设 |
-| [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
+|---|---|
+| [安装配置](docs/setup.md) | Provider 配置与常见问题排查 |
+| [Web UI 指南](docs/web-ui.md) | Workspace、Memory、Integrations、测试和快捷键 |
+| [架构说明](docs/architecture.md) | 路由、执行流程与组件设计 |
+| [角色说明](docs/roles/) | 各神祇 Prompt 与职责 |
+| [FAQ](docs/faq.md) | 常见配置和行为问题 |
+| [Changelog](CHANGELOG.md) | 版本更新记录 |
+| [贡献指南](CONTRIBUTING.md) | 开发与贡献流程 |
 
-## 🗺 Roadmap
+## Roadmap
 
-- [x] v0.1：5 个基础角色 + Hermes 调度 + CLI/Web/SDK
-- [x] v0.2：多会话 Web 工作区、实时协作进度、Chronos、Memory、Skills、MCP、Webhook 与本地登录锁
-- [ ] v0.3：第三方频道适配、MCP resources/prompts 与可视化任务编排
-- [ ] v0.4：可安装扩展市场、语义记忆检索与可观测性
-- [ ] v1.0：多用户鉴权、审计、限流与分布式执行
+- [x] **v0.1**：5 个角色、Hermes 调度、CLI、Web UI 和 SDK
+- [x] **v0.2**：多会话工作区、实时 Activity、Chronos、Memory、Skills、MCP、Webhook 和本地登录锁
+- [ ] **v0.3**：原生频道适配器、MCP resources/prompts 和可视化任务编排
+- [ ] **v0.4**：可安装扩展目录、语义记忆检索和可观测性
+- [ ] **v1.0**：多用户身份、审计日志、限流和分布式执行
 
-## 🤝 贡献
+## 贡献
 
-欢迎贡献角色、修复 bug、改进文档。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎贡献角色、Skills、Integrations、测试、文档和无障碍改进。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 📄 许可证
+## License
 
-MIT © 2024 RyosukeSAMA
+MIT © 2024–2026 RyosukeSAMA
