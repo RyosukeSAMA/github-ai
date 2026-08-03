@@ -1,6 +1,13 @@
-# Pantheon
+<p align="center">
+  <img src="docs/images/pantheon-banner.jpg" alt="Pantheon local multi-agent workspace" width="100%">
+</p>
 
-> 一个本地多 Agent 工作区：Hermes 负责规划，专业神祇分工执行。
+<h1 align="center">Pantheon</h1>
+
+<p align="center">
+  <strong>一个本地多 Agent 工作区</strong><br>
+  Hermes 负责规划与编排，专业神祇分工执行。
+</p>
 
 <div align="center">
 
@@ -15,6 +22,8 @@
 </div>
 
 ![Pantheon Web UI](docs/images/pantheon-web-ui.jpg)
+
+<p align="center"><sub>Pantheon Web UI：对话、Agent 编排、Workspace、文件、终端与网页预览集中在同一个本地工作区。</sub></p>
 
 Pantheon 把一个需求变成可观察、可控制的本地协作流程。使用 **Auto** 让 Hermes 自动选择合适的神，切换到 **Multi-role** 发起明确的多角色协作，也可以直接与某位神对话。同一套运行时同时支持 Web UI、CLI 和 Python SDK。
 
