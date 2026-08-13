@@ -123,7 +123,13 @@ The following steps were executed by different gods to fulfill this task:
 {steps_text}
 
 Please synthesize these results into a single coherent, user-facing answer.
-Be concise, structured, and complete. Address the original task directly."""
+Be concise, structured, and complete. Address the original task directly.
+Do not ask the user to repeat information already present in the original task.
+If a final user decision is genuinely required, give 2-4 numbered choices in the
+user's language. Add a practical suggestion to every choice and clearly recommend
+one option. Tell the user they can reply with that option number. Do not invent a
+confirmation step when a reasonable reversible assumption is enough, and do not end
+with vague examples or an open-ended clarification request."""
 
         return self.llm_client.complete(
             messages=[{"role": "user", "content": prompt}],

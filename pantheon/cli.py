@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -19,6 +21,12 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+service_app = typer.Typer(
+    name="service",
+    help="Install and manage Pantheon Web as a per-user background service.",
+    no_args_is_help=True,
+)
+app.add_typer(service_app, name="service")
 
 
 def _version_callback(value: bool) -> None:
@@ -196,6 +204,178 @@ def web(
         )
 
     uvicorn.run(app_instance, host=host, port=port, reload=reload, log_level="info")
+
+
+def _service_failure(error: Exception) -> None:
+    console.print(f"[red]Service error:[/red] {error}")
+    raise typer.Exit(code=1)
+
+
+@service_app.command("install")
+def service_install(
+    workspace: Path = typer.Option(
+        Path.cwd(),
+        "--workspace",
+        "-w",
+        help="Workspace Pantheon should use. Defaults to the current directory.",
+    ),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port", "-p"),
+    config: Path | None = typer.Option(None, "--config", "-c"),
+    allow_network: bool = typer.Option(
+        False,
+        "--allow-network",
+        help="Allow a non-loopback host after securing the Web UI.",
+    ),
+    no_start: bool = typer.Option(False, "--no-start", help="Install without starting."),
+) -> None:
+    """Install Pantheon Web so it starts automatically after login."""
+    from pantheon.service import ServiceError, install_service
+
+    try:
+        paths = install_service(
+            workspace,
+            host=host,
+            port=port,
+            config=config,
+            allow_network=allow_network,
+            start=not no_start,
+        )
+    except ServiceError as error:
+        _service_failure(error)
+    console.print("[green]Pantheon service installed.[/green]")
+    console.print(f"Definition: [dim]{paths.definition}[/dim]")
+    console.print(f"Logs: [dim]{paths.stdout_log.parent}[/dim]")
+    if not no_start:
+        console.print(f"Open [cyan]http://{host}:{port}/[/cyan]")
+
+
+@service_app.command("status")
+def service_show_status(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port", "-p"),
+) -> None:
+    """Show installation, process, and HTTP health status."""
+    from pantheon.service import ServiceError, service_status
+
+    try:
+        status = service_status(host=host, port=port)
+    except ServiceError as error:
+        _service_failure(error)
+    state = "healthy" if status.healthy else "running" if status.running else "stopped"
+    color = "green" if status.healthy else "yellow" if status.running else "red"
+    console.print(f"[{color}]{state}[/{color}]  {status.url}")
+    console.print(
+        f"Backend: {status.platform} · Installed: {'yes' if status.installed else 'no'} · "
+        f"Running: {'yes' if status.running else 'no'}"
+    )
+    console.print(f"Definition: [dim]{status.definition}[/dim]")
+    if status.detail:
+        console.print(f"Detail: [dim]{status.detail}[/dim]")
+
+
+@service_app.command("start")
+def service_start() -> None:
+    """Start an installed Pantheon service."""
+    from pantheon.service import ServiceError, start_service
+
+    try:
+        start_service()
+    except ServiceError as error:
+        _service_failure(error)
+    console.print("[green]Pantheon service started.[/green]")
+
+
+@service_app.command("stop")
+def service_stop() -> None:
+    """Stop the installed Pantheon service."""
+    from pantheon.service import ServiceError, stop_service
+
+    try:
+        stop_service()
+    except ServiceError as error:
+        _service_failure(error)
+    console.print("[yellow]Pantheon service stopped.[/yellow]")
+
+
+@service_app.command("restart")
+def service_restart() -> None:
+    """Restart the installed Pantheon service."""
+    from pantheon.service import ServiceError, restart_service
+
+    try:
+        restart_service()
+    except ServiceError as error:
+        _service_failure(error)
+    console.print("[green]Pantheon service restarted.[/green]")
+
+
+@service_app.command("logs")
+def service_logs(
+    lines: int = typer.Option(80, "--lines", "-n", min=1),
+    follow: bool = typer.Option(False, "--follow", "-f"),
+) -> None:
+    """Print recent service logs, optionally following new output."""
+    from pantheon.service import ServiceError, read_service_logs
+
+    try:
+        code = read_service_logs(lines=lines, follow=follow)
+    except ServiceError as error:
+        _service_failure(error)
+    if code:
+        raise typer.Exit(code=code)
+
+
+@service_app.command("uninstall")
+def service_uninstall() -> None:
+    """Stop and remove the per-user Pantheon service."""
+    from pantheon.service import ServiceError, uninstall_service
+
+    try:
+        removed = uninstall_service()
+    except ServiceError as error:
+        _service_failure(error)
+    if removed:
+        console.print("[green]Pantheon service uninstalled.[/green]")
+    else:
+        console.print("[dim]Pantheon service was not installed.[/dim]")
+
+
+@app.command("provider-test")
+def provider_test(
+    role: str = typer.Option(
+        "hermes",
+        "--role",
+        "-r",
+        help="Saved role configuration to test.",
+    ),
+    config: str | None = typer.Option(None, "--config", "-c"),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Acknowledge that this makes a real provider request and may incur a small charge.",
+    ),
+) -> None:
+    """Run an opt-in, minimal live request against one saved provider."""
+    if not live and os.environ.get("PANTHEON_LIVE_TEST") != "1":
+        console.print(
+            "[yellow]Live request not sent.[/yellow] Add [bold]--live[/bold] or set "
+            "PANTHEON_LIVE_TEST=1. The test may incur a small provider charge."
+        )
+        raise typer.Exit(code=2)
+
+    from pantheon.diagnostics import ProviderProbeError, probe_role_provider
+
+    try:
+        result = probe_role_provider(role, config_path=config)
+    except (FileNotFoundError, ProviderProbeError) as error:
+        console.print(f"[red]Provider test failed:[/red] {error}")
+        raise typer.Exit(code=1)
+    console.print(
+        f"[green]Provider connection works.[/green] "
+        f"{result['role']} · {result['provider']} · {result['model']} · "
+        f"{result['duration_ms']} ms"
+    )
 
 
 def cli_entry() -> None:

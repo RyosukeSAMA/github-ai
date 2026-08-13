@@ -192,6 +192,39 @@ def test_hermes_passes_context_between_steps():
     assert "Finding" in user_msg or "async" in user_msg
 
 
+def test_hermes_multi_steps_keep_original_request_and_structure_confirmations():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "multi", "steps": ['
+        '{"role": "athena", "task": "analyze inputs and edge cases"},'
+        '{"role": "apollo", "task": "design the interface"}'
+        ']}'
+    )
+    mock.add_response("Analysis complete")
+    mock.add_response("Design complete")
+    mock.add_response("Summary")
+
+    original = "Build a subscription calculator for a local AI product"
+    hermes, _ = _build_hermes(mock)
+    hermes.dispatch(Task(content=original, mode="multi"))
+
+    for call in mock.calls[1:3]:
+        prompt = call["messages"][0]["content"]
+        assert f"Original user request:\n{original}" in prompt
+        assert "1. <choice> - Suggestion:" in prompt
+        assert "2. <choice> - Suggestion:" in prompt
+        assert "3. <optional choice> - Suggestion:" in prompt
+        assert "Provide 2-4 concrete numbered options" in prompt
+        assert "Do not perform the dependent action" in prompt
+
+    assert "Your assigned step:\nanalyze inputs and edge cases" in (
+        mock.calls[1]["messages"][0]["content"]
+    )
+    assert "Your assigned step:\ndesign the interface" in (
+        mock.calls[2]["messages"][0]["content"]
+    )
+
+
 def test_hermes_skips_unknown_role_in_multi_plan():
     """When the planner returns an unknown role, the Router filters it out.
 

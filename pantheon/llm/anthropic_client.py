@@ -26,8 +26,15 @@ class AnthropicClient(BaseLLMClient):
                     "anthropic package is required: pip install anthropic"
                 ) from e
             kwargs: dict[str, Any] = {}
+            is_kie_gateway = "api.kie.ai" in (self.base_url or "").lower()
             if self.api_key:
-                kwargs["api_key"] = self.api_key
+                if is_kie_gateway:
+                    token = self.api_key.strip()
+                    if token.lower().startswith("bearer "):
+                        token = token[7:].strip()
+                    kwargs["auth_token"] = token
+                else:
+                    kwargs["api_key"] = self.api_key
             if self.base_url:
                 kwargs["base_url"] = self.base_url
             self._client = anthropic.Anthropic(**kwargs)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pantheon-ai"
-version = "0.2.0"
+version = "0.2.1"
 description = "A multi-AI-role collaboration framework. Each god has a specialty; Hermes orchestrates."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,6 +47,10 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.7.0",
 ]
+e2e = [
+    "pytest>=7.4.0",
+    "pytest-playwright>=0.5.0",
+]
 ollama = [
     # Ollama is optional; install only if you need local models
 ]
@@ -84,6 +88,9 @@ ignore = ["E501"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+markers = [
+    "live: opt-in tests that call a real model provider and may incur a charge",
+]
 
 [tool.mypy]
 python_version = "3.10"

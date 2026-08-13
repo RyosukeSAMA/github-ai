@@ -323,9 +323,15 @@ class Hermes:
                 )
                 continue
 
-            # Build a sub-task for this role, including prior context
+            # Keep the concise plan step, but always give the role the complete
+            # request. Planner steps are labels, not enough context to execute.
             sub_task = Task(
-                content=step.task,
+                content=self._multi_step_content(
+                    original_task=task.content,
+                    assigned_task=step.task,
+                    step_index=i,
+                    total_steps=total_steps,
+                ),
                 mode="role:" + step.role,
                 skill=step.skill or task.skill,
                 context=list(context),
@@ -412,6 +418,36 @@ class Hermes:
                 for step in steps_output
             ]),
         }
+
+    @staticmethod
+    def _multi_step_content(
+        *,
+        original_task: str,
+        assigned_task: str,
+        step_index: int,
+        total_steps: int,
+    ) -> str:
+        """Build an executable step without losing the user's original scope."""
+        return f"""You are executing step {step_index}/{total_steps} of an active Pantheon multi-role workflow.
+
+Original user request:
+{original_task}
+
+Your assigned step:
+{assigned_task}
+
+Workflow rules:
+- Complete the assigned step now using the original request and prior-step context.
+- Do not ask the user to repeat a scope, feature, or constraint already present above.
+- Do not end with a vague follow-up question or ask the user to start a new task.
+- For a minor, reversible ambiguity, state a reasonable assumption and continue so the workflow does not pause.
+- When user confirmation is genuinely required, do not ask a vague or open-ended question. Provide 2-4 concrete numbered options in the user's language. Give every option its own practical suggestion:
+  1. <choice> - Suggestion: <when or why to choose it>
+  2. <choice> - Suggestion: <when or why to choose it>
+  3. <optional choice> - Suggestion: <when or why to choose it>
+  Recommended: <option number> - <brief reason>
+- Confirmation is required for decisions involving cost, external writes, security, irreversible actions, or a major change of scope. Do not perform the dependent action or claim the user approved it; prepare the options for Hermes to surface in the final answer.
+- Return a useful intermediate deliverable for the next role."""
 
     def _role_descriptions(self) -> dict[str, dict[str, Any]]:
         descriptions = {

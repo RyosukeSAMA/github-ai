@@ -147,6 +147,8 @@
   const setupSaveBtn = $('#setup-save');
   const setupCheckBtn = $('#setup-check');
   const setupTestBtn = $('#setup-test');
+  const setupRefreshModelsBtn = $('#setup-refresh-models');
+  const setupModelStatus = $('#setup-model-status');
   const setupToggleKeyBtn = $('#setup-toggle-key');
   const setupStatusEl = $('#setup-status');
   const setupStatusTitle = $('#setup-status-title');
@@ -784,6 +786,9 @@
     settingsPanel.hidden = false;
     document.body.classList.add('settings-open');
     toggleSetBtn.classList.add('active');
+    if (settingsTabs.some((tab) => tab.dataset.tab === 'setup' && tab.classList.contains('active'))) {
+      void loadSetupStatus({ quiet: true, preserveForm: true });
+    }
   }
   function closeSettings() {
     settingsPanel.hidden = true;
@@ -801,6 +806,9 @@
   function activateSettingsTab(target) {
     settingsTabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === target));
     settingsPanes.forEach((p) => p.classList.toggle('active', p.dataset.pane === target));
+    if (target === 'setup') {
+      void loadSetupStatus({ quiet: true, preserveForm: true });
+    }
   }
 
   settingsTabs.forEach((tab) => {
@@ -813,92 +821,44 @@
   });
 
   // ---------- Render settings → Models tab ----------
-  // Model catalog: each provider lists models in the order shown.
-  // Long technical names are paired with a friendly alias so the UI stays compact.
-  const MODEL_CATALOG = {
-    openai: [
-      { id: 'gpt-5.5',       label: 'GPT-5.5' },
-      { id: 'gpt-5.4',       label: 'GPT-5.4' },
-      { id: 'gpt-5.4-mini',  label: 'GPT-5.4 mini' },
-      { id: 'gpt-5.4-nano',  label: 'GPT-5.4 nano' },
-      { id: 'gpt-4o',        label: 'GPT-4o' },
-    ],
-    anthropic: [
-      { id: 'claude-sonnet-4-6',              label: 'Claude Sonnet 4.6' },
-      { id: 'claude-opus-4-8',                label: 'Claude Opus 4.8' },
-      { id: 'claude-haiku-4-5-20251001',      label: 'Claude Haiku 4.5' },
-      { id: 'claude-fable-5',                 label: 'Claude Fable 5' },
-    ],
-    deepseek: [
-      { id: 'deepseek-v4-flash',   label: 'DeepSeek V4 Flash' },
-      { id: 'deepseek-v4-pro',     label: 'DeepSeek V4 Pro' },
-    ],
-    ollama: [
-      { id: 'llama3.1:70b',   label: 'Llama 3.1 70B' },
-      { id: 'llama3.1:8b',    label: 'Llama 3.1 8B' },
-      { id: 'qwen2.5:72b',    label: 'Qwen 2.5 72B' },
-      { id: 'mistral-large',  label: 'Mistral Large' },
-    ],
-    none: [
-      { id: 'none', label: '(no model)' },
-    ],
-  };
-
+  // Provider metadata is a startup fallback only. Model IDs come from the backend
+  // so Setup and per-role selectors share one runtime catalog.
   const SETUP_PROVIDER_FALLBACKS = [
     {
       id: 'deepseek',
       label: 'DeepSeek',
-      model: 'deepseek-v4-flash',
-      models: [
-        { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-        { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-      ],
+      model: '',
+      models: [],
       base_url: 'https://api.deepseek.com',
       env_var: 'DEEPSEEK_API_KEY',
       requires_key: true,
-      note: 'OpenAI-compatible provider. DeepSeek now recommends deepseek-v4-flash or deepseek-v4-pro.',
+      note: 'OpenAI-compatible provider.',
     },
     {
       id: 'openai',
       label: 'OpenAI',
-      model: 'gpt-5.5',
-      models: [
-        { id: 'gpt-5.5', label: 'GPT-5.5 (recommended)' },
-        { id: 'gpt-5.4', label: 'GPT-5.4' },
-        { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
-        { id: 'gpt-5.4-nano', label: 'GPT-5.4 nano' },
-        { id: 'gpt-4o', label: 'GPT-4o (legacy compatible)' },
-      ],
+      model: '',
+      models: [],
       base_url: 'https://api.openai.com/v1',
       env_var: 'OPENAI_API_KEY',
       requires_key: true,
-      note: 'Use this when you have an OpenAI API key. GPT-5.5 uses the Responses API in Pantheon.',
+      note: 'Use this when you have an OpenAI API key.',
     },
     {
       id: 'anthropic',
       label: 'Anthropic',
-      model: 'claude-sonnet-4-6',
-      models: [
-        { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (balanced)' },
-        { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 (deep reasoning)' },
-        { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-        { id: 'claude-fable-5', label: 'Claude Fable 5' },
-      ],
+      model: '',
+      models: [],
       base_url: 'https://api.anthropic.com',
       env_var: 'ANTHROPIC_API_KEY',
       requires_key: true,
-      note: 'Use this when you have an Anthropic Claude API key. Sonnet 4.6 is the balanced default.',
+      note: 'Official Anthropic and compatible Claude Messages gateways. Change the Base URL only when your provider supplies one.',
     },
     {
       id: 'ollama',
       label: 'Ollama',
-      model: 'llama3.1:8b',
-      models: [
-        { id: 'llama3.1:8b', label: 'Llama 3.1 8B' },
-        { id: 'llama3.1:70b', label: 'Llama 3.1 70B' },
-        { id: 'qwen2.5:72b', label: 'Qwen 2.5 72B' },
-        { id: 'mistral-large', label: 'Mistral Large' },
-      ],
+      model: '',
+      models: [],
       base_url: 'http://localhost:11434',
       env_var: '',
       requires_key: false,
@@ -913,7 +873,8 @@
   let roleOverrides = {}; // { roleName: { provider, model } }
 
   function providerModels(provider) {
-    return MODEL_CATALOG[provider] || [];
+    if (provider === 'none') return [{ id: 'none', label: '(no model)' }];
+    return setupProviders.get(provider)?.models || [];
   }
   function providerModelIds(provider) {
     return providerModels(provider).map((m) => m.id);
@@ -972,7 +933,7 @@
       const override = roleOverrides[r.name] || {};
       const currentProvider = override.provider || provider;
       const currentModel = override.model || r.model || '';
-      const knownProviders = Object.keys(MODEL_CATALOG);
+      const knownProviders = [...setupProviders.keys(), 'none'];
       const knownModelIds = providerModelIds(currentProvider);
 
       const card = document.createElement('div');
@@ -1055,7 +1016,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.0';
+    const version = latestAppInfo?.ui_version || '0.2.1';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1101,7 +1062,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.0';
+    const version = info.ui_version || '0.2.1';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1151,6 +1112,31 @@
       : [{ id: provider?.model || '', label: provider?.model || 'Default model' }].filter((item) => item.id);
   }
 
+  function setupModelOptionLabel(model) {
+    const label = model.label || model.id;
+    if (model.source === 'current' && model.available === false) return `${label} · current, not returned by model list`;
+    if (model.source === 'current' && model.available === true) return `${label} · current · listed`;
+    if (model.source === 'recommended' && model.available === false) return `${label} · recommended, not returned by model list`;
+    if (model.source === 'available') return `${label} · listed`;
+    return label;
+  }
+
+  function setupModelStatusText(provider) {
+    if (!provider) return '';
+    const options = setupModelOptions(provider);
+    const count = options.length;
+    const available = options.filter((model) => model.available === true).length;
+    if (provider.catalog_source === 'live') return `${available} listed by provider · ${count} choices · Test API confirms access`;
+    if (provider.catalog_source === 'cache') {
+      const suffix = provider.catalog_stale ? ' · refresh recommended' : '';
+      return `${available} listed · ${count} choices · cached${suffix}`;
+    }
+    if (provider.catalog_source === 'documented') {
+      return `${count} documented models · use Test API to verify access`;
+    }
+    return 'Official recommendations · official providers are checked every 24 hours';
+  }
+
   function setSetupCustomModel(enabled, value = '') {
     if (setupUseCustomModel) setupUseCustomModel.checked = Boolean(enabled);
     if (setupModelInput) setupModelInput.disabled = Boolean(enabled);
@@ -1164,7 +1150,7 @@
     if (!setupModelInput) return;
     const options = setupModelOptions(provider);
     setupModelInput.innerHTML = options.map((model) => (
-      `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label || model.id)}</option>`
+      `<option value="${escapeHtml(model.id)}">${escapeHtml(setupModelOptionLabel(model))}</option>`
     )).join('');
     const knownIds = options.map((item) => item.id);
     const fallback = provider?.model || knownIds[0] || '';
@@ -1196,6 +1182,7 @@
     if (setupSaveBtn) setupSaveBtn.disabled = isBusy;
     if (setupCheckBtn) setupCheckBtn.disabled = isBusy;
     if (setupTestBtn) setupTestBtn.disabled = isBusy;
+    if (setupRefreshModelsBtn) setupRefreshModelsBtn.disabled = isBusy;
   }
 
   function setSetupPill(text, tone = '') {
@@ -1241,6 +1228,7 @@
       setupProviderNote.textContent = provider.note || '';
       setupProviderNote.hidden = !provider.note;
     }
+    if (setupModelStatus) setupModelStatus.textContent = setupModelStatusText(provider);
     if (setupApiKeyInput) {
       setupApiKeyInput.placeholder = provider.requires_key
         ? `Paste ${provider.env_var || 'API key'} once, then save`
@@ -1288,9 +1276,27 @@
     latestSetupStatus = status;
     const preserveForm = Boolean(options.preserveForm);
     const announce = options.announce !== false;
+    const formProvider = preserveForm ? setupProviderSelect?.value || '' : '';
+    const formModel = preserveForm
+      ? (
+        setupUseCustomModel?.checked
+          ? setupCustomModelInput?.value || ''
+          : setupModelInput?.value || ''
+      ).trim()
+      : '';
+    const formBaseUrl = preserveForm ? setupBaseUrlInput?.value || '' : '';
 
     populateSetupProviders(status.providers);
-    if (!preserveForm) {
+    renderSettingsModels();
+    if (preserveForm) {
+      if (setupProviderSelect && formProvider && setupProviders.has(formProvider)) {
+        setupProviderSelect.value = formProvider;
+      }
+      const provider = setupProviders.get(setupProviderSelect?.value || status.provider);
+      renderSetupModelOptions(provider, formModel);
+      if (setupBaseUrlInput) setupBaseUrlInput.value = formBaseUrl || provider?.base_url || '';
+      syncSetupProviderFields({ useDefaults: false });
+    } else {
       if (setupProviderSelect && status.provider && setupProviders.has(status.provider)) {
         setupProviderSelect.value = status.provider;
       }
@@ -1351,14 +1357,18 @@
     return text.length > 96 ? `${text.slice(0, 96)}...` : text;
   }
 
-  async function loadSetupStatus() {
+  async function loadSetupStatus(options = {}) {
     if (!setupForm) return;
-    setSetupPill('checking');
+    const quiet = Boolean(options?.quiet);
+    if (!quiet) setSetupPill('checking');
     try {
       const resp = await fetch('/api/setup/status');
       const data = await resp.json();
       if (!resp.ok) throw data;
-      applySetupStatus(data);
+      applySetupStatus(data, {
+        preserveForm: Boolean(options?.preserveForm),
+        announce: !quiet,
+      });
     } catch (e) {
       console.error(e);
       if (setupStatusTitle) setupStatusTitle.textContent = 'Setup unavailable';
@@ -1464,6 +1474,50 @@
     }
   }
 
+  async function refreshSetupModels() {
+    if (!setupProviderSelect) return;
+    const providerId = setupProviderSelect.value;
+    const existingProvider = setupProviders.get(providerId);
+    const currentModel = (
+      setupUseCustomModel?.checked
+        ? setupCustomModelInput?.value || ''
+        : setupModelInput?.value || ''
+    ).trim();
+    setSetupBusy(true);
+    if (setupModelStatus) setupModelStatus.textContent = 'Refreshing available models...';
+    try {
+      const resp = await fetch('/api/setup/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: providerId,
+          base_url: (setupBaseUrlInput?.value || '').trim(),
+          api_key: (setupApiKeyInput?.value || '').trim(),
+          current_model: currentModel,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw data;
+      const provider = data.provider || existingProvider;
+      if (provider) setupProviders.set(providerId, provider);
+      renderSetupModelOptions(provider, data.preserved_model || currentModel);
+      if (setupModelStatus) setupModelStatus.textContent = setupModelStatusText(provider);
+      renderSettingsModels();
+      if (data.ok) {
+        setComposerStatus(data.message || 'Models refreshed', 'ok');
+      } else {
+        setComposerStatus(shortSetupProblem(data.problem || data.message), 'warn', true);
+      }
+    } catch (e) {
+      console.error(e);
+      const message = setupErrorMessage(e);
+      if (setupModelStatus) setupModelStatus.textContent = message;
+      setComposerStatus(shortSetupProblem(message), 'error', true);
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
   async function saveSetup(event) {
     event.preventDefault();
     if (!setupProviderSelect) return;
@@ -1514,6 +1568,7 @@
   if (setupForm) setupForm.addEventListener('submit', saveSetup);
   if (setupCheckBtn) setupCheckBtn.addEventListener('click', checkSetup);
   if (setupTestBtn) setupTestBtn.addEventListener('click', testSetupApi);
+  if (setupRefreshModelsBtn) setupRefreshModelsBtn.addEventListener('click', refreshSetupModels);
   [setupModelInput, setupCustomModelInput, setupBaseUrlInput, setupApiKeyInput].forEach((el) => {
     if (!el) return;
     el.addEventListener('input', clearSetupCheckResult);
@@ -5034,13 +5089,14 @@
       li.querySelector('.ws-step-text')?.appendChild(note);
     }
     if (detail && taskEl) taskEl.textContent = detail;
-    if (statusEl) statusEl.textContent = waiting >= 10 ? 'waiting' : 'running';
+    const roleLabel = metaFor(li.dataset.role || '').label || 'The agent';
+    if (statusEl) statusEl.textContent = waiting >= 10 ? 'model wait' : 'running';
     li.classList.toggle('long-wait', waiting >= 90);
     if (waiting >= 90) {
-      note.textContent = 'The model is taking longer than usual. You can Stop and retry.';
+      note.textContent = `${roleLabel} is still waiting for the model. The workflow is running and does not need your reply. You can Stop and retry.`;
       note.hidden = false;
     } else if (waiting >= 30) {
-      note.textContent = 'Still waiting for the model response.';
+      note.textContent = `${roleLabel} is waiting for the model response. No reply is required.`;
       note.hidden = false;
     } else {
       note.hidden = true;
@@ -5419,6 +5475,67 @@
     });
   }
 
+  function parseNumberedChoiceReply(text) {
+    const source = String(text || '');
+    if (!/(?:推荐|建议选择|recommended|recommend|请选择|请回复|choose|reply)/i.test(source)) {
+      return null;
+    }
+    const choices = {};
+    source.split(/\r?\n/).forEach((line) => {
+      const normalized = line
+        .replace(/^\s*[-*]\s*/, '')
+        .replace(/^\s*#{1,6}\s*/, '')
+        .replace(/\*\*/g, '')
+        .trim();
+      const match = normalized.match(
+        /^(?:(?:选项|方案|option|choice)\s*)?([1-4])\s*[.、:：)\]]\s*(.+)$/i,
+      );
+      if (!match || choices[match[1]]) return;
+      choices[match[1]] = match[2].trim();
+    });
+    return choices['1'] && choices['2'] ? choices : null;
+  }
+
+  function continuationForNumericChoice(text) {
+    const selection = String(text || '').trim();
+    if (!/^[1-4]$/.test(selection)) return null;
+
+    const messages = Array.from(chatEl.querySelectorAll('.msg'));
+    let assistantIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].classList.contains('assistant')) {
+        assistantIndex = index;
+        break;
+      }
+      if (messages[index].classList.contains('user')) return null;
+    }
+    if (assistantIndex < 0) return null;
+
+    const assistant = messages[assistantIndex];
+    const previousAnswer = String(
+      assistant.dataset.rawText || assistant.querySelector('.msg-content')?.innerText || '',
+    ).trim();
+    const choices = parseNumberedChoiceReply(previousAnswer);
+    if (!choices || !choices[selection]) return null;
+
+    let originalTask = '';
+    for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+      if (!messages[index].classList.contains('user')) continue;
+      originalTask = String(
+        messages[index].dataset.rawText || messages[index].querySelector('.msg-content')?.innerText || '',
+      ).trim();
+      break;
+    }
+    if (!originalTask) return null;
+
+    const selectedChoice = choices[selection];
+    return {
+      selection,
+      selectedChoice,
+      agentTask: `Continue the task using the user's numbered selection.\n\nOriginal task:\n${originalTask.slice(0, 8000)}\n\nPrevious answer with choices:\n${previousAnswer.slice(0, 8000)}\n\nUser selected:\n${selection}. ${selectedChoice}\n\nContinue from this selection. Do not ask the user to repeat the original context.`,
+    };
+  }
+
   function createStepBlock(roleName, skills = []) {
     const meta = metaFor(roleName);
     const msg = addMessage(roleName, `
@@ -5535,6 +5652,11 @@
     setWorkspaceState('Running', 'running');
     pushWorkspaceLine(`Task started: ${titleFromPrompt(task)}`);
     if (opts.skill) pushWorkspaceLine(`Explicit skill requested: $${opts.skill}`);
+    if (opts.numericChoice) {
+      pushWorkspaceLine(
+        `Continuing with choice ${opts.numericChoice.selection}: ${opts.numericChoice.selectedChoice}`,
+      );
+    }
     const startTime = Date.now();
     const initialRole = currentMode.startsWith('role:') ? currentMode.slice(5) : 'hermes';
     const initialDetail = currentMode.startsWith('role:')
@@ -5647,7 +5769,7 @@
               ? ` · Step ${index + 1}/${total}`
               : '';
             const waiting = Number(data.waiting_seconds || 0);
-            setWorkspaceState(waiting >= 10 ? `Waiting${stepLabel}` : `Running${stepLabel}`, 'running');
+            setWorkspaceState(waiting >= 10 ? `Model wait${stepLabel}` : `Running${stepLabel}`, 'running');
             break;
           }
           case 'plan':
@@ -6670,11 +6792,15 @@
       previewLocalHtmlInput(text, localHtml);
       return;
     }
-    const agentTask = `${text}${attachmentPromptContext(attachments)}`;
+    const numericChoice = !skillSubmission && !attachments.length
+      ? continuationForNumericChoice(text)
+      : null;
+    const agentTask = numericChoice?.agentTask || `${text}${attachmentPromptContext(attachments)}`;
     sendAsk(text, {
       agentTask,
       attachments,
       skill: skillSubmission?.item?.id || '',
+      numericChoice,
     });
   });
 
