@@ -75,6 +75,35 @@ You can:
 - Change the **temperature** (lower = more focused, higher = more creative).
 - Set `enabled: false` to disable a role.
 
+### Keep the model list current
+
+Pantheon checks configured official OpenAI, Anthropic, and DeepSeek model catalogs
+when the Web service starts, then refreshes catalogs older than 24 hours in the
+background. Configured local Ollama catalogs use the same cache behavior. Results
+are stored in `.pantheon/model_catalog.json`, so newly released models can appear
+without a Pantheon upgrade. Custom and third-party Base URLs are never contacted
+by this background task; use `Refresh models` explicitly for those endpoints.
+
+In the Web UI, `Settings -> Setup -> Refresh models` remains available when you
+want to check the selected provider immediately instead of waiting for the next
+background refresh.
+
+Refreshing is read-only: it never changes `config/pantheon.yaml`. The currently
+saved model remains selected even when a newer model appears or the provider no
+longer includes it in the returned list. To migrate, select the new model, run
+`Test API`, and click `Save local config` explicitly. If discovery is unavailable,
+Pantheon uses the last cached catalog or its built-in recommendations. `Use custom
+model ID` remains available for models and compatible providers that do not expose
+a usable model-list endpoint.
+
+### Anthropic and compatible gateways
+
+Choose **Anthropic** for the official Claude API and for compatible Claude Messages
+gateways. The built-in catalog includes Claude Opus 5 (`claude-opus-5`). Official
+keys use the default `https://api.anthropic.com` address; gateway users can replace
+the Base URL with the endpoint supplied by their service and verify it with
+`Test API` before saving.
+
 To use a role for which you don't have the right key, set its `enabled: false` to avoid noisy warnings.
 
 ## 5. Verify
@@ -100,6 +129,29 @@ pantheon web
 The default host is loopback-only. The Web UI includes file writing and terminal
 execution, so enable `Settings -> Security` and restrict network access before
 starting it with `--host 0.0.0.0` or exposing it through a remote server.
+
+To start Pantheon automatically after the current user logs in, install the
+per-user background service from the repository root:
+
+```bash
+pantheon service install
+pantheon service status
+```
+
+The service uses the active virtual environment and the current repository as
+its workspace. It supports macOS LaunchAgent and Linux user systemd. Common
+maintenance commands are:
+
+```bash
+pantheon service restart
+pantheon service logs
+pantheon service stop
+pantheon service uninstall
+```
+
+On macOS, logs are stored in `~/Library/Logs/Pantheon/`. On Linux, systemd logs
+are available through `pantheon service logs`. Non-loopback binding is rejected
+unless `--allow-network` is supplied explicitly.
 
 ## 6. Skills
 
@@ -227,6 +279,23 @@ pytest --cov=pantheon           # with coverage
 ```
 
 Tests do **not** require API keys (they use a mock LLM client).
+
+Browser regression tests are optional and also avoid model requests:
+
+```bash
+python -m pip install -e ".[e2e]"
+playwright install chromium
+pytest e2e --browser chromium
+```
+
+To diagnose a saved provider with one minimal real request, opt in explicitly:
+
+```bash
+pantheon provider-test --role hermes --live
+```
+
+This command can incur a small provider charge. It is never run by the normal
+test suite or CI.
 
 ## 10. What's next?
 

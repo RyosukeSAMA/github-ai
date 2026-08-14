@@ -2,6 +2,58 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased
+
+### Added
+
+- Runtime model discovery for OpenAI, Anthropic, DeepSeek, and Ollama, with a
+  `Refresh models` control in local Setup and a per-key local cache.
+- Background model-catalog refresh for configured official provider endpoints;
+  stale catalogs are checked every 24 hours without changing the saved model.
+- GPT-5.6 Sol, Terra, and Luna in the OpenAI recommendation catalog.
+- Claude Opus 5 and Claude Sonnet 5 in the Anthropic model catalog.
+
+### Changed
+
+- Setup and per-agent model selectors now share the backend model catalog instead
+  of maintaining separate frontend and backend lists.
+- Refreshing a catalog preserves the saved/current model; selecting and saving a
+  different model remains an explicit user action.
+- Future official OpenAI GPT major versions (GPT-5 and later) use the Responses API
+  path instead of relying on a GPT-5-only name check.
+- Anthropic-compatible custom base URLs remain available without adding separate
+  provider entries to the Setup UI.
+
+## [0.2.1] - 2026-08-12
+
+### Added
+
+- Per-user background service management for macOS LaunchAgent and Linux systemd:
+  `pantheon service install|status|start|stop|restart|logs|uninstall`.
+- Opt-in `pantheon provider-test --role <god> --live` diagnostics and a live pytest
+  smoke test that never runs without explicit consent.
+- Playwright end-to-end coverage for session/mode navigation, panel behavior, Files,
+  and HTML Preview, plus a dedicated GitHub Actions job.
+
+### Changed
+
+- Migrated the Web scheduler lifecycle from deprecated FastAPI event hooks to a
+  lifespan context with deterministic Chronos cleanup.
+- Background services remain loopback-only by default and preserve the install
+  environment's command path for local tools and MCP servers.
+
+### Fixed
+
+- Pantheon Web can now restart automatically after user login instead of requiring
+  a manual terminal launch after every computer restart.
+- Multi-role steps now retain the complete original request instead of relying on
+  abbreviated planner labels. Decisions that genuinely require confirmation use
+  2-4 explicit choices, per-option guidance, and a recommended option.
+- A reply containing only `1`, `2`, `3`, or `4` can now continue an immediately
+  preceding numbered-choice answer with the relevant task and selection restored.
+
+[0.2.1]: https://github.com/RyosukeSAMA/github-ai/releases/tag/v0.2.1
+
 ## [0.2.0] - 2026-07-27
 
 ### Added

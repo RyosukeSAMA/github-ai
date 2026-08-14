@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pantheon.llm.base import BaseLLMClient
+
+
+def is_responses_api_model(model: str) -> bool:
+    """Return whether an official OpenAI GPT model requires Responses API handling."""
+    match = re.match(r"^gpt-(\d+)(?:[.\-]|$)", (model or "").lower())
+    return bool(match and int(match.group(1)) >= 5)
 
 
 class OpenAIClient(BaseLLMClient):
@@ -39,7 +46,9 @@ class OpenAIClient(BaseLLMClient):
         return "api.openai.com" in self.base_url
 
     def _uses_responses_api(self, model: str) -> bool:
-        return self._uses_official_openai_endpoint() and (model or self.default_model).startswith("gpt-5")
+        return self._uses_official_openai_endpoint() and is_responses_api_model(
+            model or self.default_model
+        )
 
     @staticmethod
     def _flatten_response_text(resp: Any) -> str:

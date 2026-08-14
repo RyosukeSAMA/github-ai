@@ -141,6 +141,10 @@ def test_router_summarize_calls_llm():
     assert "research X" in user_msg
     assert "athena" in user_msg
     assert "r1" in user_msg
+    assert "2-4 numbered choices" in user_msg
+    assert "practical suggestion to every choice" in user_msg
+    assert "reply with that option number" in user_msg
+    assert "do not end\nwith vague examples" in user_msg
 
 
 def test_router_summarize_empty_context_returns_empty():

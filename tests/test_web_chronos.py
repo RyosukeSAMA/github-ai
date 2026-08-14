@@ -43,3 +43,23 @@ def test_chronos_job_api_reports_parse_errors(tmp_path, monkeypatch) -> None:
 
     assert resp.status_code == 400
     assert "every 10 minutes" in resp.json()["detail"]
+
+
+def test_chronos_runner_uses_app_lifespan(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    app = create_app()
+
+    assert app.state.chronos_runner["task"] is None
+    assert app.state.model_catalog_runner["task"] is None
+    with TestClient(app) as client:
+        assert client.get("/api/health").status_code == 200
+        runner = app.state.chronos_runner["task"]
+        catalog_runner = app.state.model_catalog_runner["task"]
+        assert runner is not None
+        assert runner.done() is False
+        assert catalog_runner is not None
+        assert catalog_runner.done() is False
+
+    assert app.state.chronos_runner["task"] is None
+    assert app.state.model_catalog_runner["task"] is None
+    assert app.state.chronos_job_tasks == set()

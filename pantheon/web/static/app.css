@@ -3145,6 +3145,20 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
 .setup-custom-check {
   padding: 8px 0 0;
 }
+.setup-model-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.setup-refresh-models {
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: 10px;
+}
+.setup-model-status {
+  margin-top: 7px;
+}
 #setup-custom-model {
   margin-top: 8px;
 }

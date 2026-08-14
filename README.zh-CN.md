@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.2.0-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.1-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -43,7 +43,7 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 | Memory | 本地 SQLite、角色范围、自然语言记忆识别和保存建议 |
 | Chronos | 持久化的单次/周期任务和运行记录 |
 | 扩展 | 6 个内置 Skills、本地 Skills、Plugin prompt packs、MCP 工具和 Webhook |
-| 本地配置 | Provider/模型向导、配置检查、API 测试和可选登录锁 |
+| 本地配置 | Provider/模型向导、配置检查、API 测试、登录锁和可选自动启动服务 |
 
 Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保存在所选工作区，会话和显示偏好保存在当前浏览器。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
@@ -72,6 +72,17 @@ python -m pip install -e .
 pantheon web
 ```
 
+如需电脑重启后继续自动运行 Pantheon，可在项目根目录安装当前用户服务：
+
+```bash
+pantheon service install
+pantheon service status
+```
+
+它会在用户登录后启动，并继续只监听 `127.0.0.1:8000`。维护时可使用
+`pantheon service logs` 和 `pantheon service restart`。macOS 的服务日志位于
+`~/Library/Logs/Pantheon/`。
+
 打开 <http://127.0.0.1:8000/>，进入 **Settings → Setup**：
 
 1. 选择 DeepSeek、OpenAI、Anthropic 或 Ollama。
@@ -80,6 +91,9 @@ pantheon web
 4. 点击 **Save local config**。
 
 Web UI 会把 API key 保存到本地 `.env`，把 Provider、Base URL 和模型选择写入 `config/pantheon.yaml`。修改后端配置后，如需完整重载运行时，请重启 `pantheon web`。
+
+Anthropic 模型目录已包含 Claude Opus 5（`claude-opus-5`）。Claude 兼容网关
+也继续使用 **Anthropic**，并按服务商要求修改 Base URL。
 
 <details>
 <summary>手动配置文件</summary>
@@ -259,7 +273,7 @@ for step in result["steps"]:
 
 ## 当前边界
 
-Pantheon v0.2.0 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
+Pantheon v0.2.1 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
 - Chat Agent 为同步执行；Multi-role 会按计划顺序执行步骤，而不是并行运行。
 - 附件会在支持时转换为文本上下文，并不是通用的多模态模型文件上传。
@@ -324,7 +338,23 @@ ruff check .
 pytest
 ```
 
-GitHub Actions 的 CI 矩阵覆盖 Python 3.10、3.11 和 3.12。
+浏览器回归测试使用单独的可选依赖，不会调用模型：
+
+```bash
+python -m pip install -e ".[e2e]"
+playwright install chromium
+pytest e2e --browser chromium
+```
+
+真实 Provider 诊断必须显式开启，因为它会发出真实请求，并可能产生极小费用：
+
+```bash
+pantheon provider-test --role hermes --live
+PANTHEON_LIVE_TEST=1 pytest tests/live -m live
+```
+
+GitHub Actions 覆盖 Python 3.10、3.11、3.12，并单独运行 Chromium E2E；
+CI 不会获取或测试真实 Provider 密钥。
 
 <a id="documentation"></a>
 
@@ -344,6 +374,7 @@ GitHub Actions 的 CI 矩阵覆盖 Python 3.10、3.11 和 3.12。
 
 - [x] **v0.1**：5 个角色、Hermes 调度、CLI、Web UI 和 SDK
 - [x] **v0.2**：多会话工作区、实时 Activity、Chronos、Memory、Skills、MCP、Webhook 和本地登录锁
+- [x] **v0.2.1**：自动启动服务、Playwright 回归、Provider smoke test 和 FastAPI lifespan 迁移
 - [ ] **v0.3**：原生频道适配器、MCP resources/prompts 和可视化任务编排
 - [ ] **v0.4**：可安装扩展目录、语义记忆检索和可观测性
 - [ ] **v1.0**：多用户身份、审计日志、限流和分布式执行

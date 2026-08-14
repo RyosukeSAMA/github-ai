@@ -7,12 +7,14 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -42,9 +44,26 @@ from pantheon.core.memory import (
 from pantheon.core.pantheon import Pantheon
 from pantheon.core.scheduler import ChronosScheduler, ScheduleParseError, parse_schedule_request
 from pantheon.llm import get_llm_client
+from pantheon.llm.openai_client import is_responses_api_model
+from pantheon.web.model_catalog import ModelDiscoveryError, discover_provider_models
 
 STATIC_DIR = Path(__file__).parent / "static"
 STREAM_HEARTBEAT_SECONDS = 5.0
+MODEL_CACHE_TTL_SECONDS = 24 * 60 * 60
+MODEL_CATALOG_CHECK_INTERVAL_SECONDS = 60 * 60
+MODEL_CACHE_VERSION = 1
+OFFICIAL_MODEL_CATALOG_BASE_URLS = {
+    "deepseek": {"https://api.deepseek.com", "https://api.deepseek.com/v1"},
+    "openai": {"https://api.openai.com/v1"},
+    "anthropic": {"https://api.anthropic.com", "https://api.anthropic.com/v1"},
+    "ollama": {
+        "http://localhost:11434",
+        "http://localhost:11434/v1",
+        "http://127.0.0.1:11434",
+        "http://127.0.0.1:11434/v1",
+    },
+}
+LOGGER = logging.getLogger(__name__)
 
 
 class AskRequest(BaseModel):
@@ -81,6 +100,13 @@ class SetupTestRequest(BaseModel):
     model: str
     base_url: str | None = None
     api_key: str | None = None
+
+
+class SetupModelsRequest(BaseModel):
+    provider: str
+    base_url: str | None = None
+    api_key: str | None = None
+    current_model: str | None = None
 
 
 class AuthLoginRequest(BaseModel):
@@ -218,23 +244,27 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
             {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
         ],
         "requires_key": True,
-        "note": "OpenAI-compatible provider. DeepSeek now recommends deepseek-v4-flash or deepseek-v4-pro.",
+        "note": "OpenAI-compatible provider. Refresh to load models available to this API key.",
     },
     "openai": {
         "label": "OpenAI",
         "adapter": "openai",
         "env_var": "OPENAI_API_KEY",
         "base_url": "https://api.openai.com/v1",
-        "model": "gpt-5.5",
+        "model": "gpt-5.6",
         "models": [
-            {"id": "gpt-5.5", "label": "GPT-5.5 (recommended)"},
+            {"id": "gpt-5.6", "label": "GPT-5.6 Sol (recommended alias)"},
+            {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
+            {"id": "gpt-5.6-terra", "label": "GPT-5.6 Terra"},
+            {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna"},
+            {"id": "gpt-5.5", "label": "GPT-5.5"},
             {"id": "gpt-5.4", "label": "GPT-5.4"},
             {"id": "gpt-5.4-mini", "label": "GPT-5.4 mini"},
             {"id": "gpt-5.4-nano", "label": "GPT-5.4 nano"},
             {"id": "gpt-4o", "label": "GPT-4o (legacy compatible)"},
         ],
         "requires_key": True,
-        "note": "Use this when you have an OpenAI API key. GPT-5.5 uses the Responses API in Pantheon.",
+        "note": "Use this with an OpenAI API key. Refresh to discover newly available models.",
     },
     "anthropic": {
         "label": "Anthropic",
@@ -243,13 +273,18 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://api.anthropic.com",
         "model": "claude-sonnet-4-6",
         "models": [
+            {"id": "claude-opus-5", "label": "Claude Opus 5 (most capable)"},
+            {"id": "claude-sonnet-5", "label": "Claude Sonnet 5 (balanced)"},
             {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
             {"id": "claude-opus-4-8", "label": "Claude Opus 4.8 (deep reasoning)"},
             {"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5"},
             {"id": "claude-fable-5", "label": "Claude Fable 5"},
         ],
         "requires_key": True,
-        "note": "Use this when you have an Anthropic Claude API key. Sonnet 4.6 is the balanced default.",
+        "note": (
+            "Official Anthropic and compatible Claude Messages gateways. "
+            "Change the Base URL only when your provider supplies one."
+        ),
     },
     "ollama": {
         "label": "Ollama",
@@ -424,8 +459,6 @@ INTEGRATION_CATALOG: dict[str, list[dict[str, Any]]] = {
 
 def create_app(config_path: str | None = None) -> FastAPI:
     """Build the FastAPI app. Pantheon instance is created lazily."""
-    app = FastAPI(title="Pantheon Web UI", version=__version__)
-
     _pantheon: dict[str, Pantheon | None] = {"instance": None}
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
     chronos_scheduler = ChronosScheduler(workspace_root / ".pantheon" / "chronos_jobs.json")
@@ -439,6 +472,47 @@ def create_app(config_path: str | None = None) -> FastAPI:
     mcp_approval_lock = threading.Lock()
     pending_mcp_approvals: dict[str, dict[str, Any]] = {}
     chronos_runner: dict[str, asyncio.Task | None] = {"task": None}
+    chronos_job_tasks: set[asyncio.Task[None]] = set()
+    model_catalog_runner: dict[str, asyncio.Task | None] = {"task": None}
+    model_catalog_attempts: dict[str, int] = {}
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if chronos_runner["task"] is None or chronos_runner["task"].done():
+            chronos_runner["task"] = asyncio.create_task(chronos_loop())
+        if model_catalog_runner["task"] is None or model_catalog_runner["task"].done():
+            model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
+        try:
+            yield
+        finally:
+            runner_tasks = [
+                chronos_runner.get("task"),
+                model_catalog_runner.get("task"),
+            ]
+            for task in runner_tasks:
+                if task is None:
+                    continue
+                task.cancel()
+            for task in runner_tasks:
+                if task is None:
+                    continue
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            active_jobs = tuple(chronos_job_tasks)
+            for job_task in active_jobs:
+                job_task.cancel()
+            if active_jobs:
+                await asyncio.gather(*active_jobs, return_exceptions=True)
+            chronos_job_tasks.clear()
+            chronos_runner["task"] = None
+            model_catalog_runner["task"] = None
+
+    app = FastAPI(title="Pantheon Web UI", version=__version__, lifespan=lifespan)
+    app.state.chronos_runner = chronos_runner
+    app.state.chronos_job_tasks = chronos_job_tasks
+    app.state.model_catalog_runner = model_catalog_runner
 
     def get_pantheon() -> Pantheon:
         if _pantheon["instance"] is None:
@@ -714,27 +788,12 @@ def create_app(config_path: str | None = None) -> FastAPI:
         try:
             while True:
                 for job in chronos_scheduler.claim_due_jobs():
-                    asyncio.create_task(execute_chronos_job(job))
+                    job_task = asyncio.create_task(execute_chronos_job(job))
+                    chronos_job_tasks.add(job_task)
+                    job_task.add_done_callback(chronos_job_tasks.discard)
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
             raise
-
-    @app.on_event("startup")
-    async def start_chronos_runner() -> None:
-        if chronos_runner["task"] is None or chronos_runner["task"].done():
-            chronos_runner["task"] = asyncio.create_task(chronos_loop())
-
-    @app.on_event("shutdown")
-    async def stop_chronos_runner() -> None:
-        task = chronos_runner.get("task")
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        chronos_runner["task"] = None
 
     def workspace_error(status_code: int, detail: str) -> HTTPException:
         return HTTPException(status_code=status_code, detail=detail)
@@ -796,6 +855,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
     def setup_env_path() -> Path:
         return (workspace_root / ".env").resolve()
 
+    def setup_model_cache_path() -> Path:
+        return (workspace_root / ".pantheon" / "model_catalog.json").resolve()
+
     def read_yaml_config(path: Path) -> dict[str, Any]:
         if not path.exists():
             return {}
@@ -806,6 +868,58 @@ def create_app(config_path: str | None = None) -> FastAPI:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+
+    def read_model_cache() -> dict[str, Any]:
+        path = setup_model_cache_path()
+        if not path.exists():
+            return {"version": MODEL_CACHE_VERSION, "catalogs": {}}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"version": MODEL_CACHE_VERSION, "catalogs": {}}
+        if not isinstance(payload, dict) or not isinstance(payload.get("catalogs"), dict):
+            return {"version": MODEL_CACHE_VERSION, "catalogs": {}}
+        return payload
+
+    def model_cache_key(provider_id: str, base_url: str, api_key: str = "") -> str:
+        identity = f"{base_url.rstrip('/')}\0{api_key}"
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+        return f"{provider_id}:{digest}"
+
+    def cached_model_catalog(
+        provider_id: str,
+        base_url: str,
+        api_key: str = "",
+    ) -> dict[str, Any] | None:
+        key = model_cache_key(provider_id, base_url, api_key)
+        entry = read_model_cache().get("catalogs", {}).get(key)
+        if not isinstance(entry, dict) or not isinstance(entry.get("models"), list):
+            return None
+        return entry
+
+    def write_model_cache(
+        provider_id: str,
+        base_url: str,
+        models: list[dict[str, str]],
+        api_key: str = "",
+    ) -> dict[str, Any]:
+        path = setup_model_cache_path()
+        payload = read_model_cache()
+        fetched_at = int(time.time())
+        entry = {
+            "provider": provider_id,
+            "fetched_at": fetched_at,
+            "models": models,
+        }
+        payload["version"] = MODEL_CACHE_VERSION
+        payload.setdefault("catalogs", {})[
+            model_cache_key(provider_id, base_url, api_key)
+        ] = entry
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+        temp_path.replace(path)
+        return entry
 
     def parse_env_file(path: Path) -> dict[str, str]:
         values: dict[str, str] = {}
@@ -1028,10 +1142,135 @@ def create_app(config_path: str | None = None) -> FastAPI:
         if (
             adapter == "openai"
             and "api.openai.com" in (base_url or "").lower()
-            and (model or "").startswith("gpt-5")
+            and is_responses_api_model(model)
         ):
             return {"max_output_tokens": 8}
         return {"max_tokens": 8}
+
+    def normalized_provider_api_key(provider_id: str, value: str) -> str:
+        api_key = str(value or "").strip()
+        if provider_id == "anthropic" and api_key.lower().startswith("bearer "):
+            return api_key[7:].strip()
+        return api_key
+
+    def model_label_from_preset(provider_id: str, model_id: str) -> str:
+        preset = SETUP_PROVIDER_PRESETS.get(provider_id, {})
+        for item in preset.get("models", []):
+            if item.get("id") == model_id:
+                return str(item.get("label") or model_id)
+        return model_id
+
+    def merged_model_catalog(
+        provider_id: str,
+        discovered: list[dict[str, str]] | None = None,
+        current_model: str = "",
+    ) -> list[dict[str, Any]]:
+        preset = SETUP_PROVIDER_PRESETS[provider_id]
+        discovered_by_id = {
+            str(item.get("id") or ""): item
+            for item in discovered or []
+            if str(item.get("id") or "")
+        }
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in preset.get("models", []):
+            model_id = str(item.get("id") or "")
+            if not model_id or model_id in seen:
+                continue
+            dynamic = discovered_by_id.pop(model_id, None)
+            result.append({
+                "id": model_id,
+                "label": str(item.get("label") or model_id),
+                "source": "current" if model_id == current_model else "recommended",
+                "available": None if discovered is None else dynamic is not None,
+            })
+            seen.add(model_id)
+        for model_id, item in discovered_by_id.items():
+            if model_id in seen:
+                continue
+            result.append({
+                "id": model_id,
+                "label": str(item.get("label") or model_id),
+                "source": "available",
+                "available": True,
+            })
+            seen.add(model_id)
+        if current_model and current_model not in seen:
+            result.insert(0, {
+                "id": current_model,
+                "label": model_label_from_preset(provider_id, current_model),
+                "source": "current",
+                "available": None if discovered is None else False,
+            })
+        return result
+
+    def provider_payload(
+        provider_id: str,
+        *,
+        current_model: str = "",
+        discovered: list[dict[str, str]] | None = None,
+        source: str = "built-in",
+        fetched_at: int | None = None,
+        base_url: str = "",
+        key_configured: bool | None = None,
+    ) -> dict[str, Any]:
+        preset = SETUP_PROVIDER_PRESETS[provider_id]
+        if key_configured is None:
+            key_configured = (
+                not preset["requires_key"]
+                or bool(env_value(str(preset.get("env_var") or "")))
+            )
+        return {
+            "id": provider_id,
+            "label": preset["label"],
+            "model": preset["model"],
+            "models": merged_model_catalog(provider_id, discovered, current_model),
+            "base_url": base_url or preset["base_url"],
+            "env_var": preset["env_var"],
+            "requires_key": preset["requires_key"],
+            "key_configured": key_configured,
+            "note": preset["note"],
+            "catalog_source": source,
+            "models_fetched_at": fetched_at,
+            "catalog_stale": bool(
+                fetched_at and int(time.time()) - fetched_at > MODEL_CACHE_TTL_SECONDS
+            ),
+        }
+
+    def provider_status_payload(
+        provider_id: str,
+        *,
+        current_provider: str,
+        current_model: str,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        preset = SETUP_PROVIDER_PRESETS[provider_id]
+        base_url = str(preset["base_url"])
+        raw_api_key = ""
+        if provider_id == current_provider:
+            adapter = str(preset["adapter"])
+            llm_cfg = (config.get("llm_providers", {}) or {}).get(adapter, {}) or {}
+            base_url = str(llm_cfg.get("base_url") or base_url)
+            raw_api_key = str(llm_cfg.get("api_key") or "")
+        env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
+        api_key = env_value(env_var)
+        if not api_key and raw_api_key and "${" not in raw_api_key:
+            api_key = raw_api_key
+        key_configured = not preset["requires_key"] or bool(api_key)
+        cached = cached_model_catalog(provider_id, base_url, api_key)
+        return provider_payload(
+            provider_id,
+            current_model=current_model if provider_id == current_provider else "",
+            discovered=cached.get("models") if cached else None,
+            source=(
+                "cache"
+                if cached
+                else str(preset.get("fallback_catalog_source") or "built-in")
+            ),
+            fetched_at=int(cached.get("fetched_at") or 0) if cached else None,
+            base_url=base_url,
+            key_configured=key_configured,
+        )
 
     def provider_key_from_adapter(provider: str, providers: dict[str, Any]) -> str:
         if not provider or provider == "none":
@@ -1043,6 +1282,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
             if "deepseek" in base_url or "DEEPSEEK_API_KEY" in api_key:
                 return "deepseek"
             return "openai"
+        if provider == "anthropic":
+            return "anthropic"
         if provider in SETUP_PROVIDER_PRESETS:
             return provider
         return provider
@@ -1053,6 +1294,100 @@ def create_app(config_path: str | None = None) -> FastAPI:
         providers = config.get("llm_providers", {}) or {}
         provider_key = provider_key_from_adapter(provider, providers) if provider else "deepseek"
         return provider_key if provider_key in SETUP_PROVIDER_PRESETS else "deepseek"
+
+    def normalized_catalog_base_url(base_url: str) -> str:
+        return str(base_url or "").strip().rstrip("/").lower()
+
+    def official_catalog_base_url(provider_id: str, base_url: str) -> bool:
+        normalized = normalized_catalog_base_url(base_url)
+        return normalized in {
+            normalized_catalog_base_url(item)
+            for item in OFFICIAL_MODEL_CATALOG_BASE_URLS.get(provider_id, set())
+        }
+
+    def configured_model_catalogs() -> list[dict[str, str]]:
+        config = read_yaml_config(setup_config_path())
+        providers = config.get("llm_providers", {}) or {}
+        catalogs: list[dict[str, str]] = []
+        for adapter, raw_config in providers.items():
+            if not isinstance(raw_config, dict):
+                continue
+            provider_id = provider_key_from_adapter(str(adapter), providers)
+            preset = SETUP_PROVIDER_PRESETS.get(provider_id)
+            if not preset:
+                continue
+            base_url = str(raw_config.get("base_url") or preset["base_url"]).strip()
+            if not official_catalog_base_url(provider_id, base_url):
+                continue
+            raw_api_key = str(raw_config.get("api_key") or "")
+            env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
+            api_key = env_value(env_var)
+            if not api_key and raw_api_key and "${" not in raw_api_key:
+                api_key = raw_api_key
+            api_key = normalized_provider_api_key(provider_id, api_key)
+            if preset["requires_key"] and not api_key:
+                continue
+            catalogs.append({
+                "provider": provider_id,
+                "discovery_provider": str(
+                    preset.get("discovery_provider") or provider_id
+                ),
+                "base_url": base_url,
+                "api_key": api_key,
+            })
+        return catalogs
+
+    async def refresh_due_model_catalogs() -> dict[str, list[str]]:
+        now = int(time.time())
+        result: dict[str, list[str]] = {
+            "refreshed": [],
+            "fresh": [],
+            "failed": [],
+        }
+        for catalog in configured_model_catalogs():
+            provider_id = catalog["provider"]
+            base_url = catalog["base_url"]
+            api_key = catalog["api_key"]
+            cached = cached_model_catalog(provider_id, base_url, api_key)
+            fetched_at = int(cached.get("fetched_at") or 0) if cached else 0
+            if fetched_at and now - fetched_at < MODEL_CACHE_TTL_SECONDS:
+                result["fresh"].append(provider_id)
+                continue
+            attempt_key = model_cache_key(provider_id, base_url, api_key)
+            last_attempt = model_catalog_attempts.get(attempt_key, 0)
+            if last_attempt and now - last_attempt < MODEL_CATALOG_CHECK_INTERVAL_SECONDS:
+                continue
+            model_catalog_attempts[attempt_key] = now
+            try:
+                discovered = await discover_provider_models(
+                    catalog["discovery_provider"],
+                    base_url,
+                    api_key,
+                )
+                write_model_cache(provider_id, base_url, discovered, api_key)
+                result["refreshed"].append(provider_id)
+            except (ModelDiscoveryError, OSError) as exc:
+                result["failed"].append(provider_id)
+                LOGGER.warning(
+                    "Could not refresh the %s model catalog: %s",
+                    provider_id,
+                    sanitize_error(str(exc), [api_key]),
+                )
+        return result
+
+    async def model_catalog_loop() -> None:
+        try:
+            while True:
+                try:
+                    await refresh_due_model_catalogs()
+                except Exception:
+                    LOGGER.exception("Unexpected model catalog refresh failure")
+                await asyncio.sleep(MODEL_CATALOG_CHECK_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+
+    app.state.refresh_model_catalogs = refresh_due_model_catalogs
+    app.state.model_catalog_attempts = model_catalog_attempts
 
     def provider_label(provider_key: str) -> str:
         if provider_key == "none":
@@ -1175,17 +1510,13 @@ def create_app(config_path: str | None = None) -> FastAPI:
             "summary_state": "ready" if setup_ready else "needs attention",
             "role_statuses": role_statuses,
             "providers": [
-                {
-                    "id": key,
-                    "label": value["label"],
-                    "model": value["model"],
-                    "models": value["models"],
-                    "base_url": value["base_url"],
-                    "env_var": value["env_var"],
-                    "requires_key": value["requires_key"],
-                    "note": value["note"],
-                }
-                for key, value in SETUP_PROVIDER_PRESETS.items()
+                provider_status_payload(
+                    key,
+                    current_provider=provider_key,
+                    current_model=str(hermes_cfg.get("model") or ""),
+                    config=config,
+                )
+                for key in SETUP_PROVIDER_PRESETS
             ],
         }
 
@@ -1300,6 +1631,75 @@ def create_app(config_path: str | None = None) -> FastAPI:
     @app.get("/api/setup/status")
     async def setup_status() -> dict[str, Any]:
         return setup_status_payload()
+
+    @app.post("/api/setup/models")
+    async def setup_models(req: SetupModelsRequest) -> dict[str, Any]:
+        provider_id = req.provider.strip().lower()
+        if provider_id not in SETUP_PROVIDER_PRESETS:
+            raise HTTPException(status_code=400, detail="unsupported provider")
+
+        preset = SETUP_PROVIDER_PRESETS[provider_id]
+        base_url = (req.base_url or str(preset["base_url"])).strip()
+        api_key = normalized_provider_api_key(
+            provider_id,
+            (req.api_key or "").strip() or env_value(str(preset["env_var"])),
+        )
+        current_model = (req.current_model or "").strip()
+        if not current_model:
+            config = read_yaml_config(setup_config_path())
+            if provider_from_config(config) == provider_id:
+                current_model = str(
+                    (config.get("pantheon", {}).get("hermes", {}) or {}).get("model") or ""
+                )
+
+        if preset["requires_key"] and not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{preset['env_var']} is required to refresh available models.",
+            )
+
+        try:
+            discovered = await discover_provider_models(
+                str(preset.get("discovery_provider") or provider_id),
+                base_url,
+                api_key,
+            )
+            cache_entry = write_model_cache(provider_id, base_url, discovered, api_key)
+        except (ModelDiscoveryError, OSError) as exc:
+            cached = cached_model_catalog(provider_id, base_url, api_key)
+            problem = sanitize_error(str(exc), [api_key])
+            return {
+                "ok": False,
+                "message": "Could not refresh models.",
+                "problem": problem,
+                "preserved_model": current_model,
+                "provider": provider_payload(
+                    provider_id,
+                    current_model=current_model,
+                    discovered=cached.get("models") if cached else None,
+                    source=(
+                        "cache"
+                        if cached
+                        else "built-in"
+                    ),
+                    fetched_at=int(cached.get("fetched_at") or 0) if cached else None,
+                    base_url=base_url,
+                ),
+            }
+
+        return {
+            "ok": True,
+            "message": f"Found {len(discovered)} compatible models.",
+            "preserved_model": current_model,
+            "provider": provider_payload(
+                provider_id,
+                current_model=current_model,
+                discovered=discovered,
+                source="live",
+                fetched_at=int(cache_entry["fetched_at"]),
+                base_url=base_url,
+            ),
+        }
 
     @app.get("/api/info")
     async def app_info() -> dict[str, Any]:
@@ -1619,7 +2019,10 @@ def create_app(config_path: str | None = None) -> FastAPI:
         env_var = str(preset["env_var"])
         model = req.model.strip() if req.model else str(preset["model"])
         base_url = (req.base_url or str(preset["base_url"])).strip()
-        api_key = (req.api_key or "").strip() or env_value(env_var)
+        api_key = normalized_provider_api_key(
+            provider_id,
+            (req.api_key or "").strip() or env_value(env_var),
+        )
 
         if preset["requires_key"] and not api_key:
             return {
@@ -1682,7 +2085,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
         env_var = str(preset["env_var"])
         model = req.model.strip() if req.model else str(preset["model"])
         base_url = (req.base_url or str(preset["base_url"])).strip()
-        api_key = (req.api_key or "").strip()
+        api_key = normalized_provider_api_key(provider_id, req.api_key or "")
         env_file = setup_env_path()
 
         if env_var:
@@ -1853,11 +2256,12 @@ def create_app(config_path: str | None = None) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
         roles = []
+        configured_providers = p.config.get("llm_providers", {}) or {}
         for name in p.list_roles():
             role = p.get_role(name)
-            # Resolve provider: check role's llm client type
-            llm = getattr(role, "llm", None)
-            provider = getattr(llm, "provider", "") or getattr(llm, "name", "") or ""
+            role_cfg = role_config(p.config, name)
+            adapter = str(role_cfg.get("provider") or "")
+            provider = provider_key_from_adapter(adapter, configured_providers)
             if not provider:
                 # Fall back to model name hints
                 m = (getattr(role, "model", "") or "").lower()
@@ -1980,12 +2384,22 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     role = p.get_role(role_name)
                 except Exception:
                     continue
-                llm = getattr(role, "llm", None)
-                if llm is None:
-                    continue
+                provider_id = str(override.get("provider") or "").strip().lower()
+                if provider_id in SETUP_PROVIDER_PRESETS:
+                    preset = SETUP_PROVIDER_PRESETS[provider_id]
+                    adapter = str(preset["adapter"])
+                    api_key = env_value(str(preset.get("env_var") or ""))
+                    try:
+                        role.llm_client = get_llm_client(
+                            provider=adapter,
+                            api_key=api_key,
+                            base_url=str(preset.get("base_url") or "") or None,
+                        )
+                    except Exception:
+                        pass
                 if "model" in override and override["model"]:
                     try:
-                        llm.model = override["model"]
+                        role.model = override["model"]
                     except Exception:
                         pass
 

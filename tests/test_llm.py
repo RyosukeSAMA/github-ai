@@ -76,6 +76,24 @@ def test_openai_latest_models_use_responses_api():
     fake_client.chat.completions.create.assert_not_called()
 
 
+def test_future_openai_major_models_use_responses_api():
+    fake_response = MagicMock()
+    fake_response.output_text = "hello from the future"
+    fake_client = MagicMock()
+    fake_client.responses.create.return_value = fake_response
+
+    with patch("openai.OpenAI", return_value=fake_client):
+        c = OpenAIClient(api_key="sk-test")
+        result = c.complete(
+            messages=[{"role": "user", "content": "hi"}],
+            model="gpt-6",
+        )
+
+    assert result == "hello from the future"
+    fake_client.responses.create.assert_called_once()
+    fake_client.chat.completions.create.assert_not_called()
+
+
 def test_anthropic_complete():
     # Mock the response with content blocks
     fake_block = MagicMock()
@@ -97,6 +115,22 @@ def test_anthropic_complete():
     # Verify system prompt was passed
     call_kwargs = fake_client.messages.create.call_args.kwargs
     assert call_kwargs["system"] == "be brief"
+
+
+def test_anthropic_compatible_gateway_uses_bearer_auth_token():
+    fake_client = MagicMock()
+
+    with patch("anthropic.Anthropic", return_value=fake_client) as constructor:
+        client = AnthropicClient(
+            api_key="Bearer sk-kie-test",
+            base_url="https://api.kie.ai/claude",
+        )
+        assert client._get_client() is fake_client
+
+    constructor.assert_called_once_with(
+        auth_token="sk-kie-test",
+        base_url="https://api.kie.ai/claude",
+    )
 
 
 def test_openai_uses_default_model_when_empty():

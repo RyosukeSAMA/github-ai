@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.2.0-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.1-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -43,7 +43,7 @@ Pantheon turns a request into an observable, controllable local workflow. Use **
 | Memory | Local SQLite storage, per-role scope, natural-language detection, and save suggestions |
 | Chronos | Persistent one-time and recurring jobs with run history |
 | Extensions | 6 built-in Skills, local Skills, plugin prompt packs, MCP tools, and Webhook input |
-| Local setup | Provider/model wizard, configuration checks, API connection tests, and an optional login lock |
+| Local setup | Provider/model wizard, configuration checks, API tests, login lock, and optional auto-start service |
 
 Pantheon is local-first. Configuration, memory, scheduled jobs, and extension state stay in the selected workspace. Conversations and display preferences stay in the current browser. Task content is sent only to model providers and external integrations that you enable.
 
@@ -72,6 +72,18 @@ python -m pip install -e .
 pantheon web
 ```
 
+To keep Pantheon available after restarting the computer, install the optional
+per-user service from the repository root:
+
+```bash
+pantheon service install
+pantheon service status
+```
+
+It starts after user login and remains bound to `127.0.0.1:8000`. Use
+`pantheon service logs` or `pantheon service restart` for maintenance. On macOS,
+service logs are stored in `~/Library/Logs/Pantheon/`.
+
 Open <http://127.0.0.1:8000/> and go to **Settings -> Setup**:
 
 1. Select DeepSeek, OpenAI, Anthropic, or Ollama.
@@ -80,6 +92,9 @@ Open <http://127.0.0.1:8000/> and go to **Settings -> Setup**:
 4. Select **Save local config**.
 
 The Web UI saves API keys to the local `.env` file and writes provider, base URL, and model choices to `config/pantheon.yaml`. Restart `pantheon web` when a backend configuration change needs a complete runtime reload.
+
+The Anthropic catalog includes Claude Opus 5 (`claude-opus-5`). Compatible Claude
+gateways can use the same **Anthropic** provider with their own Base URL.
 
 <details>
 <summary>Configure files manually</summary>
@@ -259,7 +274,7 @@ These repository-local state files are covered by `.gitignore` and should remain
 
 ## Current Boundaries
 
-Pantheon v0.2.0 is still an alpha local workspace. Understand these limits before deployment:
+Pantheon v0.2.1 is still an alpha local workspace. Understand these limits before deployment:
 
 - Chat agents execute synchronously. Multi-role steps run in plan order, not in parallel.
 - Attachments are converted to text context when supported; this is not universal multimodal file input.
@@ -324,7 +339,24 @@ ruff check .
 pytest
 ```
 
-The GitHub Actions matrix covers Python 3.10, 3.11, and 3.12.
+Browser regression tests use a separate optional dependency and do not call a model:
+
+```bash
+python -m pip install -e ".[e2e]"
+playwright install chromium
+pytest e2e --browser chromium
+```
+
+Live provider diagnostics are opt-in because they make a real request and may
+incur a small charge:
+
+```bash
+pantheon provider-test --role hermes --live
+PANTHEON_LIVE_TEST=1 pytest tests/live -m live
+```
+
+The GitHub Actions matrix covers Python 3.10, 3.11, and 3.12, with a separate
+Chromium E2E job. CI never receives or tests real provider credentials.
 
 <a id="documentation"></a>
 
@@ -345,6 +377,7 @@ The GitHub Actions matrix covers Python 3.10, 3.11, and 3.12.
 
 - [x] **v0.1**: 5 roles, Hermes orchestration, CLI, Web UI, and SDK
 - [x] **v0.2**: Multi-conversation workspace, live Activity, Chronos, Memory, Skills, MCP, Webhook input, and local login lock
+- [x] **v0.2.1**: Auto-start service, Playwright regression tests, provider smoke tests, and FastAPI lifespan migration
 - [ ] **v0.3**: Native channel adapters, MCP resources/prompts, and visual task orchestration
 - [ ] **v0.4**: Installable extension catalog, semantic memory retrieval, and observability
 - [ ] **v1.0**: Multi-user identity, audit logs, rate limiting, and distributed execution

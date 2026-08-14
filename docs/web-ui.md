@@ -2,7 +2,7 @@
 
 本文记录当前 Web UI 与 Workspace 的主要改动、使用方式、测试方法，以及后续发布到 GitHub 前需要检查的事项。
 
-当前界面标识：`UI v0.2.0`
+当前界面标识：`UI v0.2.1`
 
 ## 改动总览
 
@@ -11,7 +11,7 @@
 - 将 Web UI 调整为更接近 agent workspace 的三栏布局：左侧会话与模式，中间对话，右侧 Workspace。
 - Light / Dark 主题统一使用变量与玻璃拟态风格，减少硬编码背景色。
 - 背景改为低饱和蓝紫渐变网格与柔和氛围层。
-- 左下角增加 `UI v0.2.0`，方便后续定位 UI 版本。
+- 左下角增加 `UI v0.2.1`，方便后续定位 UI 版本。
 - 左下角 GitHub 按钮改为官方 GitHub mark。
 
 ### 会话
@@ -69,6 +69,11 @@
 - 多角色流程会明确区分 `Preparing`、`Planning`、`Step x/y`、`Synthesizing` 和完成状态。
 - 模型等待期间后端每 5 秒发送一次心跳，界面持续保留当前阶段和计时。
 - 单个阶段等待 30 秒后会提示仍在等待模型；超过 90 秒会显示慢响应提醒，用户可以点击 `Stop` 后重试。
+- `Model wait` 表示 Pantheon 正在等待当前 Provider 返回结果，不代表系统正在等用户选择或回复。
+- 每个多角色步骤都会同时收到完整原始任务、自己的分工和前序结果，避免只凭计划里的简短标签猜测业务场景。
+- 中间步骤遇到轻微、可逆的歧义时会说明采用的合理假设并继续，不会悄悄暂停整个协作。
+- 如果涉及费用、外部写入、安全、不可逆操作或关键范围变化，Hermes 会在最终回答中给出 2-4 个编号方案、每项建议和明确推荐项。
+- 用户可以直接回复对应的 `1`、`2`、`3` 或 `4`；界面会连同原任务与所选方案继续提交。
 - 这些进度只代表 Pantheon 已实际进入的阶段，不模拟模型内部并不存在的执行细节。
 
 ### Composer 输入区
@@ -160,6 +165,8 @@ Setup 是给本地安装用户准备的配置入口，适合不熟悉命令行�
 - API key 不会写入浏览器 `localStorage`。
 - 后端接口不会返回完整 API key，只返回 mask 后的状态，例如 `sk-t••••1234`。
 - 保存后后端会重置当前 Pantheon 实例，下一次请求会使用新的本地配置。
+- Anthropic 模型目录包含 Claude Opus 5（`claude-opus-5`）。Claude Messages
+  兼容网关也选择 `Anthropic`，并按服务商说明修改 Base URL。
 - `Current setup` 会按 Hermes、Hephaestus、Athena、Apollo、Chronos 分行显示状态。
 - 顶部摘要会显示 `DeepSeek · 4/4 ready` 或 `Mixed providers · 3/4 ready`。
 - `4/4` 统计的是聊天相关 agent：Hermes、Hephaestus、Athena、Apollo。Chronos 是调度角色，不需要 API key。
@@ -503,12 +510,34 @@ Cmd+Shift+R
 
 后端 `pantheon/web/app.py` 改动后，需要重启服务。
 
+### 电脑重启后自动运行
+
+macOS 和 Linux 用户可以在项目根目录安装当前用户服务：
+
+```bash
+pantheon service install
+pantheon service status
+```
+
+常用维护命令：
+
+```bash
+pantheon service restart
+pantheon service logs
+pantheon service stop
+pantheon service uninstall
+```
+
+服务默认只监听 `127.0.0.1:8000`。如需使用非回环地址，必须先开启
+Settings / Security，并显式传入 `--allow-network`。Chronos 仍依赖该服务运行，
+但安装服务后会在用户登录时自动恢复。
+
 ## 手动测试清单
 
 ### 基础界面
 
 1. 打开 `http://127.0.0.1:8000/`。
-2. 确认左下角显示 `UI v0.2.0`。
+2. 确认左下角显示 `UI v0.2.1`。
 3. 确认 GitHub 按钮使用 GitHub mark。
 4. 打开 Settings 切换 Light / Dark，刷新后确认主题保留。
 
@@ -526,6 +555,11 @@ Cmd+Shift+R
 10. 检查项目根目录 `.env` 里出现 `DEEPSEEK_API_KEY=...`。
 11. 检查 `config/pantheon.yaml` 里 `llm_providers.openai.base_url` 是 DeepSeek endpoint。
 12. 点击 `Check`，确认没有报错。
+13. 点击 `Refresh models`，确认状态显示供应商返回的模型数量，模型下拉更新为当前 API key 可见的模型。
+14. 切换到一个新发现的模型，确认只有点击 `Save local config` 后才会修改本地配置。
+15. 暂时断网后再次点击 `Refresh models`，确认界面保留当前模型，并回退到 `.pantheon/model_catalog.json` 中的缓存目录。
+16. 重启 Web 服务，确认已配置的官方供应商会自动建立模型缓存；24 小时内再次重启不会重复请求供应商。
+17. 将 Base URL 改为第三方兼容网关，确认后台不会自动探测；仅点击 `Refresh models` 时才访问该网关。
 
 ### `/` 命令菜单
 
