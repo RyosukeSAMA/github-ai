@@ -4,6 +4,8 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased
 
+## [0.2.1] - 2026-08-14
+
 ### Added
 
 - Runtime model discovery for OpenAI, Anthropic, DeepSeek, and Ollama, with a
@@ -12,6 +14,12 @@ All notable changes to Pantheon are documented in this file.
   stale catalogs are checked every 24 hours without changing the saved model.
 - GPT-5.6 Sol, Terra, and Luna in the OpenAI recommendation catalog.
 - Claude Opus 5 and Claude Sonnet 5 in the Anthropic model catalog.
+- Per-user background service management for macOS LaunchAgent and Linux systemd:
+  `pantheon service install|status|start|stop|restart|logs|uninstall`.
+- Opt-in `pantheon provider-test --role <god> --live` diagnostics and a live pytest
+  smoke test that never runs without explicit consent.
+- Playwright end-to-end coverage for session/mode navigation, panel behavior, Files,
+  and HTML Preview, plus a dedicated GitHub Actions job.
 
 ### Changed
 
@@ -23,20 +31,6 @@ All notable changes to Pantheon are documented in this file.
   path instead of relying on a GPT-5-only name check.
 - Anthropic-compatible custom base URLs remain available without adding separate
   provider entries to the Setup UI.
-
-## [0.2.1] - 2026-08-12
-
-### Added
-
-- Per-user background service management for macOS LaunchAgent and Linux systemd:
-  `pantheon service install|status|start|stop|restart|logs|uninstall`.
-- Opt-in `pantheon provider-test --role <god> --live` diagnostics and a live pytest
-  smoke test that never runs without explicit consent.
-- Playwright end-to-end coverage for session/mode navigation, panel behavior, Files,
-  and HTML Preview, plus a dedicated GitHub Actions job.
-
-### Changed
-
 - Migrated the Web scheduler lifecycle from deprecated FastAPI event hooks to a
   lifespan context with deterministic Chronos cleanup.
 - Background services remain loopback-only by default and preserve the install
