@@ -138,8 +138,11 @@ def test_hermes_reports_multi_role_progress_before_each_call():
         "plan_ready",
         "step_start",
         "step_done",
+        "agent_message",
+        "agent_message",
         "step_start",
         "step_done",
+        "agent_message",
         "summary_start",
         "summary_done",
     ]
@@ -147,7 +150,7 @@ def test_hermes_reports_multi_role_progress_before_each_call():
     assert [step["role"] for step in plan["steps"]] == ["athena", "hephaestus"]
     assert events[2][1]["index"] == 0
     assert events[2][1]["total"] == 2
-    assert events[4][1]["index"] == 1
+    assert events[6][1]["index"] == 1
     assert result["content"] == "Final synthesis."
 
 
@@ -190,6 +193,95 @@ def test_hermes_passes_context_between_steps():
     hephaestus_call = mock.calls[2]
     user_msg = hephaestus_call["messages"][0]["content"]
     assert "Finding" in user_msg or "async" in user_msg
+
+
+def test_hermes_emits_structured_handoffs_and_injects_contract():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "multi", "reasoning": "research then review", "steps": ['
+        '{"role": "athena", "kind": "work", "task": "research X", '
+        '"depends_on": [], "deliverable": "A sourced brief", '
+        '"acceptance_criteria": ["Includes reliable evidence"]},'
+        '{"role": "hephaestus", "kind": "review", "task": "review the brief", '
+        '"depends_on": [1], "deliverable": "A pass or concrete corrections", '
+        '"acceptance_criteria": ["Checks the original request"]}'
+        "]}"
+    )
+    mock.add_response("Research findings with evidence.")
+    mock.add_response("Review passed with one correction.")
+    mock.add_response("Final synthesis.")
+    hermes, _ = _build_hermes(mock)
+    events: list[tuple[str, dict]] = []
+
+    result = hermes.dispatch(
+        Task(content="Research and review X", mode="multi"),
+        on_event=lambda event, data: events.append((event, data)),
+    )
+
+    messages = [data for event, data in events if event == "agent_message"]
+    assert [item["type"] for item in messages] == [
+        "result",
+        "review_request",
+        "result",
+    ]
+    review_request = messages[1]
+    assert review_request["from_role"] == "athena"
+    assert review_request["to_role"] == "hephaestus"
+    assert review_request["target_step_index"] == 1
+    assert review_request["deliverable"] == "A pass or concrete corrections"
+    assert review_request["acceptance_criteria"] == ["Checks the original request"]
+
+    reviewer_prompt = mock.calls[2]["messages"][0]["content"]
+    assert "Step kind: review" in reviewer_prompt
+    assert "review_request from athena: A sourced brief" in reviewer_prompt
+    assert "Expected deliverable: A pass or concrete corrections" in reviewer_prompt
+    assert "- Checks the original request" in reviewer_prompt
+    assert "Research findings with evidence." in reviewer_prompt
+
+    assert result["communications"] == messages
+    assert result["steps"][1].metadata["incoming_messages"][0]["type"] == (
+        "review_request"
+    )
+
+
+def test_hermes_keeps_explicitly_independent_steps_independent():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "multi", "steps": ['
+        '{"role": "athena", "task": "research X", "depends_on": []},'
+        '{"role": "apollo", "task": "draft Y", "depends_on": []}'
+        "]}"
+    )
+    mock.add_response("Research result.")
+    mock.add_response("Independent draft.")
+    mock.add_response("Final synthesis.")
+    hermes, _ = _build_hermes(mock)
+
+    result = hermes.dispatch(Task(content="Research X and draft Y", mode="multi"))
+
+    assert result["steps"][1].metadata["depends_on"] == []
+    assert "incoming_messages" not in result["steps"][1].metadata
+    assert [item["type"] for item in result["communications"]] == [
+        "result",
+        "result",
+    ]
+
+
+def test_forced_multi_keeps_athena_as_primary_executor():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "single", "role": "athena", "reasoning": "research task"}'
+    )
+    mock.add_response("Primary research answer.")
+    mock.add_response("Implementation review.")
+    mock.add_response("Creative review.")
+    mock.add_response("Council summary.")
+    hermes, _ = _build_hermes(mock)
+
+    result = hermes.dispatch(Task(content="Research this topic", mode="multi"))
+
+    assert result["steps"][0].role == "athena"
+    assert result["steps"][0].metadata["description"] == "core execution"
 
 
 def test_hermes_multi_steps_keep_original_request_and_structure_confirmations():

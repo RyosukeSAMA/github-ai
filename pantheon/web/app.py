@@ -75,6 +75,11 @@ class AskRequest(BaseModel):
     overrides: dict[str, dict[str, str]] | None = None  # {role_name: {provider, model}}
 
 
+class PromptEnhanceRequest(BaseModel):
+    prompt: str
+    mode: str = "auto"
+
+
 class TerminalRequest(BaseModel):
     command: str
     cwd: str = ""
@@ -2286,6 +2291,33 @@ def create_app(config_path: str | None = None) -> FastAPI:
             })
         return {"roles": roles}
 
+    @app.post("/api/prompt/enhance")
+    async def prompt_enhance(req: PromptEnhanceRequest) -> dict[str, str]:
+        prompt = req.prompt.strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="prompt is required")
+        if len(prompt) > 12_000:
+            raise HTTPException(
+                status_code=400,
+                detail="prompt is too long to enhance (maximum 12,000 characters)",
+            )
+
+        try:
+            p = get_pantheon()
+            enhanced = await asyncio.to_thread(p.router.enhance_prompt, prompt, req.mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            LOGGER.warning("Prompt enhancement failed: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Could not enhance the prompt with the configured Hermes model. "
+                    "Check Setup or Test API, then try again."
+                ),
+            ) from exc
+        return {"prompt": enhanced}
+
     # ----- Non-streaming ask (kept for backwards compatibility) -----
     @app.post("/api/ask")
     async def ask(req: AskRequest) -> JSONResponse:
@@ -2307,13 +2339,18 @@ def create_app(config_path: str | None = None) -> FastAPI:
         # Serialize TaskResult objects
         steps = []
         for s in result.get("steps", []):
+            metadata = getattr(s, "metadata", {}) or {}
             steps.append({
                 "role": getattr(s, "role", "?"),
                 "content": getattr(s, "content", ""),
                 "success": getattr(s, "success", True),
                 "error": getattr(s, "error", None),
                 "duration_ms": getattr(s, "duration_ms", 0),
-                "skills": (getattr(s, "metadata", {}) or {}).get("skill_matches", []),
+                "skills": metadata.get("skill_matches", []),
+                "kind": metadata.get("kind", "work"),
+                "deliverable": metadata.get("deliverable", ""),
+                "acceptance_criteria": metadata.get("acceptance_criteria", []),
+                "incoming_messages": metadata.get("incoming_messages", []),
             })
 
         return JSONResponse({
@@ -2321,6 +2358,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
             "content": result.get("content", ""),
             "plan": result.get("plan", ""),
             "steps": steps,
+            "communications": result.get("communications", []),
             "memory_matches": result.get("memory_matches", []),
             "skill_matches": result.get("skill_matches", []),
             "memory_events": memory_events,
@@ -2352,6 +2390,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
           event: step_error
           data: {"index": 0, "role": "athena", "error": "..."}
+
+          event: agent_message
+          data: {"type": "handoff", "from_role": "athena", "to_role": "hephaestus", "summary": "..."}
 
           event: summary_start
           data: {}

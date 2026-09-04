@@ -56,6 +56,66 @@ def test_router_parses_multi_plan():
     assert plan.steps[1].role == "hephaestus"
 
 
+def test_router_parses_structured_collaboration_fields():
+    mock = MockLLMClient()
+    mock.add_response("""
+{
+  "type": "multi",
+  "reasoning": "research then review",
+  "steps": [
+    {
+      "role": "athena",
+      "kind": "work",
+      "task": "research X",
+      "depends_on": [],
+      "deliverable": "A sourced research brief",
+      "acceptance_criteria": ["Includes two sources", "Separates facts from inference"]
+    },
+    {
+      "role": "hephaestus",
+      "kind": "review",
+      "task": "review the brief",
+      "depends_on": [1, 1, 2, "bad"],
+      "deliverable": "A pass or concrete corrections",
+      "acceptance_criteria": ["Checks every requirement"]
+    }
+  ]
+}
+""")
+    router = Router(llm_client=mock, hermes_model="mock")
+
+    plan = router.plan("Research and review", {"athena": {}, "hephaestus": {}})
+
+    assert plan.steps[0].kind == "work"
+    assert plan.steps[0].depends_on == []
+    assert plan.steps[0].deliverable == "A sourced research brief"
+    assert plan.steps[0].acceptance_criteria == [
+        "Includes two sources",
+        "Separates facts from inference",
+    ]
+    assert plan.steps[1].kind == "review"
+    assert plan.steps[1].depends_on == [1]
+    assert plan.steps[1].deliverable == "A pass or concrete corrections"
+
+
+def test_router_defaults_legacy_multi_steps_to_sequential_handoffs():
+    mock = MockLLMClient()
+    mock.add_response(
+        '{"type": "multi", "steps": ['
+        '{"role": "athena", "task": "research"},'
+        '{"role": "hephaestus", "task": "build"}'
+        "]}"
+    )
+    router = Router(llm_client=mock)
+
+    plan = router.plan("Research and build", {"athena": {}, "hephaestus": {}})
+
+    assert plan.steps[0].kind == "work"
+    assert plan.steps[0].depends_on == []
+    assert plan.steps[1].kind == "work"
+    assert plan.steps[1].depends_on == [1]
+
+
 def test_router_handles_invalid_json_fallback():
     mock = MockLLMClient()
     mock.add_response("not json at all, just rambling")
@@ -153,3 +213,29 @@ def test_router_summarize_empty_context_returns_empty():
     assert r.summarize("anything", []) == ""
     # No LLM call made
     assert len(mock.calls) == 0
+
+
+def test_router_enhance_prompt_preserves_draft_and_strips_wrappers():
+    mock = MockLLMClient()
+    mock.add_response("```text\n请比较 PostgreSQL 与 MongoDB，并给出选型建议。\n```")
+    router = Router(llm_client=mock, hermes_model="hermes-model")
+
+    enhanced = router.enhance_prompt("比较 PG 和 Mongo", mode="multi")
+
+    assert enhanced == "请比较 PostgreSQL 与 MongoDB，并给出选型建议。"
+    assert mock.calls[0]["model"] == "hermes-model"
+    assert mock.calls[0]["temperature"] == 0.2
+    assert "<draft>\n比较 PG 和 Mongo\n</draft>" in mock.calls[0]["messages"][0]["content"]
+    assert "multiple objectives" in mock.calls[0]["messages"][0]["content"]
+    assert "Do not answer the task" in mock.calls[0]["system"]
+
+
+def test_router_enhance_prompt_rejects_empty_draft():
+    router = Router(llm_client=MockLLMClient())
+
+    try:
+        router.enhance_prompt("   ")
+    except ValueError as exc:
+        assert str(exc) == "prompt is required"
+    else:
+        raise AssertionError("empty prompts must be rejected")

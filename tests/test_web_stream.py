@@ -44,6 +44,18 @@ def test_stream_reports_live_phases_steps_and_heartbeats(tmp_path, monkeypatch) 
                 "success": True,
                 "error": None,
             })
+            on_event("agent_message", {
+                "message_id": "msg-1",
+                "type": "result",
+                "from_role": "athena",
+                "to_role": "hermes",
+                "summary": "Research brief delivered",
+                "step_index": 1,
+                "target_step_index": 1,
+                "deliverable": "Research brief",
+                "acceptance_criteria": ["Includes reliable evidence"],
+                "metadata": {"success": True},
+            })
             on_event("summary_start", {
                 "role": "hermes",
                 "description": "Preparing the final answer",
@@ -87,4 +99,6 @@ def test_stream_reports_live_phases_steps_and_heartbeats(tmp_path, monkeypatch) 
     assert stream.index("event: phase") < stream.index("event: plan")
     assert stream.index("event: plan") < stream.index("event: step_start")
     assert stream.index("event: step_start") < stream.index("event: step_done")
+    assert "event: agent_message" in stream
+    assert '"type": "result"' in stream
     assert stream.index("event: summary_start") < stream.index("event: done")

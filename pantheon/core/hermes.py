@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from pantheon.core.base import Plan, PlanStep, Task, TaskResult
+from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult
 from pantheon.core.router import Router
 
 
@@ -45,7 +45,8 @@ class Hermes:
             "mode": "single" | "multi",
             "plan": Plan summary,
             "content": final user-facing content,
-            "steps": [TaskResult, ...]   # multi only
+            "steps": [TaskResult, ...],  # multi only
+            "communications": [AgentMessage, ...]
           }
         """
         requested_skill = self._requested_skill(task.skill)
@@ -270,6 +271,7 @@ class Hermes:
     ) -> dict[str, Any]:
         steps_output: list[TaskResult] = []
         context: list[dict[str, Any]] = []
+        communications: list[dict[str, Any]] = []
         total_steps = len(plan.steps)
         self._emit(
             on_event,
@@ -285,6 +287,10 @@ class Hermes:
                         "task": step.task,
                         "description": step.description,
                         "skills": [{"id": step.skill}] if step.skill else [],
+                        "kind": step.kind,
+                        "depends_on": list(step.depends_on),
+                        "deliverable": step.deliverable,
+                        "acceptance_criteria": list(step.acceptance_criteria),
                     }
                     for index, step in enumerate(plan.steps)
                 ],
@@ -323,6 +329,17 @@ class Hermes:
                 )
                 continue
 
+            incoming_messages = self._incoming_agent_messages(
+                step_index=i,
+                step=step,
+                plan=plan,
+                steps_output=steps_output,
+            )
+            for message in incoming_messages:
+                payload = message.to_dict()
+                communications.append(payload)
+                self._emit(on_event, "agent_message", payload)
+
             # Keep the concise plan step, but always give the role the complete
             # request. Planner steps are labels, not enough context to execute.
             sub_task = Task(
@@ -331,6 +348,10 @@ class Hermes:
                     assigned_task=step.task,
                     step_index=i,
                     total_steps=total_steps,
+                    step_kind=step.kind,
+                    deliverable=step.deliverable,
+                    acceptance_criteria=step.acceptance_criteria,
+                    incoming_messages=[item.to_dict() for item in incoming_messages],
                 ),
                 mode="role:" + step.role,
                 skill=step.skill or task.skill,
@@ -344,6 +365,10 @@ class Hermes:
                 "task": step.task,
                 "description": step.description,
                 "skills": skills,
+                "kind": step.kind,
+                "depends_on": list(step.depends_on),
+                "deliverable": step.deliverable,
+                "acceptance_criteria": list(step.acceptance_criteria),
             }
             self._emit(on_event, "step_start", step_payload)
             result = self._run_role(
@@ -356,10 +381,18 @@ class Hermes:
             result.metadata["step_index"] = i
             result.metadata["task"] = step.task
             result.metadata["description"] = step.description
+            result.metadata["kind"] = step.kind
+            result.metadata["depends_on"] = list(step.depends_on)
+            result.metadata["deliverable"] = step.deliverable
+            result.metadata["acceptance_criteria"] = list(step.acceptance_criteria)
             if memories:
                 result.metadata["memory_matches"] = memories
             if skills:
                 result.metadata["skill_matches"] = skills
+            if incoming_messages:
+                result.metadata["incoming_messages"] = [
+                    item.to_dict() for item in incoming_messages
+                ]
             steps_output.append(result)
             self._emit(
                 on_event,
@@ -379,8 +412,25 @@ class Hermes:
                     "role": step.role,
                     "result": result.content,
                     "skills": [item.get("id") for item in skills],
+                    "kind": step.kind,
+                    "deliverable": step.deliverable,
+                    "acceptance_criteria": list(step.acceptance_criteria),
+                    "incoming_messages": [
+                        item.to_dict() for item in incoming_messages
+                    ],
                 }
             )
+
+            if result.success:
+                acknowledgement = self._completion_message(
+                    step_index=i,
+                    step=step,
+                    result=result,
+                    incoming_messages=incoming_messages,
+                )
+                payload = acknowledgement.to_dict()
+                communications.append(payload)
+                self._emit(on_event, "agent_message", payload)
 
         # Summarize via Hermes
         self._emit(
@@ -409,6 +459,7 @@ class Hermes:
             "plan": plan.reasoning,
             "content": summary,
             "steps": steps_output,
+            "communications": communications,
             "memory_matches": self._merge_memory_matches(*[
                 getattr(step, "metadata", {}).get("memory_matches", [])
                 for step in steps_output
@@ -426,8 +477,23 @@ class Hermes:
         assigned_task: str,
         step_index: int,
         total_steps: int,
+        step_kind: str = "work",
+        deliverable: str = "",
+        acceptance_criteria: list[str] | None = None,
+        incoming_messages: list[dict[str, Any]] | None = None,
     ) -> str:
         """Build an executable step without losing the user's original scope."""
+        messages = incoming_messages or []
+        handoff_lines = []
+        for message in messages:
+            source = message.get("from_role") or "hermes"
+            message_type = message.get("type") or "handoff"
+            summary = message.get("summary") or "Prior result is available in context."
+            handoff_lines.append(f"- {message_type} from {source}: {summary}")
+        handoff_block = "\n".join(handoff_lines) or "- Initial assignment from Hermes."
+        criteria = acceptance_criteria or []
+        criteria_block = "\n".join(f"- {item}" for item in criteria) or "- Complete the assigned step with a usable result."
+        expected_deliverable = deliverable or "A concrete result that the next role can use."
         return f"""You are executing step {step_index}/{total_steps} of an active Pantheon multi-role workflow.
 
 Original user request:
@@ -435,6 +501,14 @@ Original user request:
 
 Your assigned step:
 {assigned_task}
+
+Structured collaboration:
+- Step kind: {step_kind}
+- Expected deliverable: {expected_deliverable}
+- Incoming messages:
+{handoff_block}
+- Acceptance criteria:
+{criteria_block}
 
 Workflow rules:
 - Complete the assigned step now using the original request and prior-step context.
@@ -448,6 +522,77 @@ Workflow rules:
   Recommended: <option number> - <brief reason>
 - Confirmation is required for decisions involving cost, external writes, security, irreversible actions, or a major change of scope. Do not perform the dependent action or claim the user approved it; prepare the options for Hermes to surface in the final answer.
 - Return a useful intermediate deliverable for the next role."""
+
+    @staticmethod
+    def _incoming_agent_messages(
+        *,
+        step_index: int,
+        step: PlanStep,
+        plan: Plan,
+        steps_output: list[TaskResult],
+    ) -> list[AgentMessage]:
+        if step_index <= 1:
+            return []
+        dependencies = list(step.depends_on)
+        message_type = {
+            "question": "question",
+            "review": "review_request",
+            "revision": "revision_request",
+        }.get(step.kind, "handoff")
+        messages: list[AgentMessage] = []
+        for dependency in dependencies:
+            source_index = dependency - 1
+            if source_index < 0 or source_index >= len(steps_output):
+                continue
+            source_step = plan.steps[source_index]
+            source_result = steps_output[source_index]
+            if message_type in {"question", "revision_request"}:
+                summary = step.task or step.description or "A response is required."
+            else:
+                summary = (
+                    source_step.deliverable
+                    or source_step.description
+                    or source_step.task
+                    or source_result.content
+                    or "Prior step completed."
+                )
+            messages.append(AgentMessage(
+                message_type=message_type,
+                from_role=source_step.role,
+                to_role=step.role,
+                summary=str(summary)[:600],
+                step_index=step_index,
+                target_step_index=dependency,
+                deliverable=step.deliverable,
+                acceptance_criteria=list(step.acceptance_criteria),
+                metadata={
+                    "source_success": source_result.success,
+                    "source_task": source_step.task,
+                },
+            ))
+        return messages
+
+    @staticmethod
+    def _completion_message(
+        *,
+        step_index: int,
+        step: PlanStep,
+        result: TaskResult,
+        incoming_messages: list[AgentMessage],
+    ) -> AgentMessage:
+        recipient = incoming_messages[-1].from_role if incoming_messages else "hermes"
+        summary = result.content or step.deliverable or step.task or "Step completed."
+        return AgentMessage(
+            message_type="result",
+            from_role=step.role,
+            to_role=recipient,
+            summary=str(summary)[:600],
+            step_index=step_index,
+            target_step_index=step_index,
+            deliverable=step.deliverable,
+            acceptance_criteria=list(step.acceptance_criteria),
+            metadata={"duration_ms": result.duration_ms, "success": result.success},
+        )
 
     def _role_descriptions(self) -> dict[str, dict[str, Any]]:
         descriptions = {
@@ -494,12 +639,18 @@ Workflow rules:
 
         steps: list[PlanStep] = []
         for index, role in enumerate(ordered):
-            if index == 0 and role == "athena":
+            if index == 0 and role == "athena" and primary != "athena":
                 steps.append(PlanStep(
                     role=role,
                     task=f"Analyze the task and gather the key constraints: {task.content}",
                     description="research and framing",
                     skill=task.skill or "",
+                    kind="work",
+                    deliverable="A concise brief of constraints, risks, and recommended direction.",
+                    acceptance_criteria=[
+                        "Covers the complete user request.",
+                        "Separates evidence, assumptions, and open decisions.",
+                    ],
                 ))
             elif role == primary:
                 steps.append(PlanStep(
@@ -507,12 +658,26 @@ Workflow rules:
                     task=f"Produce the core answer for: {task.content}",
                     description="core execution",
                     skill=task.skill or "",
+                    kind="work",
+                    depends_on=[index] if index else [],
+                    deliverable="The primary implementation or answer requested by the user.",
+                    acceptance_criteria=[
+                        "Uses prior role findings where relevant.",
+                        "Produces a concrete, usable result.",
+                    ],
                 ))
             else:
                 steps.append(PlanStep(
                     role=role,
                     task="Review prior results and refine the final direction.",
                     description="review and refinement",
+                    kind="review",
+                    depends_on=[index] if index else [],
+                    deliverable="A focused review with corrections or an explicit pass decision.",
+                    acceptance_criteria=[
+                        "Checks the result against the original request.",
+                        "Names concrete defects before proposing corrections.",
+                    ],
                 ))
 
         reasoning = single_plan.reasoning or "User selected Multi-role."

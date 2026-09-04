@@ -8,6 +8,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+PLAN_STEP_KINDS = frozenset({"work", "question", "review", "revision"})
+AGENT_MESSAGE_TYPES = frozenset(
+    {"handoff", "question", "review_request", "revision_request", "result"}
+)
+
 
 @dataclass
 class Task:
@@ -47,6 +52,44 @@ class PlanStep:
     task: str
     description: str = ""
     skill: str = ""
+    kind: str = "work"
+    depends_on: list[int] = field(default_factory=list)
+    deliverable: str = ""
+    acceptance_criteria: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AgentMessage:
+    """A structured, Hermes-mediated message between roles."""
+
+    message_type: str
+    from_role: str
+    to_role: str
+    summary: str
+    step_index: int
+    target_step_index: int | None = None
+    deliverable: str = ""
+    acceptance_criteria: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    message_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+
+    def __post_init__(self) -> None:
+        if self.message_type not in AGENT_MESSAGE_TYPES:
+            raise ValueError(f"Unsupported agent message type: {self.message_type}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "message_id": self.message_id,
+            "type": self.message_type,
+            "from_role": self.from_role,
+            "to_role": self.to_role,
+            "summary": self.summary,
+            "step_index": self.step_index,
+            "target_step_index": self.target_step_index,
+            "deliverable": self.deliverable,
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "metadata": dict(self.metadata),
+        }
 
 
 @dataclass
@@ -145,11 +188,21 @@ class Role(abc.ABC):
             return ""
         lines = ["Prior steps in this multi-role task:"]
         for i, step in enumerate(context, 1):
-            lines.append(
+            block = (
                 f"\n[Step {i} — {step.get('role', '?')}]\n"
+                f"Kind: {step.get('kind', 'work')}\n"
                 f"Task: {step.get('step', '?')}\n"
                 f"Result: {step.get('result', '?')}"
             )
+            deliverable = str(step.get("deliverable") or "").strip()
+            if deliverable:
+                block += f"\nDeliverable: {deliverable}"
+            criteria = step.get("acceptance_criteria") or []
+            if criteria:
+                block += "\nAcceptance criteria: " + "; ".join(
+                    str(item) for item in criteria
+                )
+            lines.append(block)
         return "\n".join(lines)
 
 

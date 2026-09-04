@@ -59,29 +59,38 @@ When a user calls `p.ask("write a Python decorator")`:
    - Includes the enabled Skill catalog for each god.
    - The LLM returns JSON describing either:
      - `{type: "single", role: "..."}` — one god handles it, or
-     - `{type: "multi", steps: [...]}` — sequence of gods.
+     - `{type: "multi", steps: [...]}` - a sequence of gods with a step type,
+       dependencies, an expected deliverable, and acceptance criteria.
 
 4. **Skill selection and execution** (`core/hermes.py:Hermes._run_*`):
    - An explicit Skill is validated against its assigned gods.
    - Otherwise the role receives at most one matching implicit Skill.
    - Skill instructions are injected only for the selected step and recorded in `TaskResult.metadata`.
    - **Single**: the named role's `run()` is called once, result returned.
-   - **Multi**: each step's role is called in order; each step receives the prior steps' results as `context`. The final step's result is the immediate answer.
+   - **Multi**: each step's role is called in order. Hermes converts dependencies
+     into typed `AgentMessage` records (`handoff`, `question`, `review_request`, or
+     `revision_request`) and sends the role its contract plus prior results.
+   - Successful steps return a structured `result` message to Hermes or the role
+     that supplied the incoming work.
 
 5. **Role execution** (`pantheon/roles/<name>.py`):
    - Each role's `run(task, context)` method formats the prompt with its own `system_prompt` and calls its LLM client.
 
 6. **Summarization** (multi mode only): The Router's `summarize()` is called with all step results, producing a coherent final answer.
 
-7. **Return** to the user as a `dict`: `{mode, plan, content, steps}`.
+7. **Return** to the user as a `dict`:
+   `{mode, plan, content, steps, communications}`.
 
 ## Why this design?
 
-### Why a single orchestrator (Hermes) instead of agents calling each other?
+### Why Hermes-mediated messages instead of open-ended agent chat?
 
-- **Predictable**: One LLM decides the plan. No infinite loops of agents calling agents.
-- **Cheap**: We only pay for one planning LLM call per multi-role task, not N+1.
-- **Debuggable**: You can log the plan and see exactly what Hermes decided.
+- **Predictable**: Hermes owns the plan, dependencies, and final synthesis, so
+  agents cannot create an infinite conversation loop.
+- **Useful collaboration**: roles still exchange explicit handoffs, questions,
+  review requests, revision requests, and results.
+- **Debuggable**: every message is recorded and streamed to Workspace Activity.
+- **Bounded cost**: the number of role calls is fixed by the plan.
 
 ### Why allow per-role models?
 
@@ -110,7 +119,7 @@ All three share the same `Pantheon.ask()` so there's one source of truth.
 | `Hermes` | `core/hermes.py` | Orchestrator |
 | `Router` | `core/router.py` | LLM-driven planner |
 | `Role` (ABC) | `core/base.py` | Base class for all gods |
-| `Task` / `TaskResult` / `Plan` | `core/base.py` | Data classes |
+| `Task` / `TaskResult` / `Plan` / `AgentMessage` | `core/base.py` | Task, plan, result, and collaboration contracts |
 | `SkillStore` | `core/extensions.py` | Built-in/local SKILL.md registry and role matching |
 | `BaseLLMClient` (ABC) | `llm/base.py` | LLM provider interface |
 | `OpenAIClient` / `AnthropicClient` / `OllamaClient` | `llm/` | Provider implementations |
@@ -181,6 +190,9 @@ does not edit the packaged file; the override is stored in
 
 ## What's intentionally NOT here
 
-- **No agent-to-agent messaging**: avoids complexity and infinite loops.
+- **No unbounded peer-to-peer agent chat**: collaboration is structured,
+  plan-driven, and mediated by Hermes.
+- **No runtime replanning loop yet**: question, review, and revision steps are
+  selected during planning rather than created recursively from agent output.
 - **No vector DB dependency**: local long-term memory currently uses SQLite and bounded text matching.
 - **No streaming output yet**: results are returned all at once. (Trivial to add — modify `Role.run` to yield chunks.)
