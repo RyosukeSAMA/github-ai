@@ -27,6 +27,7 @@
   const chatEl       = $('#chat');
   const inputEl      = $('#input');
   const sendBtn      = $('#send-btn');
+  const enhancePromptBtn = $('#enhance-prompt-btn');
   const composerForm = $('#composer');
   const attachBtn    = $('#attach-btn');
   const attachmentInput = $('#attachment-input');
@@ -201,6 +202,9 @@
   let currentMode = 'auto';
   let roles = [];
   let isStreaming = false;
+  let promptEnhancing = false;
+  let promptBeforeEnhance = '';
+  let enhancedPromptValue = '';
   let abortCtrl = null;
   let turns = [];   // conversation history (in-memory only)
   let sessions = [];
@@ -3263,10 +3267,27 @@
         ${steps.map((step) => {
           const meta = metaFor(step.role);
           const task = step.task || step.description || 'Complete assigned work';
+          const kind = String(step.kind || 'work').toLowerCase();
+          const kindLabel = {
+            work: 'Work',
+            question: 'Question',
+            review: 'Review',
+            revision: 'Revision',
+          }[kind] || 'Work';
+          const dependencies = Array.isArray(step.depends_on) ? step.depends_on : [];
+          const criteria = Array.isArray(step.acceptance_criteria)
+            ? step.acceptance_criteria.filter(Boolean)
+            : [];
           return `
             <li>
-              <strong style="color: ${meta.color}">${escapeHtml(meta.label)}</strong>
+              <div class="ws-plan-step-head">
+                <strong style="color: ${meta.color}">${escapeHtml(meta.label)}</strong>
+                <span class="ws-plan-kind">${escapeHtml(kindLabel)}</span>
+                ${dependencies.length ? `<span class="ws-plan-deps">after ${dependencies.map((item) => `#${escapeHtml(item)}`).join(', ')}</span>` : ''}
+              </div>
               <span>${escapeHtml(task)}</span>
+              ${step.deliverable ? `<small class="ws-plan-deliverable">Deliverable: ${escapeHtml(step.deliverable)}</small>` : ''}
+              ${criteria.length ? `<small class="ws-plan-criteria">Done when: ${criteria.map((item) => escapeHtml(item)).join(' · ')}</small>` : ''}
             </li>
           `;
         }).join('')}
@@ -5006,6 +5027,43 @@
     note.hidden = !text;
   }
 
+  function addWorkspaceAgentMessage(data = {}) {
+    const empty = wsStepsEl.querySelector('.ws-step-empty');
+    if (empty) empty.remove();
+    const messageType = String(data.type || 'handoff').toLowerCase();
+    const labels = {
+      handoff: 'handoff',
+      question: 'question',
+      review_request: 'review request',
+      revision_request: 'revision request',
+      result: 'result',
+    };
+    const from = metaFor(data.from_role || 'hermes');
+    const to = metaFor(data.to_role || 'hermes');
+    const li = document.createElement('li');
+    li.className = `ws-step ws-agent-message message-${messageType}`;
+    li.dataset.messageId = data.message_id || '';
+    li.dataset.messageType = messageType;
+    const criteria = Array.isArray(data.acceptance_criteria)
+      ? data.acceptance_criteria.filter(Boolean)
+      : [];
+    li.innerHTML = `
+      <span class="ws-step-dot"></span>
+      <div class="ws-step-text">
+        <div class="ws-step-head">
+          <span class="ws-step-role">${escapeHtml(from.label)} <span class="ws-agent-arrow">→</span> ${escapeHtml(to.label)}</span>
+          <span class="ws-step-status">${escapeHtml(labels[messageType] || messageType)}</span>
+        </div>
+        <div class="ws-step-task">${escapeHtml(data.summary || 'Structured collaboration message')}</div>
+        ${data.deliverable ? `<div class="ws-agent-deliverable">Deliverable: ${escapeHtml(data.deliverable)}</div>` : ''}
+        ${criteria.length ? `<div class="ws-agent-criteria">Done when: ${criteria.map((item) => escapeHtml(item)).join(' · ')}</div>` : ''}
+      </div>
+    `;
+    wsStepsEl.appendChild(li);
+    wsStepsEl.scrollTop = wsStepsEl.scrollHeight;
+    return li;
+  }
+
   function ensureWorkspaceMcpCall(data = {}) {
     const callId = String(data.call_id || '');
     if (callId && mcpWorkspaceCalls.has(callId)) return mcpWorkspaceCalls.get(callId);
@@ -5626,6 +5684,87 @@
     sendBtn.disabled = false;
     sendBtn.classList.toggle('is-stopping', streaming);
     sendBtn.querySelector('.send-text').textContent = streaming ? 'Stop' : 'Send';
+    updatePromptEnhanceButton();
+  }
+
+  function updatePromptEnhanceButton() {
+    if (!enhancePromptBtn) return;
+    const canUndo = Boolean(
+      promptBeforeEnhance && enhancedPromptValue && inputEl.value === enhancedPromptValue,
+    );
+    enhancePromptBtn.disabled = isStreaming || promptEnhancing;
+    enhancePromptBtn.classList.toggle('is-loading', promptEnhancing);
+    enhancePromptBtn.classList.toggle('is-active', canUndo);
+    enhancePromptBtn.setAttribute('aria-busy', String(promptEnhancing));
+    enhancePromptBtn.setAttribute('aria-pressed', String(canUndo));
+    const label = promptEnhancing
+      ? 'Enhancing prompt'
+      : canUndo
+        ? 'Undo prompt enhancement'
+        : 'Enhance prompt with the configured Hermes model';
+    enhancePromptBtn.title = label;
+    enhancePromptBtn.setAttribute('aria-label', label);
+  }
+
+  function clearPromptEnhancement({ clearStatus = false } = {}) {
+    const hadEnhancement = Boolean(promptBeforeEnhance || enhancedPromptValue);
+    promptBeforeEnhance = '';
+    enhancedPromptValue = '';
+    updatePromptEnhanceButton();
+    if (clearStatus && hadEnhancement) setComposerStatus('');
+  }
+
+  async function enhanceCurrentPrompt() {
+    if (isStreaming || promptEnhancing) return;
+    if (promptBeforeEnhance && inputEl.value === enhancedPromptValue) {
+      const original = promptBeforeEnhance;
+      clearPromptEnhancement({ clearStatus: true });
+      inputEl.value = original;
+      autoResize();
+      inputEl.focus();
+      inputEl.setSelectionRange(original.length, original.length);
+      setComposerStatus('Original prompt restored', 'ok');
+      return;
+    }
+
+    const sourcePrompt = inputEl.value;
+    if (!sourcePrompt.trim()) {
+      setComposerStatus('Write a prompt before enhancing it', 'warn');
+      inputEl.focus();
+      return;
+    }
+
+    promptEnhancing = true;
+    updatePromptEnhanceButton();
+    setComposerStatus('Enhancing prompt with Hermes…', '', true);
+    try {
+      const response = await fetch('/api/prompt/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: sourcePrompt, mode: currentMode }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+      const enhanced = String(data.prompt || '').trim();
+      if (!enhanced) throw new Error('The model returned an empty prompt');
+      if (inputEl.value !== sourcePrompt) {
+        setComposerStatus('Draft changed; enhancement was not applied', 'warn');
+        return;
+      }
+
+      promptBeforeEnhance = sourcePrompt;
+      enhancedPromptValue = enhanced;
+      inputEl.value = enhanced;
+      autoResize();
+      inputEl.focus();
+      inputEl.setSelectionRange(enhanced.length, enhanced.length);
+      setComposerStatus('Prompt enhanced · click the wand to undo', 'ok', true);
+    } catch (error) {
+      setComposerStatus(error.message || 'Could not enhance prompt', 'error', true);
+    } finally {
+      promptEnhancing = false;
+      updatePromptEnhanceButton();
+    }
   }
 
   function taskLooksPreviewable(task) {
@@ -5807,6 +5946,14 @@
               setWorkspaceState(`Step ${index + 1}/${total}`, 'running');
             }
             pushWorkspaceLine(`${metaFor(r).label} started: ${data.task || data.description || 'thinking'}`);
+            break;
+          }
+          case 'agent_message': {
+            addWorkspaceAgentMessage(data);
+            const from = metaFor(data.from_role || 'hermes').label;
+            const to = metaFor(data.to_role || 'hermes').label;
+            const label = String(data.type || 'handoff').replaceAll('_', ' ');
+            pushWorkspaceLine(`${from} → ${to}: ${label}`);
             break;
           }
           case 'step_chunk': {
@@ -6752,6 +6899,10 @@
     });
   }
 
+  if (enhancePromptBtn) {
+    enhancePromptBtn.addEventListener('click', enhanceCurrentPrompt);
+  }
+
   if (composerForm) {
     composerForm.addEventListener('dragover', (event) => {
       if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
@@ -6821,6 +6972,9 @@
     setTimeout(() => hideSlashCommandMenu(), 120);
   });
   function autoResize() {
+    if (!promptEnhancing && enhancedPromptValue && inputEl.value !== enhancedPromptValue) {
+      clearPromptEnhancement({ clearStatus: true });
+    }
     inputEl.style.height = 'auto';
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
   }

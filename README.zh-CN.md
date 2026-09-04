@@ -37,7 +37,7 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 
 | 模块 | 当前实现 |
 |---|---|
-| 多 Agent 调度 | Auto 自动路由、指定角色和强制 Multi-role 计划 |
+| 多 Agent 调度 | Auto 自动路由、指定角色，以及带交接与复核约定的结构化 Multi-role 计划 |
 | Agent 工作区 | 实时 Activity、HTML Preview、文件浏览/编辑和 Terminal |
 | 会话 | 多会话、首条消息自动命名、Markdown 导出、附件和 `/` 命令 |
 | Memory | 本地 SQLite、角色范围、自然语言记忆识别和保存建议 |
@@ -160,7 +160,7 @@ Hermes、Hephaestus、Athena 和 Apollo 都可以在 Settings 中分别设置不
 
 右侧 Workspace 是任务的操作视图：
 
-- **Activity**：显示当前任务、Hermes 计划、执行中的神、耗时、Skills、Memory 命中、MCP 调用、审批和完成状态。
+- **Activity**：显示当前任务、Hermes 计划、步骤类型、依赖关系、Agent 交接、交付物、验收条件、耗时、Skills、Memory 命中、MCP 调用、审批和完成状态。
 - **Preview**：在沙箱 iframe 中渲染完整 HTML 和消息产物，支持桌面/移动视图与缩放。
 - **Files**：在工作区根目录内浏览、打开、编辑、保存、下载和预览文件。
 - **Terminal**：流式显示本地命令输出，保留命令历史，支持取消，并在识别到风险命令时要求确认。
@@ -276,6 +276,8 @@ for step in result["steps"]:
 Pantheon v0.2.1 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
 - Chat Agent 为同步执行；Multi-role 会按计划顺序执行步骤，而不是并行运行。
+- Agent 之间使用由 Hermes 中介的结构化消息，不会进行无边界的点对点群聊或自主反馈循环。
+- Question、Review 与 Revision 消息目前来自既定计划；运行结果暂时不会自动触发重新规划。
 - 附件会在支持时转换为文本上下文，并不是通用的多模态模型文件上传。
 - 语音输入依赖浏览器 SpeechRecognition，不同浏览器和语言的支持程度不同。
 - HTML Preview 使用沙箱，但仍应把生成页面视为不可信内容。

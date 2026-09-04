@@ -37,7 +37,7 @@ Pantheon turns a request into an observable, controllable local workflow. Use **
 
 | Area | Current implementation |
 |---|---|
-| Multi-agent orchestration | Auto routing, direct roles, and forced sequential Multi-role plans |
+| Multi-agent orchestration | Auto routing, direct roles, and structured Multi-role plans with handoffs and review contracts |
 | Agent workspace | Live Activity, sandboxed HTML Preview, file browsing/editing, and Terminal |
 | Conversations | Multiple chats, first-message titles, Markdown export, attachments, and slash commands |
 | Memory | Local SQLite storage, per-role scope, natural-language detection, and save suggestions |
@@ -161,7 +161,7 @@ A role prompt does not grant external capabilities by itself. Third-party tools 
 
 The right-side Workspace is the task operations view:
 
-- **Activity** shows the current task, Hermes plan, active god, elapsed time, Skills, memory hits, MCP calls, approvals, and completion state.
+- **Activity** shows the current task, Hermes plan, typed steps, dependencies, Agent handoffs, deliverables, acceptance criteria, elapsed time, Skills, memory hits, MCP calls, approvals, and completion state.
 - **Preview** renders complete HTML and message artifacts in a sandboxed iframe, with desktop/mobile modes and zoom controls.
 - **Files** browses, opens, edits, saves, downloads, and previews files inside the workspace root.
 - **Terminal** streams local command output, retains command history, supports cancellation, and asks for confirmation on recognized risky commands.
@@ -277,6 +277,10 @@ These repository-local state files are covered by `.gitignore` and should remain
 Pantheon v0.2.1 is still an alpha local workspace. Understand these limits before deployment:
 
 - Chat agents execute synchronously. Multi-role steps run in plan order, not in parallel.
+- Agent communication is structured and mediated by Hermes. Pantheon does not run
+  unbounded peer-to-peer conversations or autonomous feedback loops.
+- Question, review, and revision messages currently come from the planned workflow;
+  runtime results do not yet trigger automatic replanning.
 - Attachments are converted to text context when supported; this is not universal multimodal file input.
 - Voice input depends on browser SpeechRecognition support, which varies by browser and language.
 - HTML Preview is sandboxed, but generated pages should still be treated as untrusted content.

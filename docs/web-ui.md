@@ -80,6 +80,8 @@
 
 - 增加附件按钮。
 - 增加语音输入按钮。
+- 发送键左侧增加提示词增强按钮。明确点击后，当前草稿会发送给已配置的 Hermes 模型进行改写，但不会自动发送到对话。
+- 增强后的内容会替换输入框草稿；再次点击魔杖可恢复原文。若请求期间用户已修改草稿，返回结果不会覆盖新内容。
 - Settings / Display 里增加 `Voice language` 下拉。
 - 支持拖拽文件到输入区。
 - 文本类附件会作为上下文注入 prompt，一起发送给 agent。
@@ -311,7 +313,9 @@ Activity 用来看 agent 正在做什么，适合观察任务流。
 
 - 当前任务摘要
 - Hermes plan
-- 各个角色的执行步骤
+- 各个角色的执行步骤，以及 Work / Question / Review / Revision 类型
+- 步骤依赖、预期交付物与验收条件
+- Agent 之间的 Handoff、Question、Review Request、Revision Request 和 Result 消息
 - 状态、耗时、完成情况
 - 检测到 HTML 时的快速 Preview 操作
 
@@ -319,7 +323,12 @@ Activity 用来看 agent 正在做什么，适合观察任务流。
 
 - 判断 Multi-role 是否真的触发了多 agent 协作。
 - 看当前任务是 Hermes 在规划，还是某个角色在执行。
+- 看上一个角色把什么结果交给了谁，以及下一个角色按什么条件完成。
 - 发现步骤卡住、状态未结束等问题。
+
+这些消息由 Hermes 根据计划生成并记录。Agent 不会绕过 Hermes 自由群聊，
+因此协作过程可观察、可停止，也不会形成无限反馈循环。当前 Question、Review
+和 Revision 属于计划阶段确定的步骤，执行中暂时不会自动追加新的循环。
 
 ### Preview
 

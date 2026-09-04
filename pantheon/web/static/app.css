@@ -1704,7 +1704,8 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
   transition: all .15s;
   flex-shrink: 0;
 }
-.composer-tool-btn svg {
+.composer-tool-btn svg,
+.composer-icon-btn svg {
   width: 17px;
   height: 17px;
   fill: none;
@@ -1719,14 +1720,30 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
   background: var(--bg-3);
   color: var(--text);
 }
-.composer-tool-btn.is-active {
+.composer-tool-btn.is-active,
+.composer-icon-btn.is-active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.composer-tool-btn:disabled {
+.composer-tool-btn:disabled,
+.composer-icon-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.prompt-enhance-btn.is-loading {
+  color: var(--accent);
+  cursor: wait;
+}
+.prompt-enhance-btn.is-loading svg {
+  animation: prompt-enhance-pulse .8s ease-in-out infinite alternate;
+}
+@keyframes prompt-enhance-pulse {
+  from { opacity: 0.45; transform: scale(0.88); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt-enhance-btn.is-loading svg { animation: none; }
 }
 .composer-inner:hover {
   background: var(--control-hover);
@@ -2348,6 +2365,44 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.ws-plan-step-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+.ws-plan-step-head strong {
+  margin-bottom: 0;
+}
+.ws-plan-kind,
+.ws-plan-deps {
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  color: var(--text-faint) !important;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+}
+.ws-plan-kind {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-soft));
+  color: var(--accent) !important;
+}
+.ws-plan-deliverable,
+.ws-plan-criteria {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.ws-plan-criteria {
+  font-family: var(--font-mono);
+}
 .ws-roadmap li span {
   color: var(--text-dim);
   line-height: 1.45;
@@ -2405,6 +2460,52 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
 }
 .ws-step.ws-step-mcp .ws-step-role {
   letter-spacing: 0;
+}
+.ws-step.ws-agent-message {
+  margin-left: 16px;
+  padding: 8px 10px;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-soft));
+}
+.ws-step.ws-agent-message .ws-step-dot {
+  margin-top: 3px;
+  background: var(--bg-1);
+  border-color: var(--accent);
+}
+.ws-step.ws-agent-message .ws-step-role {
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.ws-step.ws-agent-message .ws-step-status {
+  color: var(--accent);
+}
+.ws-step.ws-agent-message.message-question,
+.ws-step.ws-agent-message.message-review_request {
+  border-color: color-mix(in srgb, var(--accent-warn) 46%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent-warn) 5%, var(--panel-soft));
+}
+.ws-step.ws-agent-message.message-revision_request {
+  border-color: color-mix(in srgb, var(--accent-err) 44%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent-err) 5%, var(--panel-soft));
+}
+.ws-step.ws-agent-message.message-result {
+  border-color: color-mix(in srgb, var(--accent-3) 42%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent-3) 5%, var(--panel-soft));
+}
+.ws-agent-arrow {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+.ws-agent-deliverable,
+.ws-agent-criteria {
+  margin-top: 5px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.ws-agent-criteria {
+  font-family: var(--font-mono);
 }
 .ws-step.approval {
   border-color: color-mix(in srgb, var(--accent-warn) 64%, var(--border-soft));

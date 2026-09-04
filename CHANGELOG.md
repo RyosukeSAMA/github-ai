@@ -4,6 +4,20 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Composer prompt enhancement powered by the configured Hermes model, with a
+  review-before-send flow and one-click undo to restore the original draft.
+- Structured Multi-role contracts with typed work, question, review, and revision
+  steps, explicit dependencies, expected deliverables, and acceptance criteria.
+- Hermes-mediated agent messages for handoffs, targeted questions, review or
+  revision requests, and step results, all visible in Workspace Activity.
+
+### Changed
+
+- Multi-role execution now passes structured collaboration context together with
+  prior results while keeping Hermes in control of routing and final synthesis.
+
 ## [0.2.1] - 2026-08-14
 
 ### Added
