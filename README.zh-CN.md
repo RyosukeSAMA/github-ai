@@ -222,6 +222,10 @@ Channels 当前只提供 Webhook 入口。钉钉、企业微信、微信、QQ、
 
 ### CLI
 
+![Pantheon Council CLI](docs/images/pantheon-cli.svg)
+
+<p align="center"><sub>Council 视图在同一个终端流程中展示路由、Agent 交接、执行结果与最终答案。</sub></p>
+
 ```bash
 # 让 Hermes 自动决定路由
 pantheon ask "调研一个主题并整理可靠证据"

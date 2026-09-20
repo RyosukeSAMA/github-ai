@@ -223,6 +223,10 @@ Channels currently expose only the Webhook input. Native adapters for DingTalk, 
 
 ### CLI
 
+![Pantheon Council CLI](docs/images/pantheon-cli.svg)
+
+<p align="center"><sub>The Council view keeps routing, specialist handoffs, execution results, and the final answer visible in one terminal workflow.</sub></p>
+
 ```bash
 # Let Hermes choose the route
 pantheon ask "Research a topic and organize reliable evidence"
