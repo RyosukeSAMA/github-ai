@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/pantheon-banner.jpg" alt="Pantheon local multi-agent workspace" width="100%">
+  <img src="docs/images/pantheon-banner-pixel.png" alt="Pantheon local multi-agent workspace" width="100%">
 </p>
 
 <p align="center">
