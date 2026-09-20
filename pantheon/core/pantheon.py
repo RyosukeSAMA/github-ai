@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,7 @@ class Pantheon:
         content: str,
         mode: str = "auto",
         skill: str | None = None,
+        on_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Ask the Pantheon to do something.
 
@@ -96,12 +98,13 @@ class Pantheon:
               - "role:<name>": Force a specific role.
               - "multi": Force multi-role decomposition.
             skill: Optional installed skill id to invoke explicitly.
+            on_event: Optional callback for orchestration progress events.
 
         Returns:
             Dict with keys: mode, plan, content, steps.
         """
         task = Task(content=content, mode=mode, skill=skill)
-        return self.hermes.dispatch(task)
+        return self.hermes.dispatch(task, on_event=on_event)
 
     def list_roles(self) -> list[str]:
         """Return names of all enabled roles."""
