@@ -51,69 +51,151 @@ Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保�
 
 ## 快速开始
 
-### 环境要求
+下面的流程假设用户第一次接触 Python 和命令行，并从一台尚未准备开发环境的电脑开始。Pantheon 已测试 Python 3.10-3.12，推荐使用 Python 3.11 或 3.12。
 
-- Python 3.10 或更高版本
-- Git
-- 至少一个支持的模型 Provider，或正在运行的 Ollama
-- 推荐 macOS 或 Linux；Windows 用户目前建议使用 WSL
+| 电脑系统 | 使用环境 | 当前支持状态 |
+|---|---|---|
+| macOS 13 或更新版本 | Terminal + Homebrew + Python 3.11/3.12 | 推荐 |
+| Ubuntu 22.04/24.04 | Terminal + 系统 Python | 推荐，CI 已覆盖 |
+| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 支持的安装方式 |
+| Windows 原生 PowerShell | — | 当前不支持 |
 
-### 安装并启动
+此外还需要 Git、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。
+
+### 第一步：准备电脑
+
+**macOS：**打开“终端”，先运行：
 
 ```bash
+xcode-select --install
+```
+
+完成弹出的系统安装窗口后，再检查 Homebrew：
+
+```bash
+brew --version
+```
+
+如果提示找不到命令，安装 Homebrew，并按照安装程序最后显示的说明设置 shell 路径：
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+关闭并重新打开终端，然后执行：
+
+```bash
+brew install python@3.12 git
+python3.12 --version
+git --version
+```
+
+**Ubuntu Linux：**打开终端，依次运行：
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip
+python3 --version
+git --version
+```
+
+**Windows 11：**以管理员身份打开 PowerShell，执行 `wsl --install -d Ubuntu`，重启电脑后打开 **Ubuntu**，再执行上面的 Ubuntu 命令。请把 Pantheon 下载到 Linux 主目录，不要放在 `/mnt/c` 下。
+
+### 第二步：下载并安装 Pantheon
+
+在终端中执行；Windows 用户在 Ubuntu 窗口中执行：
+
+```bash
+cd ~
 git clone https://github.com/RyosukeSAMA/github-ai.git
 cd github-ai
+```
 
+**macOS** 用户执行：
+
+```bash
+python3.12 -m venv .venv
+```
+
+**Ubuntu 或 WSL** 用户执行：
+
+```bash
 python3 -m venv .venv
+```
+
+然后所有系统继续执行：
+
+```bash
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
+pantheon --version
+```
 
+最后一条命令应显示 `pantheon 0.2.1` 或更新版本。
+
+### 第三步：启动并配置 Web UI
+
+```bash
 pantheon web
 ```
 
-如需电脑重启后继续自动运行 Pantheon，可在项目根目录安装当前用户服务：
+保持终端窗口打开，并访问 <http://127.0.0.1:8000/>。然后：
+
+1. 选择 DeepSeek、OpenAI、Anthropic 或 Ollama。
+2. 输入该 Provider 的 API key；如果使用 Ollama，请确认 Ollama 已在本机运行。
+3. 选择模型。
+4. 点击 **Test API**；这会向 Provider 发出一次很小的真实请求。
+5. 测试成功后点击 **Save local config**。
+6. 点击 **Check setup**，确认所有已启用 Agent 均已就绪。
+
+点击 **New Chat**，发送一个简单任务，例如 `写一个 Python hello world 示例`。看到模型回复，并且 Activity 显示任务完成，就代表安装成功。按终端中的 `Control-C` 可以停止 Pantheon。
+
+### 以后再次启动
+
+```bash
+cd ~/github-ai
+source .venv/bin/activate
+pantheon web
+```
+
+各系统命令、预期输出、API key 说明、更新、卸载和逐项排错请阅读[中文新手安装指南](docs/setup.zh-CN.md)。英文用户可阅读 [English beginner setup guide](docs/setup.md)。
+
+<details>
+<summary>可选：登录电脑后自动启动</summary>
+
+确认手动启动成功后，macOS 和 Linux 用户可以执行：
 
 ```bash
 pantheon service install
 pantheon service status
 ```
 
-它会在用户登录后启动，并继续只监听 `127.0.0.1:8000`。维护时可使用
-`pantheon service logs` 和 `pantheon service restart`。macOS 的服务日志位于
-`~/Library/Logs/Pantheon/`。
+服务仍然只监听 `127.0.0.1:8000`。WSL 用户应继续手动启动，除非 WSL 已启用 systemd。
 
-打开 <http://127.0.0.1:8000/>，进入 **Settings → Setup**：
-
-1. 选择 DeepSeek、OpenAI、Anthropic 或 Ollama。
-2. 选择模型，并在需要时输入 API key。
-3. 依次运行 **Check setup** 和 **Test API**。
-4. 点击 **Save local config**。
-
-Web UI 会把 API key 保存到本地 `.env`，把 Provider、Base URL 和模型选择写入 `config/pantheon.yaml`。修改后端配置后，如需完整重载运行时，请重启 `pantheon web`。
-
-Anthropic 模型目录已包含 Claude Opus 5（`claude-opus-5`）。Claude 兼容网关
-也继续使用 **Anthropic**，并按服务商要求修改 Base URL。
+</details>
 
 <details>
-<summary>手动配置文件</summary>
+<summary>高级用法：手动配置文件</summary>
 
 ```bash
 cp config/pantheon.example.yaml config/pantheon.yaml
 cp .env.example .env
 ```
 
-在 `.env` 中填写所需密钥，并在 `config/pantheon.yaml` 中设置匹配的 Provider、模型和 Base URL。不要提交这两个本地文件。
+把需要的 key 写入 `.env`，再在 `config/pantheon.yaml` 中设置对应的 Provider、模型和 Base URL。不要提交这两个本地文件。
 
 </details>
 
-### 第一次使用
+### 第一个正式任务
 
 1. 点击 **New Chat**，保持 **Auto** 模式。
-2. 输入一个具体任务，例如：`制作一个响应式个人主页，并输出完整 HTML`。
-3. 打开 **Workspace** 查看 Hermes 计划、当前 Agent 和执行步骤。
-4. 在 **Preview** 预览 HTML，在 **Files** 查看保存的产物，在 **Terminal** 执行本地命令。
+2. 输入一个明确任务，例如 `构建一个响应式个人主页并返回完整 HTML`。
+3. 打开 **Workspace**，查看 Hermes 计划、当前 Agent 和执行步骤。
+4. 使用 **Preview** 查看 HTML，使用 **Files** 管理文件，使用 **Terminal** 执行本地命令。
 5. 在输入框键入 `/`，可以使用 `/multi`、`/schedule`、`/memory`、`/skills`、`/preview` 等命令。
+
+Web UI 会把 API key 保存到本地 `.env`，把 Provider、Base URL 和模型选择写入 `config/pantheon.yaml`。修改后端配置后，如需完整重载运行时，请重启 `pantheon web`。
 
 <a id="agent-roles"></a>
 
@@ -368,7 +450,8 @@ CI 不会获取或测试真实 Provider 密钥。
 
 | 文档 | 内容 |
 |---|---|
-| [安装配置](docs/setup.md) | Provider 配置与常见问题排查 |
+| [中文新手安装指南](docs/setup.zh-CN.md) | 按系统准备环境、安装、首次配置、更新、卸载和逐项排错 |
+| [English setup guide](docs/setup.md) | English OS-specific installation and troubleshooting |
 | [Web UI 指南](docs/web-ui.md) | Workspace、Memory、Integrations、测试和快捷键 |
 | [架构说明](docs/architecture.md) | 路由、执行流程与组件设计 |
 | [角色说明](docs/roles/) | 各神祇 Prompt 与职责 |

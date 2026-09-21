@@ -51,53 +51,132 @@ Pantheon is local-first. Configuration, memory, scheduled jobs, and extension st
 
 ## Quick Start
 
-### Requirements
+This path is for a first-time user starting from a new computer. Pantheon is tested with Python 3.10-3.12; Python 3.11 or 3.12 is recommended.
 
-- Python 3.10 or newer
-- Git
-- At least one supported model provider, or a running Ollama instance
-- macOS or Linux recommended; Windows users should currently use WSL
+| Computer | Use | Status |
+|---|---|---|
+| macOS 13 or newer | Terminal + Homebrew + Python 3.11/3.12 | Recommended |
+| Ubuntu 22.04/24.04 | Terminal + system Python | Recommended; covered by CI |
+| Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Supported installation path |
+| Native Windows PowerShell | — | Not currently supported |
 
-### Install and Launch
+You also need Git, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access.
+
+### 1. Prepare your computer
+
+**macOS:** open Terminal and run:
 
 ```bash
+xcode-select --install
+```
+
+Finish the system installation window before continuing. Then check for Homebrew:
+
+```bash
+brew --version
+```
+
+If that command is not found, install Homebrew and follow any shell-path instruction it prints:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Close and reopen Terminal, then run:
+
+```bash
+brew install python@3.12 git
+python3.12 --version
+git --version
+```
+
+**Ubuntu Linux:** open Terminal and run:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip
+python3 --version
+git --version
+```
+
+**Windows 11:** open PowerShell as Administrator, run `wsl --install -d Ubuntu`, restart the computer, open **Ubuntu**, and then use the Ubuntu commands above. Clone Pantheon inside the Linux home folder, not under `/mnt/c`.
+
+### 2. Download and install Pantheon
+
+Run these commands in Terminal (or the Ubuntu window on Windows):
+
+```bash
+cd ~
 git clone https://github.com/RyosukeSAMA/github-ai.git
 cd github-ai
+```
 
+On **macOS**, create the environment with:
+
+```bash
+python3.12 -m venv .venv
+```
+
+On **Ubuntu or WSL**, create it with:
+
+```bash
 python3 -m venv .venv
+```
+
+Then continue on every system:
+
+```bash
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
+pantheon --version
+```
 
+The last command should print `pantheon 0.2.1` or a newer version.
+
+### 3. Start and configure the Web UI
+
+```bash
 pantheon web
 ```
 
-To keep Pantheon available after restarting the computer, install the optional
-per-user service from the repository root:
+Keep the terminal open and visit <http://127.0.0.1:8000/>. Then:
+
+1. Select DeepSeek, OpenAI, Anthropic, or Ollama.
+2. Enter that provider's API key, or make sure Ollama is running locally.
+3. Select a model.
+4. Select **Test API**. This makes one small real provider request.
+5. After the test succeeds, select **Save local config**.
+6. Select **Check setup** and confirm that every enabled agent is ready.
+
+Create a **New Chat** and send a simple first task such as `Write a Python hello world example`. A model response and a completed Activity timeline confirm that the installation works. Press `Control-C` in Terminal to stop Pantheon.
+
+### Start Pantheon again later
+
+```bash
+cd ~/github-ai
+source .venv/bin/activate
+pantheon web
+```
+
+For operating-system commands, expected output, API-key explanations, updating, uninstalling, and step-by-step troubleshooting, use the [complete beginner setup guide](docs/setup.md). A separate [Chinese beginner guide](docs/setup.zh-CN.md) is also available.
+
+<details>
+<summary>Optional: start Pantheon automatically after login</summary>
+
+After the manual launch works, macOS and Linux users can run:
 
 ```bash
 pantheon service install
 pantheon service status
 ```
 
-It starts after user login and remains bound to `127.0.0.1:8000`. Use
-`pantheon service logs` or `pantheon service restart` for maintenance. On macOS,
-service logs are stored in `~/Library/Logs/Pantheon/`.
+The service remains bound to `127.0.0.1:8000`. WSL users should keep using the manual start command unless systemd is enabled in their WSL installation.
 
-Open <http://127.0.0.1:8000/> and go to **Settings -> Setup**:
-
-1. Select DeepSeek, OpenAI, Anthropic, or Ollama.
-2. Choose a model and enter an API key when required.
-3. Run **Check setup**, then **Test API**.
-4. Select **Save local config**.
-
-The Web UI saves API keys to the local `.env` file and writes provider, base URL, and model choices to `config/pantheon.yaml`. Restart `pantheon web` when a backend configuration change needs a complete runtime reload.
-
-The Anthropic catalog includes Claude Opus 5 (`claude-opus-5`). Compatible Claude
-gateways can use the same **Anthropic** provider with their own Base URL.
+</details>
 
 <details>
-<summary>Configure files manually</summary>
+<summary>Advanced: configure files manually</summary>
 
 ```bash
 cp config/pantheon.example.yaml config/pantheon.yaml
@@ -108,13 +187,15 @@ Add the required keys to `.env`, then set matching providers, models, and base U
 
 </details>
 
-### Your First Task
+### Your First Real Task
 
 1. Select **New Chat** and keep **Auto** mode enabled.
 2. Enter a concrete task, such as `Build a responsive personal site and return complete HTML`.
 3. Open **Workspace** to follow the Hermes plan, active agent, and execution steps.
 4. Use **Preview** for HTML, **Files** for saved artifacts, and **Terminal** for local commands.
 5. Type `/` in the composer to access commands such as `/multi`, `/schedule`, `/memory`, `/skills`, and `/preview`.
+
+The Web UI saves API keys to the local `.env` file and writes provider, base URL, and model choices to `config/pantheon.yaml`. Restart `pantheon web` when a backend configuration change needs a complete runtime reload.
 
 <a id="agent-roles"></a>
 
@@ -372,7 +453,8 @@ Chromium E2E job. CI never receives or tests real provider credentials.
 
 | Document | Contents |
 |---|---|
-| [Setup guide](docs/setup.md) | Provider configuration and troubleshooting |
+| [Beginner setup guide](docs/setup.md) | OS-specific installation, first launch, updating, uninstalling, and troubleshooting |
+| [中文新手安装指南](docs/setup.zh-CN.md) | 中文系统准备、安装、首次配置和逐项排错 |
 | [Web UI guide](docs/web-ui.md) | Workspace, Memory, Integrations, testing, and shortcuts |
 | [Architecture](docs/architecture.md) | Routing, execution flow, and component design |
 | [Role guides](docs/roles/) | Prompts and responsibilities for every god |
