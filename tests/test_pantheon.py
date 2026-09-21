@@ -120,7 +120,14 @@ def test_pantheon_ask_returns_dict(temp_config):
     p.router = Router(llm_client=mock, hermes_model="mock")
     p.hermes = Hermes(roles=p.roles, router=p.router)
 
-    result = p.ask("write foo")
+    events = []
+    result = p.ask("write foo", on_event=lambda event, data: events.append((event, data)))
     assert "mode" in result
     assert "content" in result
     assert "steps" in result
+    assert [event for event, _ in events] == [
+        "plan_start",
+        "plan_ready",
+        "step_start",
+        "step_done",
+    ]
