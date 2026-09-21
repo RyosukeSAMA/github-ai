@@ -1138,7 +1138,10 @@
     if (provider.catalog_source === 'documented') {
       return `${count} documented models · use Test API to verify access`;
     }
-    return 'Official recommendations · official providers are checked every 24 hours';
+    if (provider.requires_key && !provider.key_configured) {
+      return 'Official recommendations · add an API key to refresh models and verify access';
+    }
+    return 'Official recommendations · configured official providers are checked every 24 hours';
   }
 
   function setSetupCustomModel(enabled, value = '') {

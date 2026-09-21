@@ -109,7 +109,7 @@ def test_setup_save_writes_env_and_config_without_leaking_key(tmp_path, monkeypa
         "deepseek-v4-flash",
         "deepseek-v4-pro",
     }
-    assert providers["openai"]["model"] == "gpt-5.6"
+    assert providers["openai"]["model"] == "gpt-6-astra"
     assert {item["role"] for item in data["role_statuses"]} == {
         "hermes",
         "hephaestus",
@@ -214,6 +214,7 @@ def test_setup_status_reports_existing_env_secret_as_masked(tmp_path, monkeypatc
 
 def test_setup_catalog_keeps_latest_official_models(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _write_minimal_config(tmp_path / "config" / "pantheon.yaml")
 
     client = TestClient(create_app())
@@ -230,7 +231,18 @@ def test_setup_catalog_keeps_latest_official_models(tmp_path, monkeypatch) -> No
     anthropic = next(provider for provider in providers if provider["id"] == "anthropic")
     assert any(model["id"] == "claude-opus-5" for model in anthropic["models"])
     openai = next(provider for provider in providers if provider["id"] == "openai")
-    assert openai["model"] == "gpt-5.6"
+    assert openai["model"] == "gpt-6-astra"
+    openai_models = {model["id"]: model for model in openai["models"]}
+    assert openai_models["gpt-6-astra"] == {
+        "id": "gpt-6-astra",
+        "label": "GPT-6 Astra",
+        "source": "recommended",
+        "available": None,
+    }
+    assert openai["models"][0]["id"] == "old-model"
+    assert openai["models"][0]["source"] == "current"
+    assert openai["key_configured"] is False
+    assert response.json()["model"] == "old-model"
     assert {
         "gpt-5.6",
         "gpt-5.6-sol",
@@ -268,7 +280,7 @@ def test_setup_test_api_uses_form_values_without_network(tmp_path, monkeypatch) 
         "/api/setup/test",
         json={
             "provider": "openai",
-            "model": "gpt-6",
+            "model": "gpt-6-astra",
             "base_url": "https://api.openai.com/v1",
             "api_key": "sk-test-secret-1234",
         },
@@ -280,11 +292,11 @@ def test_setup_test_api_uses_form_values_without_network(tmp_path, monkeypatch) 
     assert data["ok"] is True
     assert data["tested"] is True
     assert data["tested_provider"] == "openai"
-    assert data["tested_model"] == "gpt-6"
+    assert data["tested_model"] == "gpt-6-astra"
     assert calls["provider"] == "openai"
     assert calls["api_key"] == "sk-test-secret-1234"
     assert calls["base_url"] == "https://api.openai.com/v1"
-    assert calls["model"] == "gpt-6"
+    assert calls["model"] == "gpt-6-astra"
     assert calls["kwargs"] == {"max_output_tokens": 8}
 
 
@@ -378,7 +390,7 @@ def test_setup_model_refresh_discovers_new_models_without_changing_saved_model(
         assert base_url == "https://api.openai.com/v1"
         assert api_key == "sk-refresh-secret"
         return [
-            {"id": "gpt-6", "label": "gpt-6"},
+            {"id": "gpt-6-astra", "label": "gpt-6-astra"},
             {"id": "gpt-5.6", "label": "gpt-5.6"},
         ]
 
@@ -405,8 +417,8 @@ def test_setup_model_refresh_discovers_new_models_without_changing_saved_model(
     assert models["gpt-5.6"]["available"] is True
     assert models["gpt-5.6-sol"]["source"] == "recommended"
     assert models["gpt-5.6-sol"]["available"] is False
-    assert models["gpt-6"]["source"] == "available"
-    assert models["gpt-6"]["available"] is True
+    assert models["gpt-6-astra"]["source"] == "recommended"
+    assert models["gpt-6-astra"]["available"] is True
     assert yaml.safe_load(config_path.read_text(encoding="utf-8"))["pantheon"]["hermes"][
         "model"
     ] == "old-model"
@@ -417,7 +429,7 @@ def test_setup_model_refresh_keeps_unlisted_current_model(tmp_path, monkeypatch)
     _write_minimal_config(tmp_path / "config" / "pantheon.yaml")
 
     async def fake_discover(provider, base_url, api_key):
-        return [{"id": "gpt-6", "label": "gpt-6"}]
+        return [{"id": "gpt-6-astra", "label": "gpt-6-astra"}]
 
     monkeypatch.setattr("pantheon.web.app.discover_provider_models", fake_discover)
     client = TestClient(create_app())
@@ -441,14 +453,15 @@ def test_setup_model_refresh_keeps_unlisted_current_model(tmp_path, monkeypatch)
     model_map = {item["id"]: item for item in models}
     assert model_map["gpt-5.6"]["source"] == "recommended"
     assert model_map["gpt-5.6"]["available"] is False
-    assert model_map["gpt-6"]["source"] == "available"
+    assert model_map["gpt-6-astra"]["source"] == "recommended"
+    assert model_map["gpt-6-astra"]["available"] is True
 
 
 def test_setup_model_refresh_uses_cache_after_provider_failure(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     _write_minimal_config(tmp_path / "config" / "pantheon.yaml")
     outcomes = iter([
-        [{"id": "gpt-6", "label": "gpt-6"}],
+        [{"id": "gpt-6-astra", "label": "gpt-6-astra"}],
         RuntimeError("provider unavailable sk-refresh-secret"),
     ])
 
@@ -477,7 +490,8 @@ def test_setup_model_refresh_uses_cache_after_provider_failure(tmp_path, monkeyp
     assert "sk-refresh-secret" not in second.text
     cached_models = {item["id"]: item for item in second.json()["provider"]["models"]}
     assert cached_models["gpt-5.6"]["source"] == "current"
-    assert cached_models["gpt-6"]["source"] == "available"
+    assert cached_models["gpt-6-astra"]["source"] == "recommended"
+    assert cached_models["gpt-6-astra"]["available"] is True
 
 
 def test_background_model_refresh_checks_configured_official_catalog_once_per_ttl(
@@ -495,7 +509,7 @@ def test_background_model_refresh_checks_configured_official_catalog_once_per_tt
 
     async def fake_discover(provider, base_url, api_key):
         calls.append((provider, base_url, api_key))
-        return [{"id": "gpt-6", "label": "gpt-6"}]
+        return [{"id": "gpt-6-astra", "label": "gpt-6-astra"}]
 
     monkeypatch.setattr("pantheon.web.app.discover_provider_models", fake_discover)
     app = create_app()
@@ -517,7 +531,10 @@ def test_background_model_refresh_checks_configured_official_catalog_once_per_tt
         if provider["id"] == "openai"
     )
     assert openai["catalog_source"] == "cache"
-    assert any(model["id"] == "gpt-6" for model in openai["models"])
+    assert any(
+        model["id"] == "gpt-6-astra" and model["available"] is True
+        for model in openai["models"]
+    )
 
 
 def test_background_model_refresh_never_contacts_custom_base_url(

@@ -53,7 +53,8 @@ def test_openai_complete():
     fake_client.responses.create.assert_not_called()
 
 
-def test_openai_latest_models_use_responses_api():
+@pytest.mark.parametrize("model", ["gpt-5.5", "gpt-6-astra"])
+def test_openai_latest_models_use_responses_api(model):
     fake_response = MagicMock()
     fake_response.output_text = "hello from responses"
 
@@ -64,15 +65,23 @@ def test_openai_latest_models_use_responses_api():
         c = OpenAIClient(api_key="sk-test")
         result = c.complete(
             messages=[{"role": "user", "content": "hi"}],
-            model="gpt-5.5",
+            model=model,
             system="be brief",
             temperature=0.2,
+            top_p=0.9,
+            top_logprobs=3,
+            logprobs=True,
         )
     assert result == "hello from responses"
     fake_client.responses.create.assert_called_once()
     call_kwargs = fake_client.responses.create.call_args.kwargs
-    assert call_kwargs["model"] == "gpt-5.5"
+    assert call_kwargs["model"] == model
     assert call_kwargs["instructions"] == "be brief"
+    assert call_kwargs["input"] == [{"role": "user", "content": "hi"}]
+    assert "temperature" not in call_kwargs
+    assert "top_p" not in call_kwargs
+    assert "top_logprobs" not in call_kwargs
+    assert "logprobs" not in call_kwargs
     fake_client.chat.completions.create.assert_not_called()
 
 

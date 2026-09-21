@@ -6,6 +6,8 @@ All notable changes to Pantheon are documented in this file.
 
 ### Added
 
+- GPT-6 Astra (`gpt-6-astra`) in the shared OpenAI Setup and per-role catalog,
+  with coverage for discovery, cached availability, and Responses API requests.
 - Composer prompt enhancement powered by the configured Hermes model, with a
   review-before-send flow and one-click undo to restore the original draft.
 - Structured Multi-role contracts with typed work, question, review, and revision
@@ -15,6 +17,9 @@ All notable changes to Pantheon are documented in this file.
 
 ### Changed
 
+- New OpenAI selections recommend GPT-6 Astra while preserving saved models and
+  existing role defaults. Setup explains when an API key is needed to discover
+  models and verify account access.
 - Multi-role execution now passes structured collaboration context together with
   prior results while keeping Hermes in control of routing and final synthesis.
 
