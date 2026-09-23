@@ -1,0 +1,55 @@
+name: WSL install smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/wsl-install.yml"
+      - "README.md"
+      - "README.zh-CN.md"
+      - "docs/setup.md"
+      - "docs/setup.zh-CN.md"
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-24-04:
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Install Ubuntu 24.04 in WSL2
+        shell: pwsh
+        run: |
+          wsl --version
+          wsl --install -d Ubuntu-24.04 --no-launch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wsl --set-version Ubuntu-24.04 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wsl --list --verbose
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Pantheon inside Ubuntu as a regular user
+        shell: pwsh
+        run: |
+          wsl -d Ubuntu-24.04 -u root -- bash -lc 'apt-get update && apt-get install -y git python3 python3-venv python3-pip curl && useradd -m -s /bin/bash pantheon'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wsl -d Ubuntu-24.04 -u pantheon -- bash -lc 'cd ~ && git clone https://github.com/RyosukeSAMA/github-ai.git && cd github-ai && python3 -m venv .venv && . .venv/bin/activate && python -m pip install --upgrade pip && python -m pip install -e . && pantheon --version'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Start Web UI and check access from Windows
+        shell: pwsh
+        run: |
+          wsl -d Ubuntu-24.04 -u pantheon -- bash -lc 'cd ~/github-ai && nohup .venv/bin/pantheon web --port 8765 > /tmp/pantheon-wsl.log 2>&1 < /dev/null &'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            try {
+              $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/' -TimeoutSec 3
+              if ($response.StatusCode -eq 200) { exit 0 }
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+          }
+          wsl -d Ubuntu-24.04 -u root -- cat /tmp/pantheon-wsl.log
+          throw 'Pantheon Web UI did not respond through Windows localhost forwarding.'
