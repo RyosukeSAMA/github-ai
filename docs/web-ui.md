@@ -6,15 +6,15 @@
 
 ## 改动总览
 
-### GPT-6 Astra
+### GPT-6 系列
 
-- OpenAI 的内置推荐模型更新为 `gpt-6-astra`，Setup 和各角色的 Models 下拉框共用这份目录。
-- 即使尚未配置 OpenAI API key，也会显示 GPT-6 Astra；这表示产品已支持选择该模型，不表示账户已获得访问权限。
-- 在 Settings → Setup 选择 OpenAI，填写自己的 API key，选择 GPT-6 Astra，再运行 `Refresh models` 和 `Test API`。验证后点击 `Save local config` 保存。
+- OpenAI 的内置推荐模型包含 `gpt-6-astra`、`gpt-6-sol` 和 `gpt-6-luna`，Setup 和各角色的 Models 下拉框共用这份目录。新配置仍推荐 Astra，已有选择不会自动切换。
+- 即使尚未配置 OpenAI API key，也会显示这三个模型；这表示产品已支持选择，并不表示账户已获得访问权限。
+- 在 Settings → Setup 选择 OpenAI，填写自己的 API key，选择需要的 GPT-6 型号，再运行 `Refresh models` 和 `Test API`。验证后点击 `Save local config` 保存。
 - 当前使用 DeepSeek 时，OpenAI API key 需要单独配置；DeepSeek 的 key 不能用于 OpenAI。
 - 已配置的官方供应商在服务启动时检查目录，之后每小时检查一次，缓存满 24 小时才重新获取。自动刷新只更新可选列表，不切换已保存的模型。
-- GPT-6 Astra 使用现有 Responses API 调用路径；旧会话的角色覆盖和已保存的模型保持原样。
-- 官方模型说明：<https://developers.openai.com/api/docs/models/gpt-6-astra>。
+- 三个 GPT-6 型号都使用现有 Responses API 调用路径；旧会话的角色覆盖和已保存的模型保持原样。
+- 官方模型说明：[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)、[Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)。
 
 ### 整体界面
 

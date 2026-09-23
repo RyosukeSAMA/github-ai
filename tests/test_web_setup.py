@@ -239,11 +239,15 @@ def test_setup_catalog_keeps_latest_official_models(tmp_path, monkeypatch) -> No
         "source": "recommended",
         "available": None,
     }
+    assert openai_models["gpt-6-sol"]["label"] == "GPT-6 Sol"
+    assert openai_models["gpt-6-luna"]["label"] == "GPT-6 Luna"
     assert openai["models"][0]["id"] == "old-model"
     assert openai["models"][0]["source"] == "current"
     assert openai["key_configured"] is False
     assert response.json()["model"] == "old-model"
     assert {
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.6",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
