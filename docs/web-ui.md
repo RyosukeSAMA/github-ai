@@ -6,6 +6,16 @@
 
 ## 改动总览
 
+### GPT-6 Astra
+
+- OpenAI 的内置推荐模型更新为 `gpt-6-astra`，Setup 和各角色的 Models 下拉框共用这份目录。
+- 即使尚未配置 OpenAI API key，也会显示 GPT-6 Astra；这表示产品已支持选择该模型，不表示账户已获得访问权限。
+- 在 Settings → Setup 选择 OpenAI，填写自己的 API key，选择 GPT-6 Astra，再运行 `Refresh models` 和 `Test API`。验证后点击 `Save local config` 保存。
+- 当前使用 DeepSeek 时，OpenAI API key 需要单独配置；DeepSeek 的 key 不能用于 OpenAI。
+- 已配置的官方供应商在服务启动时检查目录，之后每小时检查一次，缓存满 24 小时才重新获取。自动刷新只更新可选列表，不切换已保存的模型。
+- GPT-6 Astra 使用现有 Responses API 调用路径；旧会话的角色覆盖和已保存的模型保持原样。
+- 官方模型说明：<https://developers.openai.com/api/docs/models/gpt-6-astra>。
+
 ### 整体界面
 
 - 将 Web UI 调整为更接近 agent workspace 的三栏布局：左侧会话与模式，中间对话，右侧 Workspace。

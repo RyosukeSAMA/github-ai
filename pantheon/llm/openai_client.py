@@ -80,8 +80,14 @@ class OpenAIClient(BaseLLMClient):
         target_model = model or self.default_model
         if self._uses_responses_api(target_model):
             response_kwargs = dict(kwargs)
-            response_kwargs.pop("max_tokens", None)
-            response_kwargs.pop("temperature", None)
+            for unsupported in (
+                "max_tokens",
+                "temperature",
+                "top_p",
+                "top_logprobs",
+                "logprobs",
+            ):
+                response_kwargs.pop(unsupported, None)
             resp = client.responses.create(
                 model=target_model,
                 input=list(messages),
