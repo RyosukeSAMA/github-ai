@@ -39,15 +39,33 @@ jobs:
       - name: Start Web UI and check access from Windows
         shell: pwsh
         run: |
-          wsl -d Ubuntu-24.04 -u pantheon -- bash -lc 'cd ~/github-ai && nohup .venv/bin/pantheon web --port 8765 > /tmp/pantheon-wsl.log 2>&1 < /dev/null &'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          for ($attempt = 0; $attempt -lt 30; $attempt++) {
-            try {
-              $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/' -TimeoutSec 3
-              if ($response.StatusCode -eq 200) { exit 0 }
-            } catch {
-              Start-Sleep -Seconds 2
+          $stdout = Join-Path $env:RUNNER_TEMP 'pantheon-wsl-stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'pantheon-wsl-stderr.log'
+          $server = Start-Process -FilePath 'wsl.exe' -ArgumentList @(
+            '--distribution', 'Ubuntu-24.04', '--user', 'pantheon',
+            '--cd', '/home/pantheon/github-ai', '--exec',
+            '/home/pantheon/github-ai/.venv/bin/pantheon', 'web', '--port', '8765'
+          ) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              if ($server.HasExited) { break }
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/' -TimeoutSec 3
+                if ($response.StatusCode -eq 200) {
+                  $ready = $true
+                  break
+                }
+              } catch {
+                Start-Sleep -Seconds 2
+              }
             }
+            if (-not $ready) {
+              Get-Content $stdout -ErrorAction SilentlyContinue
+              Get-Content $stderr -ErrorAction SilentlyContinue
+              throw 'Pantheon Web UI did not respond through Windows localhost forwarding.'
+            }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+            wsl --terminate Ubuntu-24.04
           }
-          wsl -d Ubuntu-24.04 -u root -- cat /tmp/pantheon-wsl.log
-          throw 'Pantheon Web UI did not respond through Windows localhost forwarding.'
