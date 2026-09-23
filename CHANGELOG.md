@@ -6,6 +6,8 @@ All notable changes to Pantheon are documented in this file.
 
 ### Added
 
+- GPT-6 Sol (`gpt-6-sol`) and GPT-6 Luna (`gpt-6-luna`) in the shared OpenAI
+  Setup and per-role model catalog, using the existing Responses API path.
 - GPT-6 Astra (`gpt-6-astra`) in the shared OpenAI Setup and per-role catalog,
   with coverage for discovery, cached availability, and Responses API requests.
 - Composer prompt enhancement powered by the configured Hermes model, with a

@@ -53,7 +53,9 @@ def test_openai_complete():
     fake_client.responses.create.assert_not_called()
 
 
-@pytest.mark.parametrize("model", ["gpt-5.5", "gpt-6-astra"])
+@pytest.mark.parametrize(
+    "model", ["gpt-5.5", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
+)
 def test_openai_latest_models_use_responses_api(model):
     fake_response = MagicMock()
     fake_response.output_text = "hello from responses"

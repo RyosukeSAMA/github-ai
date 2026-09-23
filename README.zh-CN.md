@@ -57,7 +57,7 @@ Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保�
 |---|---|---|
 | macOS 13 或更新版本 | Terminal + Homebrew + Python 3.11/3.12 | 推荐 |
 | Ubuntu 22.04/24.04 | Terminal + 系统 Python | 推荐，CI 已覆盖 |
-| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 已提供安装步骤，CI 尚未覆盖 |
+| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 已提供安装步骤；Ubuntu 24.04 已通过 CI 安装冒烟测试 |
 | Windows 原生 PowerShell | — | 当前不支持 |
 
 此外还需要 Git、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。

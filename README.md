@@ -57,7 +57,7 @@ This path is for a first-time user starting from a new computer. Pantheon is tes
 |---|---|---|
 | macOS 13 or newer | Terminal + Homebrew + Python 3.11/3.12 | Recommended |
 | Ubuntu 22.04/24.04 | Terminal + system Python | Recommended; covered by CI |
-| Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Documented path; not covered by CI |
+| Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Documented path; Ubuntu 24.04 smoke-tested in CI |
 | Native Windows PowerShell | — | Not currently supported |
 
 You also need Git, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).

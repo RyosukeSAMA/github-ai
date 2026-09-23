@@ -259,6 +259,8 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "model": "gpt-6-astra",
         "models": [
             {"id": "gpt-6-astra", "label": "GPT-6 Astra"},
+            {"id": "gpt-6-sol", "label": "GPT-6 Sol"},
+            {"id": "gpt-6-luna", "label": "GPT-6 Luna"},
             {"id": "gpt-5.6", "label": "GPT-5.6 Sol (alias)"},
             {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
             {"id": "gpt-5.6-terra", "label": "GPT-5.6 Terra"},
@@ -271,7 +273,7 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         ],
         "requires_key": True,
         "note": (
-            "GPT-6 Astra uses your OpenAI API key. Refresh models to check the "
+            "GPT-6 models use your OpenAI API key. Refresh models to check the "
             "account catalog, then use Test API to verify access before saving."
         ),
     },

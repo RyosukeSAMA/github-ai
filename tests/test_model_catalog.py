@@ -16,6 +16,8 @@ async def test_openai_discovery_keeps_chat_models_and_filters_other_capabilities
             json={
                 "data": [
                     {"id": "gpt-6-astra"},
+                    {"id": "gpt-6-sol"},
+                    {"id": "gpt-6-luna"},
                     {"id": "gpt-6"},
                     {"id": "gpt-5.6"},
                     {"id": "o4-mini"},
@@ -34,6 +36,8 @@ async def test_openai_discovery_keeps_chat_models_and_filters_other_capabilities
 
     assert [item["id"] for item in models] == [
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-6",
         "gpt-5.6",
         "o4-mini",
