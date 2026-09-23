@@ -60,7 +60,31 @@ Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保�
 | Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 已提供安装步骤；Ubuntu 24.04 已通过 CI 安装冒烟测试 |
 | Windows 原生 PowerShell | — | 当前不支持 |
 
-此外还需要 Git、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。
+此外还需要 Git、`curl`、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。
+
+### 一行安装（macOS、Ubuntu 或 WSL Ubuntu）
+
+如果已经安装 Git、`curl`、Python 3.10-3.12 和 `venv`，在终端或 Ubuntu 窗口运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
+```
+
+[安装脚本](scripts/install.sh)会在 `~/github-ai/.venv` 中安装 Pantheon，并打印启动命令。它不使用 `sudo`，也不会修改已有的 `~/github-ai` 文件夹。安装完成后启动 Web UI：
+
+```bash
+cd ~/github-ai && .venv/bin/pantheon web
+```
+
+Windows 用户先按下方第一步安装 WSL2 和 Ubuntu，并在 Ubuntu 中安装 Git、`curl`、Python 与 `venv`。之后也可以在 **PowerShell** 中用一行命令安装：
+
+```powershell
+wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"
+```
+
+这会把 Pantheon 装进 **WSL Ubuntu**，不是 Windows 原生应用。之后跳到第三步配置 Provider。如果安装脚本提示缺少依赖，请按下方系统步骤补齐后重试。
+
+如果希望逐项安装，请按下面的步骤操作。
 
 ### 第一步：准备电脑
 
@@ -94,7 +118,7 @@ git --version
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-venv python3-pip
+sudo apt install -y git curl python3 python3-venv python3-pip
 python3 --version
 git --version
 ```

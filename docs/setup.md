@@ -46,6 +46,15 @@ Start with one provider. Pantheon can assign different providers to different ag
 
 Pantheon CI tests Python 3.10, 3.11, and 3.12 on Ubuntu. Python 3.13 and newer may work, but are not yet part of the tested support range.
 
+If Git, `curl`, and a supported Python with `venv` are already installed, you can use the [one-line installer](../scripts/install.sh) in macOS, Ubuntu, or WSL Ubuntu:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
+cd ~/github-ai && .venv/bin/pantheon web
+```
+
+The first line installs into a new `~/github-ai` directory; the second starts Pantheon. The installer refuses to overwrite an existing directory and does not install system packages. On Windows, complete the WSL2 and Ubuntu preparation in section 3 first. You can then run the installer inside Ubuntu, or from PowerShell with `wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"`. Pantheon still runs inside WSL. Continue at section 6 for provider configuration. If a prerequisite is missing, follow sections 3-5 below.
+
 For a cloud provider, 4 GB RAM and about 1 GB of free disk space are sufficient for Pantheon and its Python environment. Local Ollama models need additional memory and disk; check the requirements of the model you plan to download.
 
 ## 3. Prepare the operating system
@@ -94,7 +103,7 @@ Continue only when `python3.12` reports Python 3.12 and Git prints a version.
 
    ```bash
    sudo apt update
-   sudo apt install -y git python3 python3-venv python3-pip
+   sudo apt install -y git curl python3 python3-venv python3-pip
    python3 --version
    git --version
    ```
@@ -118,7 +127,7 @@ Pantheon currently uses Linux commands on Windows. Do not run the later commands
 
    ```bash
    sudo apt update
-   sudo apt install -y git python3 python3-venv python3-pip
+   sudo apt install -y git curl python3 python3-venv python3-pip
    python3 --version
    git --version
    ```

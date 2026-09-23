@@ -27,7 +27,7 @@
 #
 #   DeepSeek (cheap, Chinese-friendly, recommended for getting started):
 #     provider: openai, base_url: https://api.deepseek.com
-#     model: deepseek-v4-flash    (or deepseek-v4-pro for harder tasks)
+#     model: deepseek-flash    (DeepSeek V4.1 Flash)
 #
 #   OpenAI (broad capabilities, US-based):
 #     provider: openai, base_url: https://api.openai.com/v1

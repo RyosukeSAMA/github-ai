@@ -128,6 +128,31 @@ def test_anthropic_complete():
     assert call_kwargs["system"] == "be brief"
 
 
+def test_anthropic_opus_55_omits_unsupported_sampling_parameters():
+    fake_response = MagicMock()
+    fake_response.content = [MagicMock(text="hello from opus 5.5")]
+    fake_client = MagicMock()
+    fake_client.messages.create.return_value = fake_response
+
+    with patch("anthropic.Anthropic", return_value=fake_client):
+        client = AnthropicClient(api_key="sk-ant-test")
+        result = client.complete(
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-opus-5-5",
+            temperature=0.3,
+            top_p=0.8,
+            top_k=10,
+        )
+
+    assert result == "hello from opus 5.5"
+    call_kwargs = fake_client.messages.create.call_args.kwargs
+    assert call_kwargs["model"] == "claude-opus-5-5"
+    assert call_kwargs["max_tokens"] == 4096
+    assert "temperature" not in call_kwargs
+    assert "top_p" not in call_kwargs
+    assert "top_k" not in call_kwargs
+
+
 def test_anthropic_compatible_gateway_uses_bearer_auth_token():
     fake_client = MagicMock()
 

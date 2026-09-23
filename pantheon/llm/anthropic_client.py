@@ -53,12 +53,20 @@ class AnthropicClient(BaseLLMClient):
         # Anthropic requires max_tokens; default if not given.
         kwargs.setdefault("max_tokens", max_tokens)
 
+        target_model = model or self.default_model
+        request_kwargs = dict(kwargs)
+        if target_model == "claude-opus-5-5":
+            # Adaptive thinking is always on; non-default sampling is rejected.
+            for unsupported in ("top_p", "top_k"):
+                request_kwargs.pop(unsupported, None)
+        else:
+            request_kwargs["temperature"] = temperature
+
         resp = client.messages.create(
-            model=model or self.default_model,
+            model=target_model,
             system=system or "You are a helpful assistant.",
             messages=messages,
-            temperature=temperature,
-            **kwargs,
+            **request_kwargs,
         )
         # Concatenate all text blocks
         parts = [b.text for b in resp.content if hasattr(b, "text")]

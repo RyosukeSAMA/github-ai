@@ -243,9 +243,9 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "adapter": "openai",
         "env_var": "DEEPSEEK_API_KEY",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-flash",
         "models": [
-            {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
+            {"id": "deepseek-flash", "label": "DeepSeek V4.1 Flash"},
             {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
         ],
         "requires_key": True,
@@ -284,6 +284,7 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://api.anthropic.com",
         "model": "claude-sonnet-4-6",
         "models": [
+            {"id": "claude-opus-5-5", "label": "Claude Opus 5.5"},
             {"id": "claude-opus-5", "label": "Claude Opus 5 (most capable)"},
             {"id": "claude-sonnet-5", "label": "Claude Sonnet 5 (balanced)"},
             {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},

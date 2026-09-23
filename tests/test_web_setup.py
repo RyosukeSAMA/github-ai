@@ -86,7 +86,7 @@ def test_setup_save_writes_env_and_config_without_leaking_key(tmp_path, monkeypa
         "/api/setup/save",
         json={
             "provider": "deepseek",
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "base_url": "https://api.deepseek.com",
             "api_key": "sk-test-secret-1234",
             "apply_to_roles": True,
@@ -103,10 +103,10 @@ def test_setup_save_writes_env_and_config_without_leaking_key(tmp_path, monkeypa
     assert data["setup_ready"] is True
     assert data["summary_title"] == "DeepSeek · 4/4 ready"
     providers = {item["id"]: item for item in data["providers"]}
-    assert providers["deepseek"]["model"] == "deepseek-v4-flash"
+    assert providers["deepseek"]["model"] == "deepseek-flash"
     assert any(model["id"] == "deepseek-v4-pro" for model in providers["deepseek"]["models"])
     assert {model["id"] for model in providers["deepseek"]["models"]} == {
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "deepseek-v4-pro",
     }
     assert providers["openai"]["model"] == "gpt-6-astra"
@@ -128,13 +128,13 @@ def test_setup_save_writes_env_and_config_without_leaking_key(tmp_path, monkeypa
 
     saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     assert saved["pantheon"]["hermes"]["provider"] == "openai"
-    assert saved["pantheon"]["hermes"]["model"] == "deepseek-v4-flash"
+    assert saved["pantheon"]["hermes"]["model"] == "deepseek-flash"
     assert saved["llm_providers"]["openai"]["api_key"] == "${DEEPSEEK_API_KEY}"
     assert saved["llm_providers"]["openai"]["base_url"] == "https://api.deepseek.com"
     for role_name in ("hephaestus", "athena", "apollo"):
         role = saved["pantheon"]["roles"][role_name]
         assert role["provider"] == "openai"
-        assert role["model"] == "deepseek-v4-flash"
+        assert role["model"] == "deepseek-flash"
 
 
 def test_setup_save_requires_key_when_no_existing_secret(tmp_path, monkeypatch) -> None:
@@ -229,6 +229,7 @@ def test_setup_catalog_keeps_latest_official_models(tmp_path, monkeypatch) -> No
         "ollama",
     ]
     anthropic = next(provider for provider in providers if provider["id"] == "anthropic")
+    assert any(model["id"] == "claude-opus-5-5" for model in anthropic["models"])
     assert any(model["id"] == "claude-opus-5" for model in anthropic["models"])
     openai = next(provider for provider in providers if provider["id"] == "openai")
     assert openai["model"] == "gpt-6-astra"

@@ -46,6 +46,15 @@ Pantheon 本身免费并运行在本机，但模型执行需要以下方式之�
 
 Pantheon 的 GitHub CI 会在 Ubuntu 上测试 Python 3.10、3.11 和 3.12。Python 3.13 或更新版本可能可以运行，但目前不属于已测试范围。
 
+如果已经安装 Git、`curl`、受支持的 Python 和 `venv`，可以在 macOS、Ubuntu 或 WSL Ubuntu 中使用[一行安装脚本](../scripts/install.sh)：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
+cd ~/github-ai && .venv/bin/pantheon web
+```
+
+第一行在新的 `~/github-ai` 目录中安装，第二行启动 Pantheon。脚本不会覆盖已有目录，也不会自动安装系统软件。Windows 用户先完成第三节的 WSL2 和 Ubuntu 准备，再在 Ubuntu 中执行；也可以在 PowerShell 中运行 `wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"`。Pantheon 仍在 WSL 中运行。之后跳到第六节配置 Provider。如果提示缺少依赖，请先按下方第三至第五节补齐。
+
 如果使用云端 Provider，4 GB 内存和约 1 GB 可用磁盘通常足够运行 Pantheon 及其 Python 环境。本地 Ollama 需要更多内存和磁盘，具体取决于下载的模型。
 
 ## 三、准备操作系统
@@ -94,7 +103,7 @@ Pantheon 的 GitHub CI 会在 Ubuntu 上测试 Python 3.10、3.11 和 3.12。Pyt
 
    ```bash
    sudo apt update
-   sudo apt install -y git python3 python3-venv python3-pip
+   sudo apt install -y git curl python3 python3-venv python3-pip
    python3 --version
    git --version
    ```
@@ -118,7 +127,7 @@ Pantheon 当前在 Windows 上使用 Linux 命令。后面的安装命令不要�
 
    ```bash
    sudo apt update
-   sudo apt install -y git python3 python3-venv python3-pip
+   sudo apt install -y git curl python3 python3-venv python3-pip
    python3 --version
    git --version
    ```

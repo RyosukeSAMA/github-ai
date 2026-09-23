@@ -60,7 +60,31 @@ This path is for a first-time user starting from a new computer. Pantheon is tes
 | Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Documented path; Ubuntu 24.04 smoke-tested in CI |
 | Native Windows PowerShell | — | Not currently supported |
 
-You also need Git, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).
+You also need Git, `curl`, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).
+
+### One-line install (macOS, Ubuntu, or WSL Ubuntu)
+
+If Git, `curl`, and Python 3.10-3.12 with `venv` are already installed, run this in Terminal or the Ubuntu window:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
+```
+
+The [installer script](scripts/install.sh) creates `~/github-ai/.venv`, installs Pantheon there, and prints the start command. It never runs with `sudo` or changes an existing `~/github-ai` folder. Then start the Web UI:
+
+```bash
+cd ~/github-ai && .venv/bin/pantheon web
+```
+
+On Windows, first install WSL2 and Ubuntu using step 1 below. After installing Git, `curl`, Python, and `venv` inside Ubuntu, you can run the same installer from **PowerShell** with one line:
+
+```powershell
+wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"
+```
+
+This installs Pantheon **inside WSL**, not as a native Windows application. Continue with step 3 to configure a provider. If the installer reports a missing prerequisite, follow the operating-system steps below and rerun it.
+
+To install each component manually, follow the steps below.
 
 ### 1. Prepare your computer
 
@@ -94,7 +118,7 @@ git --version
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-venv python3-pip
+sudo apt install -y git curl python3 python3-venv python3-pip
 python3 --version
 git --version
 ```
