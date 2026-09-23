@@ -25,8 +25,6 @@ jobs:
           wsl --version
           wsl --install -d Ubuntu-24.04 --no-launch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          wsl --set-version Ubuntu-24.04 2
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           wsl --list --verbose
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
