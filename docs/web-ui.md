@@ -177,7 +177,7 @@ Setup 是给本地安装用户准备的配置入口，适合不熟悉命令行�
 - API key 不会写入浏览器 `localStorage`。
 - 后端接口不会返回完整 API key，只返回 mask 后的状态，例如 `sk-t••••1234`。
 - 保存后后端会重置当前 Pantheon 实例，下一次请求会使用新的本地配置。
-- Anthropic 模型目录包含 Claude Opus 5（`claude-opus-5`）。Claude Messages
+- Anthropic 模型目录包含 Claude Opus 5.5（`claude-opus-5-5`）和 Opus 5（`claude-opus-5`）。Claude Messages
   兼容网关也选择 `Anthropic`，并按服务商说明修改 Base URL。
 - `Current setup` 会按 Hermes、Hephaestus、Athena、Apollo、Chronos 分行显示状态。
 - 顶部摘要会显示 `DeepSeek · 4/4 ready` 或 `Mixed providers · 3/4 ready`。
@@ -186,7 +186,7 @@ Setup 是给本地安装用户准备的配置入口，适合不熟悉命令行�
 - `Check setup` 不会把表单切回已保存配置；用户正在编辑的 provider/model/base URL 会保留。
 - `Test API` 会发出一次极短真实请求，可能产生极小 token 消耗。
 - `Test API` 不会把表单切回已保存配置；测试失败后仍保留用户当前选择的 provider/model/base URL。
-- DeepSeek 下拉只提供当前可调用的 `deepseek-v4-flash` 与 `deepseek-v4-pro`，不再展示已停用的旧别名。
+- DeepSeek 内置推荐 `deepseek-flash`（V4.1 Flash），同时保留仍在官方目录中的 `deepseek-v4-pro`。已保存的旧 ID 会显示为当前模型，不会被自动改写。
 
 ### Security
 
@@ -265,7 +265,7 @@ Info 是轻量只读诊断页，不放完整说明书。
 
 - DeepSeek 走 OpenAI-compatible API。
 - Setup 里选择 DeepSeek 时，会把 `llm_providers.openai.base_url` 写成 `https://api.deepseek.com`。
-- 角色配置里的 provider 仍然是 `openai`，默认模型是 `deepseek-v4-flash`。
+- 角色配置里的 provider 仍然是 `openai`，新安装的默认模型是 `deepseek-flash`。
 - API key 写入 `.env` 的 `DEEPSEEK_API_KEY`。
 
 ### Models
@@ -565,7 +565,7 @@ Settings / Security，并显式传入 `--allow-network`。Chronos 仍依赖该�
 1. 打开 Settings。
 2. 进入 `Setup`。
 3. 选择 `DeepSeek`。
-4. 确认 Default model 是 `deepseek-v4-flash`。
+4. 确认 Default model 是 `deepseek-flash`。
 5. 确认 Base URL 是 `https://api.deepseek.com`。
 6. 粘贴一次 DeepSeek API key。
 7. 点击 `Save local config`。

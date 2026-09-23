@@ -35,6 +35,13 @@ jobs:
         run: |
           pytest --cov=pantheon --cov-report=xml --cov-report=term-missing
 
+      - name: Smoke test one-line installer
+        if: matrix.python-version == '3.11'
+        run: |
+          install_dir="$(mktemp -d)/github-ai"
+          PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
+          "$install_dir/.venv/bin/pantheon" --version
+
       - name: Upload coverage
         if: matrix.python-version == '3.11'
         uses: codecov/codecov-action@v6

@@ -54,7 +54,7 @@ async def test_anthropic_discovery_uses_display_names() -> None:
             200,
             json={
                 "data": [
-                    {"id": "claude-sonnet-next", "display_name": "Claude Sonnet Next"},
+                    {"id": "claude-opus-5-5", "display_name": "Claude Opus 5.5"},
                 ]
             },
         )
@@ -66,7 +66,23 @@ async def test_anthropic_discovery_uses_display_names() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    assert models == [{"id": "claude-sonnet-next", "label": "Claude Sonnet Next"}]
+    assert models == [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5"}]
+
+
+@pytest.mark.asyncio
+async def test_deepseek_discovery_accepts_latest_flash_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == httpx.URL("https://api.deepseek.com/models")
+        return httpx.Response(200, json={"data": [{"id": "deepseek-flash"}]})
+
+    models = await discover_provider_models(
+        "deepseek",
+        "https://api.deepseek.com",
+        "sk-test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert models == [{"id": "deepseek-flash", "label": "deepseek-flash"}]
 
 
 @pytest.mark.asyncio

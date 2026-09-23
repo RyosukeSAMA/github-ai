@@ -6,6 +6,10 @@ All notable changes to Pantheon are documented in this file.
 
 ### Added
 
+- Claude Opus 5.5 (`claude-opus-5-5`) and DeepSeek V4.1 Flash (`deepseek-flash`)
+  in the shared Setup and per-role model catalogs.
+- A one-line installer for macOS, Ubuntu, and WSL Ubuntu that checks Git and Python,
+  creates an isolated virtual environment, and leaves existing directories untouched.
 - GPT-6 Sol (`gpt-6-sol`) and GPT-6 Luna (`gpt-6-luna`) in the shared OpenAI
   Setup and per-role model catalog, using the existing Responses API path.
 - GPT-6 Astra (`gpt-6-astra`) in the shared OpenAI Setup and per-role catalog,
@@ -19,6 +23,8 @@ All notable changes to Pantheon are documented in this file.
 
 ### Changed
 
+- New DeepSeek configurations use `deepseek-flash`; Claude Opus 5.5 requests omit
+  sampling parameters that its always-on adaptive thinking rejects.
 - New OpenAI selections recommend GPT-6 Astra while preserving saved models and
   existing role defaults. Setup explains when an API key is needed to discover
   models and verify account access.
