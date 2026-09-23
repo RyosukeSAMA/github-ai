@@ -57,10 +57,10 @@ This path is for a first-time user starting from a new computer. Pantheon is tes
 |---|---|---|
 | macOS 13 or newer | Terminal + Homebrew + Python 3.11/3.12 | Recommended |
 | Ubuntu 22.04/24.04 | Terminal + system Python | Recommended; covered by CI |
-| Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Supported installation path |
+| Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Documented path; not covered by CI |
 | Native Windows PowerShell | — | Not currently supported |
 
-You also need Git, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access.
+You also need Git, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).
 
 ### 1. Prepare your computer
 
@@ -99,7 +99,7 @@ python3 --version
 git --version
 ```
 
-**Windows 11:** open PowerShell as Administrator, run `wsl --install -d Ubuntu`, restart the computer, open **Ubuntu**, and then use the Ubuntu commands above. Clone Pantheon inside the Linux home folder, not under `/mnt/c`.
+**Windows 11:** open PowerShell as Administrator, run `wsl --install -d Ubuntu-24.04`, restart the computer, open **Ubuntu 24.04**, and then use the Ubuntu commands above. Clone Pantheon inside the Linux home folder, not under `/mnt/c`.
 
 ### 2. Download and install Pantheon
 
@@ -145,6 +145,7 @@ Keep the terminal open and visit <http://127.0.0.1:8000/>. Then:
 1. Select DeepSeek, OpenAI, Anthropic, or Ollama.
 2. Enter that provider's API key, or make sure Ollama is running locally.
 3. Select a model.
+   Keep **Use this model for all chat agents** checked for your first setup.
 4. Select **Test API**. This makes one small real provider request.
 5. After the test succeeds, select **Save local config**.
 6. Select **Check setup** and confirm that every enabled agent is ready.

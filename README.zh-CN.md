@@ -57,10 +57,10 @@ Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保�
 |---|---|---|
 | macOS 13 或更新版本 | Terminal + Homebrew + Python 3.11/3.12 | 推荐 |
 | Ubuntu 22.04/24.04 | Terminal + 系统 Python | 推荐，CI 已覆盖 |
-| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 支持的安装方式 |
+| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 已提供安装步骤，CI 尚未覆盖 |
 | Windows 原生 PowerShell | — | 当前不支持 |
 
-此外还需要 Git、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。
+此外还需要 Git、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。
 
 ### 第一步：准备电脑
 
@@ -99,7 +99,7 @@ python3 --version
 git --version
 ```
 
-**Windows 11：**以管理员身份打开 PowerShell，执行 `wsl --install -d Ubuntu`，重启电脑后打开 **Ubuntu**，再执行上面的 Ubuntu 命令。请把 Pantheon 下载到 Linux 主目录，不要放在 `/mnt/c` 下。
+**Windows 11：**以管理员身份打开 PowerShell，执行 `wsl --install -d Ubuntu-24.04`，重启电脑后打开 **Ubuntu 24.04**，再执行上面的 Ubuntu 命令。请把 Pantheon 下载到 Linux 主目录，不要放在 `/mnt/c` 下。
 
 ### 第二步：下载并安装 Pantheon
 
@@ -145,6 +145,7 @@ pantheon web
 1. 选择 DeepSeek、OpenAI、Anthropic 或 Ollama。
 2. 输入该 Provider 的 API key；如果使用 Ollama，请确认 Ollama 已在本机运行。
 3. 选择模型。
+   首次配置请保持 **Use this model for all chat agents** 已勾选。
 4. 点击 **Test API**；这会向 Provider 发出一次很小的真实请求。
 5. 测试成功后点击 **Save local config**。
 6. 点击 **Check setup**，确认所有已启用 Agent 均已就绪。

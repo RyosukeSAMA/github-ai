@@ -22,6 +22,17 @@ Pantheon 本身免费并运行在本机，但模型执行需要以下方式之�
 
 普通聊天账号或订阅不一定包含 API。特别是 ChatGPT 订阅不包含 OpenAI API 额度。请在所选 Provider 的官方 API 控制台创建 key，并按需要开通 API 计费。
 
+如果还没有 API key，可以从服务商的官方入口开始：
+
+| Provider | 官方入口 |
+|---|---|
+| OpenAI | [API 入门指南](https://platform.openai.com/docs/quickstart/make-your-first-api-request) |
+| Anthropic | [Claude API key 说明](https://platform.claude.com/docs/en/manage-claude/authentication) |
+| DeepSeek | [DeepSeek 开放平台](https://platform.deepseek.com/) |
+| Ollama | [官方下载页面](https://ollama.com/download)（本地模型不需要云端 API key） |
+
+创建普通的项目或个人 API key，复制后在第六步的 Pantheon **Settings → Setup** 页面粘贴。计费方式和可用模型取决于对应服务商账户。
+
 第一次只配置一个 Provider 即可。成功运行后，再为不同 Agent 分配不同 Provider。
 
 ## 二、确认电脑是否支持
@@ -98,11 +109,11 @@ Pantheon 当前在 Windows 上使用 Linux 命令。后面的安装命令不要�
 2. 安装 WSL2 和 Ubuntu：
 
    ```powershell
-   wsl --install -d Ubuntu
+   wsl --install -d Ubuntu-24.04
    ```
 
 3. 按提示重启 Windows。
-4. 从开始菜单打开 **Ubuntu**，按提示创建 Linux 用户名和密码。输入密码时屏幕不会显示字符，这是正常现象。
+4. 从开始菜单打开 **Ubuntu 24.04**，按提示创建 Linux 用户名和密码。输入密码时屏幕不会显示字符，这是正常现象。
 5. 在 Ubuntu 窗口中执行：
 
    ```bash
@@ -113,6 +124,8 @@ Pantheon 当前在 Windows 上使用 Linux 命令。后面的安装命令不要�
    ```
 
 请把项目放在 Linux 主目录，例如 `/home/你的用户名/github-ai`。不要放在 `/mnt/c/...`，否则速度较慢，也更容易遇到文件权限问题。
+
+如果 PowerShell 提示没有 `Ubuntu-24.04`，执行 `wsl --list --online`，从列表中选择 Ubuntu 22.04 或 24.04。Windows 安装错误可参照 [Microsoft 的 WSL 安装指南](https://learn.microsoft.com/en-us/windows/wsl/install)。
 
 ## 四、下载并安装 Pantheon
 
@@ -190,6 +203,7 @@ Uvicorn running on http://127.0.0.1:8000
 4. 保留 Pantheon 显示的官方 Base URL。
 5. 粘贴从该 Provider 官方 API 控制台创建的 API key。
 6. 选择一个模型。
+   首次配置请保持 **Use this model for all chat agents** 已勾选。
 7. 点击 **Test API**。它会检查表单中当前填写的内容，并发送一次很小的真实请求，可能产生少量 Provider 费用。
 8. 测试成功后点击 **Save local config**。
 9. 点击 **Check setup**。它会检查已经保存到本地的配置；确认所有已启用 Agent 均已就绪。
@@ -250,7 +264,7 @@ pantheon service uninstall
 
 ## 十、可选：使用 Ollama，不配置云端 API key
 
-1. 从 Ollama 官方网站安装并启动 Ollama。
+1. 从 [Ollama 官方网站](https://ollama.com/download)安装并启动 Ollama。WSL 用户应在运行 Pantheon 的同一个 Ubuntu 环境中安装 Linux 版 Ollama。
 2. 下载模型：
 
    ```bash
@@ -261,7 +275,7 @@ pantheon service uninstall
 3. 启动 Pantheon，打开 **Settings → Setup**。
 4. 选择 **Ollama**，保留 `http://localhost:11434` 作为 Base URL。
 5. 选择或输入 `ollama list` 显示的模型 ID。
-6. 依次运行 **Check setup**、**Test API** 和 **Save local config**。
+6. 保持 **Use this model for all chat agents** 已勾选。依次点击 **Test API**、**Save local config**、**Check setup**。最后一次检查应显示所有已启用 Agent 均已就绪。
 
 Ollama 模型可能需要下载数 GB 文件，运行速度取决于模型大小和电脑硬件。
 

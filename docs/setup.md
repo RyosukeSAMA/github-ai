@@ -22,6 +22,17 @@ Pantheon itself is free and runs on your computer. Model execution needs one of 
 
 An account or chat subscription is not necessarily an API account. In particular, a ChatGPT subscription does not include OpenAI API credits. Create and fund an API account in the official console of the provider you choose.
 
+If you do not have an API key yet, use the provider's own instructions:
+
+| Provider | Where to start |
+|---|---|
+| OpenAI | [API quickstart](https://platform.openai.com/docs/quickstart/make-your-first-api-request) |
+| Anthropic | [Claude API key instructions](https://platform.claude.com/docs/en/manage-claude/authentication) |
+| DeepSeek | [DeepSeek Platform](https://platform.deepseek.com/) |
+| Ollama | [Official download](https://ollama.com/download) (no cloud API key needed for a local model) |
+
+Create a regular project or personal API key, copy it once, and paste it into Pantheon's **Settings → Setup** page in step 6. Provider billing and available models depend on that account.
+
 Start with one provider. Pantheon can assign different providers to different agents later.
 
 ## 2. Check that your computer is supported
@@ -98,11 +109,11 @@ Pantheon currently uses Linux commands on Windows. Do not run the later commands
 2. Install WSL2 and Ubuntu:
 
    ```powershell
-   wsl --install -d Ubuntu
+   wsl --install -d Ubuntu-24.04
    ```
 
 3. Restart Windows when requested.
-4. Open **Ubuntu** from the Start menu and create the Linux username and password it requests. The password is not displayed while you type; this is normal.
+4. Open **Ubuntu 24.04** from the Start menu and create the Linux username and password it requests. The password is not displayed while you type; this is normal.
 5. In the Ubuntu window, run:
 
    ```bash
@@ -113,6 +124,8 @@ Pantheon currently uses Linux commands on Windows. Do not run the later commands
    ```
 
 Keep the project in the Linux home folder, such as `/home/your-name/github-ai`. Avoid `/mnt/c/...`, which is slower and can cause file-permission problems.
+
+If PowerShell says `Ubuntu-24.04` is unavailable, run `wsl --list --online` and choose a listed Ubuntu 22.04 or 24.04 distribution. See [Microsoft's WSL installation guide](https://learn.microsoft.com/en-us/windows/wsl/install) for Windows-specific errors.
 
 ## 4. Download and install Pantheon
 
@@ -190,6 +203,7 @@ Keep this terminal window open. Open <http://127.0.0.1:8000/> in a current versi
 4. Keep the official Base URL shown by Pantheon.
 5. Paste the API key from that provider's official console.
 6. Select a model.
+   Keep **Use this model for all chat agents** checked for the first setup.
 7. Select **Test API**. This checks the values currently in the form, makes a small real request, and may incur a small provider charge.
 8. When the test succeeds, select **Save local config**.
 9. Select **Check setup**. This checks the saved local configuration; confirm that every enabled agent is ready.
@@ -250,7 +264,7 @@ The service uses the current repository and virtual environment. macOS uses a pe
 
 ## 10. Optional: use Ollama without a cloud API key
 
-1. Install Ollama from its official website and start it.
+1. [Install Ollama](https://ollama.com/download) and start it. On WSL, install the Linux version inside the same Ubuntu environment where Pantheon runs.
 2. Download a model:
 
    ```bash
@@ -261,7 +275,7 @@ The service uses the current repository and virtual environment. macOS uses a pe
 3. Start Pantheon and open **Settings → Setup**.
 4. Select **Ollama** and keep `http://localhost:11434` as the Base URL.
 5. Select or enter the model ID shown by `ollama list`.
-6. Run **Check setup**, **Test API**, and **Save local config**.
+6. Keep **Use this model for all chat agents** checked. Select **Test API**, then **Save local config**, then **Check setup**. The final check should show every enabled agent as ready.
 
 Ollama model downloads can be several gigabytes. Performance depends on the model and computer hardware.
 
