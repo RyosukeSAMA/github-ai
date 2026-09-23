@@ -32,6 +32,19 @@ def test_core_navigation_and_conversation_state(page: Page, live_server_url: str
     expect(page.locator("#workspace")).to_be_hidden()
 
 
+def test_openai_setup_lists_gpt6_astra(
+    page: Page,
+    live_server_url: str,
+) -> None:
+    page.goto(live_server_url)
+    page.locator("#toggle-settings").click()
+
+    expect(page.locator('#setup-provider option[value="openai"]')).to_have_count(1)
+    expect(page.locator('#setup-model option[value="gpt-6-astra"]')).to_have_text(
+        "GPT-6 Astra"
+    )
+
+
 def test_prompt_enhancement_rewrites_draft_without_sending(
     page: Page,
     live_server_url: str,

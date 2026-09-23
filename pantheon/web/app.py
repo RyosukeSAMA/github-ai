@@ -256,9 +256,10 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "adapter": "openai",
         "env_var": "OPENAI_API_KEY",
         "base_url": "https://api.openai.com/v1",
-        "model": "gpt-5.6",
+        "model": "gpt-6-astra",
         "models": [
-            {"id": "gpt-5.6", "label": "GPT-5.6 Sol (recommended alias)"},
+            {"id": "gpt-6-astra", "label": "GPT-6 Astra"},
+            {"id": "gpt-5.6", "label": "GPT-5.6 Sol (alias)"},
             {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
             {"id": "gpt-5.6-terra", "label": "GPT-5.6 Terra"},
             {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna"},
@@ -269,7 +270,10 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
             {"id": "gpt-4o", "label": "GPT-4o (legacy compatible)"},
         ],
         "requires_key": True,
-        "note": "Use this with an OpenAI API key. Refresh to discover newly available models.",
+        "note": (
+            "GPT-6 Astra uses your OpenAI API key. Refresh models to check the "
+            "account catalog, then use Test API to verify access before saving."
+        ),
     },
     "anthropic": {
         "label": "Anthropic",
