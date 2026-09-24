@@ -6,6 +6,10 @@ All notable changes to Pantheon are documented in this file.
 
 ### Added
 
+- Web update notices based on the latest published GitHub Release, with a manual check in Settings → Info.
+- Durable Web conversations with browser-history migration, JSON export/import, and a previous-snapshot backup.
+- Local 30-day API call and provider-reported token usage statistics in Settings → Info.
+
 - Claude Opus 5.5 (`claude-opus-5-5`) and DeepSeek V4.1 Flash (`deepseek-flash`)
   in the shared Setup and per-role model catalogs.
 - A one-line installer for macOS, Ubuntu, and WSL Ubuntu that checks Git and Python,

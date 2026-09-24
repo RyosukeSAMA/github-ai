@@ -136,6 +136,24 @@
   const infoModel = $('#info-model');
   const infoAgents = $('#info-agents');
   const infoCopyDiagnosticsBtn = $('#info-copy-diagnostics');
+  const sidebarVersion = $('#sidebar-version');
+  const updateBanner = $('#update-banner');
+  const updateBannerText = $('#update-banner-text');
+  const updateBannerLink = $('#update-banner-link');
+  const updateBannerDismiss = $('#update-banner-dismiss');
+  const infoUpdatePill = $('#info-update-pill');
+  const infoUpdateStatus = $('#info-update-status');
+  const infoUpdateCheck = $('#info-update-check');
+  const infoUpdateLink = $('#info-update-link');
+  const infoConversationPill = $('#info-conversation-pill');
+  const infoConversationStatus = $('#info-conversation-status');
+  const infoBackupExport = $('#info-backup-export');
+  const infoBackupImport = $('#info-backup-import');
+  const infoBackupFile = $('#info-backup-file');
+  const infoConversationRetry = $('#info-conversation-retry');
+  const infoUsageRefresh = $('#info-usage-refresh');
+  const infoUsageTotal = $('#info-usage-total');
+  const infoUsageModels = $('#info-usage-models');
   const voiceLanguageSelect = $('#voice-language');
   const setupForm = $('#setup-form');
   const setupProviderSelect = $('#setup-provider');
@@ -1020,10 +1038,11 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.1';
+    const version = latestAppInfo?.ui_version || '0.2.2';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
+    if (sidebarVersion) sidebarVersion.textContent = `UI ${renderedVersion}`;
     if (infoBackendVersion) {
       const backendVersion = latestAppInfo?.backend_version || version;
       infoBackendVersion.textContent = String(backendVersion).startsWith('v') ? backendVersion : `v${backendVersion}`;
@@ -1066,7 +1085,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.1';
+    const version = info.ui_version || '0.2.2';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1397,6 +1416,66 @@
       renderSettingsInfo();
     }
   }
+
+  async function loadUpdateStatus(force = false) {
+    try {
+      const resp = await fetch(force ? '/api/update/check' : '/api/update', force ? { method: 'POST' } : {});
+      const data = await resp.json();
+      if (!resp.ok) throw data;
+      if (data.error && !data.latest_version) {
+        infoUpdatePill.textContent = 'offline';
+        infoUpdateStatus.textContent = 'Could not check GitHub releases. Try again later.';
+        return;
+      }
+      const dismissed = localStorage.getItem('pantheon:dismissed-update');
+      updateBanner.hidden = !data.update_available || dismissed === data.latest_version;
+      if (data.update_available) {
+        infoUpdatePill.textContent = 'available';
+        infoUpdateStatus.textContent = `${data.latest_version} is available (installed: v${data.current_version}). Update when your chats are idle.`;
+        updateBannerText.textContent = `Pantheon ${data.latest_version} is available. Your current version is v${data.current_version}.`;
+        updateBannerLink.href = data.release_url;
+      } else {
+        infoUpdatePill.textContent = 'current';
+        infoUpdateStatus.textContent = `You have v${data.current_version}; no newer release has been published.`;
+      }
+      infoUpdateLink.href = data.update_available ? data.release_url : 'https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md#11-update-pantheon';
+      infoUpdateLink.textContent = data.update_available ? 'View release' : 'How to update';
+      if (data.error) infoUpdateStatus.textContent += ' (Showing the last successful check.)';
+    } catch (e) {
+      infoUpdatePill.textContent = 'error';
+      infoUpdateStatus.textContent = 'Could not check for updates.';
+    }
+  }
+  infoUpdateCheck?.addEventListener('click', () => loadUpdateStatus(true));
+  updateBannerDismiss?.addEventListener('click', () => {
+    const latest = updateBannerText.textContent.match(/Pantheon (v?\d+\.\d+\.\d+)/)?.[1];
+    if (latest) localStorage.setItem('pantheon:dismissed-update', latest);
+    updateBanner.hidden = true;
+  });
+
+  async function loadUsage() {
+    try {
+      const resp = await fetch('/api/usage');
+      const data = await resp.json();
+      if (!resp.ok) throw data;
+      const totals = data.totals || {};
+      infoUsageTotal.textContent = `${(totals.calls || 0).toLocaleString()} calls · ${(totals.input_tokens || 0).toLocaleString()} input tokens · ${(totals.output_tokens || 0).toLocaleString()} output tokens`;
+      infoUsageModels.replaceChildren();
+      for (const row of data.models || []) {
+        const item = document.createElement('div');
+        item.className = 'usage-model';
+        const name = document.createElement('strong');
+        name.textContent = `${row.provider} / ${row.model}`;
+        const detail = document.createElement('span');
+        detail.textContent = `${row.calls} calls · ${row.input_tokens.toLocaleString()} in / ${row.output_tokens.toLocaleString()} out${row.metered_calls < row.calls ? ` · ${row.calls - row.metered_calls} unmetered` : ''}`;
+        item.append(name, detail);
+        infoUsageModels.appendChild(item);
+      }
+    } catch (e) {
+      infoUsageTotal.textContent = 'Usage statistics unavailable.';
+    }
+  }
+  infoUsageRefresh?.addEventListener('click', loadUsage);
 
   async function checkSetup() {
     if (!setupForm) return;
@@ -3008,6 +3087,9 @@
       loadMemory(),
       loadIntegrations(),
       loadSkillCatalog(),
+      loadConversations(),
+      loadUpdateStatus(),
+      loadUsage(),
     ]);
   }
 
@@ -5184,6 +5266,132 @@
 
   // ---------- Conversations ----------
   const SESSIONS_KEY = 'pantheon:chat-sessions';
+  let conversationRevision = null;
+  let conversationSyncTimer = null;
+  let conversationSyncing = false;
+
+  function mergeConversations(local, remote) {
+    const merged = new Map();
+    for (const session of [...remote, ...local]) {
+      const previous = merged.get(session.id);
+      if (!previous || (session.updatedAt || 0) > (previous.updatedAt || 0)) merged.set(session.id, session);
+    }
+    return [...merged.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+
+  async function loadConversations() {
+    try {
+      const resp = await fetch('/api/conversations');
+      const data = await resp.json();
+      if (!resp.ok || data.schema_version !== 1 || !Array.isArray(data.sessions)) throw data;
+      conversationRevision = data.revision;
+      const browserSessions = data.sessions.length && sessions.length === 1 &&
+        sessions[0].title === 'New chat' && !sessions[0].messages.length ? [] : sessions;
+      const merged = mergeConversations(browserSessions, data.sessions);
+      const needsSave = JSON.stringify(merged) !== JSON.stringify(data.sessions);
+      sessions = merged;
+      const selected = sessions.some((s) => s.id === activeSessionId) ? activeSessionId : sessions[0]?.id;
+      renderSessions();
+      if (selected && !isStreaming) activateSession(selected, true);
+      infoConversationPill.textContent = 'saved';
+      infoConversationStatus.textContent = `${sessions.length} conversations saved on this device. Export a backup before moving computers.`;
+      if (needsSave) scheduleConversationSync();
+    } catch (e) {
+      infoConversationPill.textContent = 'browser only';
+      infoConversationStatus.textContent = 'Could not save to the local server. Chats remain in this browser; export a backup.';
+    }
+  }
+
+  function scheduleConversationSync() {
+    if (conversationRevision === null) return;
+    clearTimeout(conversationSyncTimer);
+    conversationSyncTimer = setTimeout(flushConversationSync, 700);
+  }
+
+  async function flushConversationSync() {
+    if (conversationSyncing || conversationRevision === null) return;
+    conversationSyncing = true;
+    const snapshot = JSON.stringify(sessions);
+    try {
+      const resp = await fetch('/api/conversations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schema_version: 1, expected_revision: conversationRevision, sessions: JSON.parse(snapshot) }),
+      });
+      if (resp.status === 409) {
+        const latest = await fetch('/api/conversations');
+        if (!latest.ok) throw Error('Could not reconcile conversations');
+        const data = await latest.json();
+        conversationRevision = data.revision;
+        sessions = mergeConversations(sessions, data.sessions);
+        try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch (_) {}
+        renderSessions();
+        scheduleConversationSync();
+        return;
+      }
+      if (!resp.ok) throw Error((await resp.json()).detail || 'Save failed');
+      const data = await resp.json();
+      conversationRevision = data.revision;
+      infoConversationPill.textContent = 'saved';
+      infoConversationStatus.textContent = `${sessions.length} conversations saved on this device. Export a backup before moving computers.`;
+      if (snapshot !== JSON.stringify(sessions)) scheduleConversationSync();
+    } catch (e) {
+      infoConversationPill.textContent = 'save error';
+      infoConversationStatus.textContent = `Could not save to the local server: ${e.message || 'unknown error'}. Export a backup.`;
+    } finally {
+      conversationSyncing = false;
+    }
+  }
+
+  function downloadConversationBackup() {
+    saveActiveSession();
+    const backup = JSON.stringify({ schema_version: 1, exported_at: new Date().toISOString(), sessions }, null, 2);
+    const blob = new Blob([backup], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pantheon-conversations-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function importConversationBackup(file) {
+    if (!file || file.size > 10 * 1024 * 1024) {
+      infoConversationStatus.textContent = 'Choose a Pantheon JSON backup smaller than 10 MB.';
+      return;
+    }
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.schema_version !== 1 || !Array.isArray(data.sessions) || data.sessions.length > 200) throw Error('Unsupported backup format');
+      const imported = data.sessions.map((session) => {
+        if (!session || typeof session.title !== 'string' || session.title.length > 200 ||
+            typeof session.mode !== 'string' || session.mode.length > 100 ||
+            typeof session.overrides !== 'object' || session.overrides === null || Array.isArray(session.overrides) ||
+            !Number.isInteger(session.createdAt) || session.createdAt < 0 ||
+            !Number.isInteger(session.updatedAt) || session.updatedAt < 0 ||
+            !Array.isArray(session.messages) || session.messages.length > 2000 ||
+            !session.messages.every((m) => m && ['user', 'assistant', 'error', 'hermes', 'hephaestus', 'athena', 'apollo', 'chronos'].includes(m.role) && typeof m.text === 'string' && m.text.length <= 200000)) {
+          throw Error('Invalid conversation in backup');
+        }
+        // Imports are copies; existing conversations are never overwritten.
+        return { ...session, id: createSession().id };
+      });
+      if (sessions.length + imported.length > 200) throw Error('Import would exceed 200 conversations');
+      saveActiveSession();
+      sessions = [...imported, ...sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      persistSessions();
+      renderSessions();
+      infoConversationStatus.textContent = `Imported ${imported.length} conversations. Existing chats were preserved.`;
+    } catch (e) {
+      infoConversationStatus.textContent = `Import failed: ${e.message || 'invalid file'}`;
+    } finally {
+      infoBackupFile.value = '';
+    }
+  }
+  infoBackupExport?.addEventListener('click', downloadConversationBackup);
+  infoBackupImport?.addEventListener('click', () => infoBackupFile.click());
+  infoBackupFile?.addEventListener('change', () => importConversationBackup(infoBackupFile.files?.[0]));
+  infoConversationRetry?.addEventListener('click', loadConversations);
 
   function cloneJSON(value, fallback) {
     try { return JSON.parse(JSON.stringify(value == null ? fallback : value)); }
@@ -5260,6 +5468,7 @@
 
   function persistSessions() {
     try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch (_) {}
+    scheduleConversationSync();
   }
 
   function renderSessions() {
@@ -7350,4 +7559,7 @@
   if (activeSessionId) activateSession(activeSessionId, true);
   else setMode('auto');
   loadAuthStatus().then(() => initProtectedData());
+  setInterval(() => {
+    if (protectedDataLoaded && (!authState.enabled || authState.authenticated)) loadUpdateStatus();
+  }, 6 * 60 * 60 * 1000);
 })();

@@ -94,6 +94,7 @@ class OpenAIClient(BaseLLMClient):
                 instructions=system or None,
                 **response_kwargs,
             )
+            self._record_usage(target_model, resp, responses_api=True)
             return self._flatten_response_text(resp)
 
         resp = client.chat.completions.create(
@@ -102,4 +103,5 @@ class OpenAIClient(BaseLLMClient):
             temperature=temperature,
             **kwargs,
         )
+        self._record_usage(target_model, resp)
         return (resp.choices[0].message.content or "").strip()

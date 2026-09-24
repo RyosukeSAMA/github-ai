@@ -45,7 +45,7 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 | 扩展 | 6 个内置 Skills、本地 Skills、Plugin prompt packs、MCP 工具和 Webhook |
 | 本地配置 | Provider/模型向导、配置检查、API 测试、登录锁和可选自动启动服务 |
 
-Pantheon 以本地为中心：配置、Memory、定时任务和扩展状态保存在所选工作区，会话和显示偏好保存在当前浏览器。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
+Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 Web 会话保存在所选工作区；浏览器还保留会话缓存和显示偏好。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
 <a id="quick-start"></a>
 
@@ -366,7 +366,9 @@ for step in result["steps"]:
 
 | 位置 | 保存内容 |
 |---|---|
-| 浏览器 `localStorage` | 会话历史、显示偏好和部分 UI 状态 |
+| 浏览器 `localStorage` | 会话缓存、显示偏好和部分 UI 状态 |
+| `.pantheon/conversations.json` | Web 会话；在 Settings → Info 导出或导入备份 |
+| `.pantheon/usage.sqlite` | Provider 返回的 API 调用及 token 统计 |
 | `.env` | API key、Webhook Token 和本地登录配置 |
 | `config/pantheon.yaml` | Provider、模型、角色、Web 和日志配置 |
 | `.pantheon/memory.sqlite` | 长期记忆和记忆建议 |

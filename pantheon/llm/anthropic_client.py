@@ -68,6 +68,7 @@ class AnthropicClient(BaseLLMClient):
             messages=messages,
             **request_kwargs,
         )
+        self._record_usage(target_model, resp)
         # Concatenate all text blocks
         parts = [b.text for b in resp.content if hasattr(b, "text")]
         return "".join(parts).strip()

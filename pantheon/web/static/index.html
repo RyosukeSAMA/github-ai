@@ -11,7 +11,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 
-  <link rel="stylesheet" href="/static/app.css?v=0.2.1-prompt-enhance-1" />
+  <link rel="stylesheet" href="/static/app.css?v=0.2.2" />
   <style>
     html.file-open body {
       display: block;
@@ -217,7 +217,7 @@
           GitHub
         </a>
       </div>
-      <div class="sidebar-version">UI v0.2.1</div>
+      <div class="sidebar-version" id="sidebar-version">UI v0.2.2</div>
     </div>
   </aside>
 
@@ -255,6 +255,12 @@
         </div>
       </div>
     </header>
+
+    <div class="update-banner" id="update-banner" role="status" hidden>
+      <span id="update-banner-text">A Pantheon update is available.</span>
+      <a id="update-banner-link" href="https://github.com/RyosukeSAMA/github-ai/releases" target="_blank" rel="noopener noreferrer">View release</a>
+      <button id="update-banner-dismiss" type="button" aria-label="Dismiss this version">×</button>
+    </div>
 
     <!-- Chat scroll area -->
     <section class="chat" id="chat">
@@ -805,13 +811,40 @@
           <section class="info-card">
             <div class="info-card-head">
               <span class="setup-kicker">About</span>
-              <span class="setup-pill ok" id="info-version-pill">v0.2.1</span>
+              <span class="setup-pill ok" id="info-version-pill">v0.2.2</span>
             </div>
             <dl class="config-list info-list">
-              <dt>UI</dt><dd id="info-ui-version">v0.2.1</dd>
+              <dt>UI</dt><dd id="info-ui-version">v0.2.2</dd>
               <dt>Backend</dt><dd id="info-backend-version">—</dd>
               <dt>Python</dt><dd id="info-python-version">—</dd>
             </dl>
+          </section>
+
+          <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">Updates</span><span class="setup-pill" id="info-update-pill">checking</span></div>
+            <p class="info-note" id="info-update-status">Checking the latest GitHub release…</p>
+            <div class="info-inline-actions">
+              <button class="ghost-btn" id="info-update-check" type="button">Check now</button>
+              <a class="info-support-link" id="info-update-link" href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md#11-update-pantheon" target="_blank" rel="noopener noreferrer">How to update</a>
+            </div>
+          </section>
+
+          <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">Conversations</span><span class="setup-pill" id="info-conversation-pill">local</span></div>
+            <p class="info-note" id="info-conversation-status">Your chats are saved locally.</p>
+            <div class="info-inline-actions">
+              <button class="ghost-btn" id="info-backup-export" type="button">Export backup</button>
+              <button class="ghost-btn" id="info-backup-import" type="button">Import backup</button>
+              <button class="ghost-btn" id="info-conversation-retry" type="button">Retry sync</button>
+              <input id="info-backup-file" type="file" accept="application/json,.json" hidden />
+            </div>
+          </section>
+
+          <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">API usage · 30 days</span><button class="ghost-btn" id="info-usage-refresh" type="button">Refresh</button></div>
+            <p class="info-note" id="info-usage-total">No usage recorded yet.</p>
+            <div id="info-usage-models" class="usage-models"></div>
+            <p class="info-note">Provider-reported tokens only. API charges vary by provider, model, caching and tier; check your provider bill for costs.</p>
           </section>
 
           <section class="info-card">
@@ -885,7 +918,7 @@
           </ul>
         </div>
         <div class="modal-footer">
-          <code>v0.2.1 · MIT License · © 2024 RyosukeSAMA</code>
+          <code>v0.2.2 · MIT License · © 2024 RyosukeSAMA</code>
         </div>
       </div>
     </div>
@@ -923,6 +956,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=0.2.1-gpt6-astra-1"></script>
+  <script src="/static/app.js?v=0.2.2"></script>
 </body>
 </html>

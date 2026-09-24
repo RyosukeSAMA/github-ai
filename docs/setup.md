@@ -300,7 +300,11 @@ python -m pip install -e .
 pantheon --version
 ```
 
-If an update changes backend configuration, start `pantheon web` again after updating.
+Restart `pantheon web` after updating. The Web UI checks the latest published GitHub Release about every six hours and shows a banner when a newer version is available. It never installs an update while a chat is running. The **Settings → Info** panel also has **Check now** and a release link. Changes merged to GitHub without a Release tag do not trigger a version alert.
+
+Before changing computers, use **Settings → Info → Export backup**. Conversations are saved in the workspace at `.pantheon/conversations.json` and migrated from this browser's older local history on first load. Use **Import backup** on the new computer; existing chats remain intact. `.pantheon/conversations.json.bak` retains the preceding local snapshot.
+
+The same Info panel shows API call and provider-reported token totals for the last 30 days, also saved locally in `.pantheon/usage.sqlite`. Calls made before upgrading have no usage records. These totals are not a provider invoice; check provider billing for charges.
 
 ## 12. Troubleshooting
 

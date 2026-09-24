@@ -15,6 +15,7 @@ from pantheon.core.base import Task
 from pantheon.core.extensions import SkillStore
 from pantheon.core.hermes import Hermes
 from pantheon.core.router import Router
+from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.roles import register_default_roles
 
@@ -50,6 +51,9 @@ class Pantheon:
         if verbose:
             self.log.setLevel("DEBUG")
 
+        workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
+        self.usage_store = UsageStore(workspace_root / ".pantheon" / "usage.sqlite")
+
         # Build LLM clients (one per provider)
         self.llm_clients: dict[str, Any] = self._build_llm_clients()
 
@@ -71,7 +75,6 @@ class Pantheon:
 
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
-        workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
         self.skill_store = SkillStore(
             workspace_root / ".pantheon" / "skills",
             legacy_path=workspace_root / ".pantheon" / "skills.json",
@@ -171,6 +174,8 @@ class Pantheon:
                     api_key=api_key,
                     base_url=cfg.get("base_url"),
                 )
+                client.provider_name = name
+                client.usage_recorder = self.usage_store.record
                 clients[name] = client
             except Exception as e:
                 self.log.error("Failed to init provider '%s': %s", name, e)
