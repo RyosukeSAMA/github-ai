@@ -6,6 +6,7 @@ import sys
 import yaml
 from fastapi.testclient import TestClient
 
+from pantheon import __version__
 from pantheon.web import create_app
 
 
@@ -663,8 +664,8 @@ def test_info_reports_local_runtime_paths(tmp_path, monkeypatch) -> None:
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["ui_version"] == "0.2.1"
-    assert data["backend_version"] == "0.2.1"
+    assert data["ui_version"] == __version__
+    assert data["backend_version"] == __version__
     assert data["python_version"] == sys.version.split()[0]
     assert data["workspace_path"] == str(tmp_path)
     assert data["config_path"] == str(tmp_path / "config" / "pantheon.yaml")

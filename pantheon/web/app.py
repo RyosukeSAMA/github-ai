@@ -43,9 +43,12 @@ from pantheon.core.memory import (
 )
 from pantheon.core.pantheon import Pantheon
 from pantheon.core.scheduler import ChronosScheduler, ScheduleParseError, parse_schedule_request
+from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.llm.openai_client import is_responses_api_model
+from pantheon.web.conversations import ConversationStore
 from pantheon.web.model_catalog import ModelDiscoveryError, discover_provider_models
+from pantheon.web.updates import UpdateChecker
 
 STATIC_DIR = Path(__file__).parent / "static"
 STREAM_HEARTBEAT_SECONDS = 5.0
@@ -475,6 +478,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
     chronos_scheduler = ChronosScheduler(workspace_root / ".pantheon" / "chronos_jobs.json")
     memory_store = MemoryStore(workspace_root / ".pantheon" / "memory.sqlite")
+    conversation_store = ConversationStore(workspace_root / ".pantheon" / "conversations.json")
+    usage_store = UsageStore(workspace_root / ".pantheon" / "usage.sqlite")
+    update_checker = UpdateChecker(__version__)
     skill_store = SkillStore(
         workspace_root / ".pantheon" / "skills",
         legacy_path=workspace_root / ".pantheon" / "skills.json",
@@ -1726,6 +1732,43 @@ def create_app(config_path: str | None = None) -> FastAPI:
             "env_path": str(setup_env_path()),
         }
 
+    @app.get("/api/update")
+    async def update_status() -> dict[str, Any]:
+        return await update_checker.check()
+
+    @app.post("/api/update/check")
+    async def update_check_now() -> dict[str, Any]:
+        return await update_checker.check(force=True)
+
+    @app.get("/api/conversations")
+    async def get_conversations() -> dict[str, Any]:
+        try:
+            return conversation_store.get()
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=500, detail=f"Conversation store unavailable: {exc}") from exc
+
+    @app.put("/api/conversations")
+    async def put_conversations(request: Request) -> dict[str, Any]:
+        if int(request.headers.get("content-length", "0") or "0") > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Conversation backup exceeds 10 MB")
+        body = await request.body()
+        if len(body) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Conversation backup exceeds 10 MB")
+        try:
+            data = json.loads(body)
+            if data.get("schema_version") != 1 or not isinstance(data.get("expected_revision"), str):
+                raise ValueError("Unsupported conversation format")
+            saved = conversation_store.replace(data.get("sessions"), data["expected_revision"])
+        except (ValueError, TypeError, AttributeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if saved is None:
+            raise HTTPException(status_code=409, detail="Conversations changed in another tab; refresh and retry")
+        return saved
+
+    @app.get("/api/usage")
+    async def usage_summary() -> dict[str, Any]:
+        return usage_store.summary()
+
     @app.get("/api/integrations")
     async def integrations_status() -> dict[str, Any]:
         return integrations_payload()
@@ -2445,6 +2488,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
                             api_key=api_key,
                             base_url=str(preset.get("base_url") or "") or None,
                         )
+                        role.llm_client.provider_name = provider_id
+                        role.llm_client.usage_recorder = p.usage_store.record
                     except Exception:
                         pass
                 if "model" in override and override["model"]:

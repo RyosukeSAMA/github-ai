@@ -366,7 +366,9 @@ for step in result["steps"]:
 
 | Location | Stored data |
 |---|---|
-| Browser `localStorage` | Conversation history, display preferences, and selected UI state |
+| Browser `localStorage` | Conversation cache, display preferences, and selected UI state |
+| `.pantheon/conversations.json` | Web conversations; export/import backups from Settings → Info |
+| `.pantheon/usage.sqlite` | Provider-reported API call and token statistics |
 | `.env` | API keys, Webhook token, and local login settings |
 | `config/pantheon.yaml` | Providers, models, roles, Web settings, and logging |
 | `.pantheon/memory.sqlite` | Long-term memories and memory suggestions |

@@ -300,7 +300,11 @@ python -m pip install -e .
 pantheon --version
 ```
 
-如果更新涉及后端配置，更新后重新执行 `pantheon web`。
+更新后重新执行 `pantheon web`。Web 页面约每六小时检查一次 GitHub 最新正式 Release；有新版本时顶部会显示升级提示，不会在聊天中自动安装。**Settings → Info** 里也能点击 **Check now**，查看版本和更新入口。仅合并代码、未发布 Release 时不会提示新版本。
+
+换电脑前，在 **Settings → Info → Export backup** 导出会话。会话保存在工作区的 `.pantheon/conversations.json`；第一次打开新版时，会把当前浏览器原有记录迁移进去。在新电脑点击 **Import backup**，原有会话不会被覆盖。`.pantheon/conversations.json.bak` 保留前一次本地快照。
+
+Info 页面还会显示最近 30 天的 API 调用量和 Provider 返回的 token 数，本地数据在 `.pantheon/usage.sqlite`。升级前的调用不会补记；实际费用以 Provider 账单为准。
 
 ## 十二、常见问题排查
 
