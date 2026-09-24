@@ -422,7 +422,7 @@ cp config/pantheon.example.yaml config/pantheon.yaml
 
 Add keys to `.env`, then set matching providers, models, and Base URLs in `config/pantheon.yaml`. Never commit either file.
 
-Pantheon refreshes configured official model catalogs in the background and caches results in `.pantheon/model_catalog.json`. Refreshing the list never changes a saved model automatically.
+Pantheon refreshes configured official model catalogs in the background and caches results in `.pantheon/model_catalog.json`. After a successful refresh, the model menus show only models returned for that API key. A saved model that is absent from the list remains visible with a warning so you can test or change it; refreshing never rewrites your saved configuration. A model-list result alone does not prove that a generation request will succeed, so use **Test API** before saving a new choice. If refresh fails, Pantheon keeps the cached list or the built-in recommendations.
 
 ## 15. Contributor installation
 

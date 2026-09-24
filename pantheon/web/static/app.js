@@ -1120,7 +1120,6 @@
     const label = model.label || model.id;
     if (model.source === 'current' && model.available === false) return `${label} · current, not returned by model list`;
     if (model.source === 'current' && model.available === true) return `${label} · current · listed`;
-    if (model.source === 'recommended' && model.available === false) return `${label} · recommended, not returned by model list`;
     if (model.source === 'available') return `${label} · listed`;
     return label;
   }
@@ -1160,7 +1159,7 @@
       `<option value="${escapeHtml(model.id)}">${escapeHtml(setupModelOptionLabel(model))}</option>`
     )).join('');
     const knownIds = options.map((item) => item.id);
-    const fallback = provider?.model || knownIds[0] || '';
+    const fallback = knownIds.includes(provider?.model) ? provider.model : knownIds[0] || '';
     if (selectedModel && knownIds.includes(selectedModel)) {
       setupModelInput.value = selectedModel;
       setSetupCustomModel(false);

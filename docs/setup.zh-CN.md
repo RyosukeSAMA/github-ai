@@ -422,7 +422,7 @@ cp config/pantheon.example.yaml config/pantheon.yaml
 
 在 `.env` 中填写 key，然后在 `config/pantheon.yaml` 中设置匹配的 Provider、模型和 Base URL。不要提交这两个文件。
 
-Pantheon 会在后台刷新已配置的官方模型目录，并把结果缓存在 `.pantheon/model_catalog.json`。刷新列表不会自动修改已经保存的模型。
+Pantheon 会在后台刷新已配置的官方模型目录，并把结果缓存在 `.pantheon/model_catalog.json`。成功刷新后，模型菜单只显示该 API key 的模型列表返回的模型。若已保存的模型未出现在列表中，它仍会保留并显示提示，方便你测试或手动更换；刷新不会自动改写已保存的配置。仅出现在模型列表中不代表生成请求一定成功，选择新模型后请先点击 **Test API**。如果刷新失败，Pantheon 会保留缓存列表或内置推荐项。
 
 ## 十五、贡献者安装
 

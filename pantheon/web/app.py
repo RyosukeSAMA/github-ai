@@ -1190,6 +1190,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
             if not model_id or model_id in seen:
                 continue
             dynamic = discovered_by_id.pop(model_id, None)
+            if discovered is not None and dynamic is None and model_id != current_model:
+                continue
             result.append({
                 "id": model_id,
                 "label": str(item.get("label") or model_id),

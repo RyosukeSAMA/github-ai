@@ -420,8 +420,7 @@ def test_setup_model_refresh_discovers_new_models_without_changing_saved_model(
     models = {item["id"]: item for item in data["provider"]["models"]}
     assert models["gpt-5.6"]["source"] == "current"
     assert models["gpt-5.6"]["available"] is True
-    assert models["gpt-5.6-sol"]["source"] == "recommended"
-    assert models["gpt-5.6-sol"]["available"] is False
+    assert "gpt-5.6-sol" not in models
     assert models["gpt-6-astra"]["source"] == "recommended"
     assert models["gpt-6-astra"]["available"] is True
     assert yaml.safe_load(config_path.read_text(encoding="utf-8"))["pantheon"]["hermes"][
@@ -456,10 +455,36 @@ def test_setup_model_refresh_keeps_unlisted_current_model(tmp_path, monkeypatch)
         "available": False,
     }
     model_map = {item["id"]: item for item in models}
-    assert model_map["gpt-5.6"]["source"] == "recommended"
-    assert model_map["gpt-5.6"]["available"] is False
+    assert "gpt-5.6" not in model_map
     assert model_map["gpt-6-astra"]["source"] == "recommended"
     assert model_map["gpt-6-astra"]["available"] is True
+
+
+def test_setup_model_refresh_keeps_unlisted_recommended_model_only_when_current(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_minimal_config(tmp_path / "config" / "pantheon.yaml")
+
+    async def fake_discover(provider, base_url, api_key):
+        return [{"id": "gpt-6-sol", "label": "gpt-6-sol"}]
+
+    monkeypatch.setattr("pantheon.web.app.discover_provider_models", fake_discover)
+    response = TestClient(create_app()).post(
+        "/api/setup/models",
+        json={
+            "provider": "openai",
+            "api_key": "sk-refresh-secret",
+            "current_model": "gpt-6-astra",
+        },
+    )
+
+    assert response.status_code == 200
+    models = {item["id"]: item for item in response.json()["provider"]["models"]}
+    assert set(models) == {"gpt-6-astra", "gpt-6-sol"}
+    assert models["gpt-6-astra"]["source"] == "current"
+    assert models["gpt-6-astra"]["available"] is False
+    assert models["gpt-6-sol"]["available"] is True
 
 
 def test_setup_model_refresh_uses_cache_after_provider_failure(tmp_path, monkeypatch) -> None:
