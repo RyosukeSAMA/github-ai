@@ -45,15 +45,41 @@ case "$install_dir" in
   /*) ;;
   *) say_error 'PANTHEON_INSTALL_DIR must be an absolute path.' ;;
 esac
+update_mode="${PANTHEON_UPDATE:-0}"
+install_version="${PANTHEON_VERSION:-latest}"
+if [ "$install_version" = latest ]; then
+  install_version=$(git ls-remote --tags --refs "$repo_url" | "$python_cmd" -c '
+import re, sys
+versions = []
+for line in sys.stdin:
+    tag = line.strip().split("/")[-1]
+    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag)
+    if match:
+        versions.append((tuple(map(int, match.groups())), tag))
+if not versions:
+    raise SystemExit("No stable Pantheon release found")
+print(max(versions)[1])')
+fi
+if ! [[ "$install_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  say_error 'PANTHEON_VERSION must be latest or a release tag such as v0.2.3.'
+fi
 if [ -e "$install_dir" ]; then
-  say_error "Destination already exists: $install_dir. Existing files were left untouched."
+  [ "$update_mode" = 1 ] || say_error "Destination already exists: $install_dir. Use PANTHEON_UPDATE=1 to update."
+  [ -d "$install_dir/.git" ] || say_error 'Destination is not a Pantheon Git installation.'
+  [ "$(git -C "$install_dir" remote get-url origin)" = "$repo_url" ] || say_error 'Destination uses a different Git repository.'
+  [ -z "$(git -C "$install_dir" status --porcelain)" ] || say_error 'Save or commit local changes before updating.'
 fi
 if [ ! -d "$(dirname "$install_dir")" ]; then
   say_error "Parent directory does not exist: $(dirname "$install_dir")"
 fi
 
-printf 'Installing Pantheon into %s with %s...\n' "$install_dir" "$python_cmd"
-git clone --depth 1 "$repo_url" "$install_dir"
+printf 'Installing Pantheon %s into %s with %s...\n' "$install_version" "$install_dir" "$python_cmd"
+if [ "$update_mode" = 1 ] && [ -d "$install_dir/.git" ]; then
+  git -C "$install_dir" fetch --depth 1 origin "refs/tags/$install_version:refs/tags/$install_version"
+  git -C "$install_dir" checkout --detach "$install_version"
+else
+  git clone --depth 1 --branch "$install_version" "$repo_url" "$install_dir"
+fi
 if ! "$python_cmd" -m venv "$install_dir/.venv"; then
   say_error 'Could not create the virtual environment. On Ubuntu install python3-venv, then remove the incomplete destination and retry.'
 fi

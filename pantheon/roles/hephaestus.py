@@ -34,7 +34,7 @@ class Hephaestus(Role):
     default_model = "claude-sonnet-4-6"
     default_provider = "anthropic"
     default_temperature = 0.1
-    tools: list[str] = ["terminal", "file", "patch"]
+    tools: list[str] = []  # Executable tools are supplied by connected MCP servers.
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("system_prompt", HEPHAESTUS_SYSTEM_PROMPT)

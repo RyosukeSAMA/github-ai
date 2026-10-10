@@ -242,3 +242,62 @@ def test_structured_agent_handoffs_render_in_activity(
     expect(messages.nth(1)).to_contain_text("Athena → Hephaestus")
     expect(messages.nth(1)).to_contain_text("review request")
     expect(messages.nth(1)).to_contain_text("A pass or concrete corrections")
+
+
+def test_update_banner_dismissal(page: Page, live_server_url: str) -> None:
+    page.route('**/api/update', lambda route: route.fulfill(json={
+        'current_version': '0.2.3', 'latest_version': 'v99.0.0', 'update_available': True,
+        'release_url': 'https://github.com/RyosukeSAMA/github-ai/releases/tag/v99.0.0',
+    }))
+    page.goto(live_server_url)
+    expect(page.locator('#update-banner')).to_be_visible()
+    page.locator('#update-banner-dismiss').click()
+    page.reload()
+    expect(page.locator('#update-banner')).to_be_hidden()
+
+
+def test_chat_archive_delete_and_stale_tab(page: Page, live_server_url: str) -> None:
+    current = page.request.get(f'{live_server_url}/api/conversations').json()
+    chat = {'id': 'e2e-cleanup', 'title': 'Cleanup test', 'mode': 'auto', 'overrides': {},
+            'createdAt': 1, 'updatedAt': 1, 'messages': []}
+    saved = page.request.put(f'{live_server_url}/api/conversations', data={
+        'schema_version': 1, 'expected_revision': current['revision'], 'sessions': current['sessions'] + [chat],
+    }).json()
+    page.goto(live_server_url)
+    row = page.locator('.conversation-row').filter(has=page.locator('[data-session="e2e-cleanup"]'))
+    expect(row).to_be_visible()
+    row.get_by_role('button', name='Archive conversation', exact=True).click()
+    expect(page.locator('[data-session="e2e-cleanup"]')).to_have_count(0)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="info"]').click()
+    page.locator('#info-conversation-archive').click()
+    expect(page.locator('[data-session="e2e-cleanup"]')).to_be_visible()
+    page.on('dialog', lambda dialog: dialog.accept())
+    row.get_by_role('button', name='Delete Cleanup test', exact=True).click()
+    expect(page.locator('[data-session="e2e-cleanup"]')).to_have_count(0)
+    latest = page.request.get(f'{live_server_url}/api/conversations').json()
+    resurrect = page.request.put(f'{live_server_url}/api/conversations', data={
+        'schema_version': 1, 'expected_revision': latest['revision'], 'sessions': saved['sessions'],
+    }).json()
+    assert not any(item['id'] == 'e2e-cleanup' for item in resurrect['sessions'])
+
+
+def test_conflicting_transcripts_are_preserved_and_save_errors_visible(page: Page, live_server_url: str) -> None:
+    local = {'id': 'conflict-chat', 'title': 'Local branch', 'mode': 'auto', 'overrides': {},
+             'createdAt': 1, 'updatedAt': 3, 'messages': [{'role': 'user', 'text': 'Local edit'}]}
+    remote = {**local, 'title': 'Remote branch', 'updatedAt': 2,
+              'messages': [{'role': 'user', 'text': 'Remote edit'}]}
+    page.add_init_script(f"localStorage.setItem('pantheon:chat-sessions', {json.dumps(json.dumps([local]))});")
+
+    def conversations(route):
+        if route.request.method == 'PUT':
+            route.fulfill(status=400, json={'detail': 'Conversations exceed 10 MB'})
+        else:
+            route.fulfill(json={'schema_version': 1, 'revision': 'test-revision', 'sessions': [remote]})
+
+    page.route('**/api/conversations', conversations)
+    page.goto(live_server_url)
+    expect(page.locator('#chat-list .chat-row')).to_have_count(2)
+    expect(page.locator('#chat-list')).to_contain_text('Conflict copy: Remote branch')
+    expect(page.locator('.conversation-save-notice')).to_contain_text('Conversations exceed 10 MB')
+    assert 'Local edit' in page.locator('#chat').inner_text()

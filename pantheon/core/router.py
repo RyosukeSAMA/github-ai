@@ -140,9 +140,9 @@ Produce a JSON plan."""
 
         steps_text = "\n\n".join(
             f"[{step.get('role', '?')}] {step.get('step', '?')}\n"
-            f"Result: {step.get('result', '?')}"
+            f"Result: {str(step.get('result', '?'))[:12000]}"
             for step in context
-        )
+        )[:32000]
 
         prompt = f"""Original user task: {original_task}
 
@@ -251,7 +251,7 @@ with vague examples or an open-ended clarification request."""
         if data.get("type") == "multi":
             steps_raw = data.get("steps", [])
             steps: list[PlanStep] = []
-            for s in steps_raw:
+            for s in steps_raw[:8]:
                 role = s.get("role")
                 if role not in available_roles:
                     continue  # skip unknown roles

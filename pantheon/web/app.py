@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import hashlib
 import hmac
 import json
@@ -11,12 +12,14 @@ import logging
 import os
 import re
 import secrets
+import signal
 import sys
 import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
@@ -472,7 +475,7 @@ INTEGRATION_CATALOG: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def create_app(config_path: str | None = None) -> FastAPI:
+def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> FastAPI:
     """Build the FastAPI app. Pantheon instance is created lazily."""
     _pantheon: dict[str, Pantheon | None] = {"instance": None}
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
@@ -556,6 +559,57 @@ def create_app(config_path: str | None = None) -> FastAPI:
             _pantheon["instance"].hermes.mcp_tool_executor = mcp_tool_executor
         return _pantheon["instance"]
 
+    def request_pantheon(overrides: dict[str, dict[str, str]] | None = None) -> Pantheon:
+        """Snapshot execution objects so concurrent chats never mutate defaults."""
+        base = get_pantheon()
+        p = copy.copy(base)
+        p.hermes = copy.copy(base.hermes)
+        p.hermes.cancel_event = threading.Event()
+        p.hermes.deadline = time.monotonic() + 600
+        if hasattr(base, "roles"):
+            p.roles = {name: copy.copy(role) for name, role in base.roles.items()}
+            for role in p.roles.values():
+                role.config = dict(role.config)
+            p.hermes.roles = p.roles
+        if hasattr(base, "router"):
+            p.router = copy.copy(base.router)
+            p.hermes.router = p.router
+        for role_name, override in (overrides or {}).items():
+            role = p.get_role(role_name)
+            if role is None:
+                raise ValueError(f"Unknown role: {role_name}")
+            provider_id = str(override.get("provider") or "").strip().lower()
+            if provider_id:
+                if provider_id not in SETUP_PROVIDER_PRESETS:
+                    raise ValueError(f"Unknown provider: {provider_id}")
+                preset = SETUP_PROVIDER_PRESETS[provider_id]
+                adapter = str(preset["adapter"])
+                providers = getattr(base, "config", {}).get("llm_providers", {})
+                provider_config = providers.get(adapter, {})
+                configured_provider = provider_config.get("provider_id") or provider_key_from_adapter(adapter, providers)
+                if adapter == "openai" and not provider_config.get("provider_id"):
+                    deepseek_key = env_value("DEEPSEEK_API_KEY")
+                    if deepseek_key and provider_config.get("api_key") == deepseek_key:
+                        configured_provider = "deepseek"
+                matches = configured_provider == provider_id
+                client = getattr(base, "llm_clients", {}).get(adapter) if matches else None
+                if client is None:
+                    if not matches:
+                        provider_config = {}
+                    client = get_llm_client(
+                        provider=str(preset["adapter"]),
+                        api_key=provider_config.get("api_key") or env_value(
+                            str(preset.get("env_var") or "")
+                        ),
+                        base_url=provider_config.get("base_url") or preset.get("base_url"),
+                    )
+                    client.provider_name = provider_id
+                    client.usage_recorder = p.usage_store.record
+                role.llm_client = client
+            if override.get("model"):
+                role.model = override["model"]
+        return p
+
     def reset_pantheon() -> None:
         _pantheon["instance"] = None
 
@@ -612,9 +666,19 @@ def create_app(config_path: str | None = None) -> FastAPI:
             with mcp_approval_lock:
                 pending_mcp_approvals[approval_id] = pending
             on_event("mcp_approval_required", public_payload)
-            resolved = approval_event.wait(timeout=120)
-            with mcp_approval_lock:
-                pending_mcp_approvals.pop(approval_id, None)
+            approval_deadline = time.monotonic() + 120
+            resolved = False
+            try:
+                while time.monotonic() < approval_deadline:
+                    cancellation = getattr(on_event, "cancel_event", None)
+                    if cancellation is not None and cancellation.is_set():
+                        raise MCPError("Task stopped before tool approval")
+                    if approval_event.wait(timeout=0.25):
+                        resolved = True
+                        break
+            finally:
+                with mcp_approval_lock:
+                    pending_mcp_approvals.pop(approval_id, None)
             if not resolved:
                 on_event("mcp_approval_resolved", {
                     **public_payload,
@@ -761,8 +825,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
         content: str,
         mode: str,
         skill: str | None = None,
+        overrides: dict[str, dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        result = get_pantheon().ask(content, mode=mode, skill=skill)
+        result = request_pantheon(overrides).ask(content, mode=mode, skill=skill)
         result["memory_matches"] = result.get("memory_matches", [])
         result["skill_matches"] = result.get("skill_matches", [])
         maybe_auto_capture_memory(content, result, mode)
@@ -1295,6 +1360,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
     def provider_key_from_adapter(provider: str, providers: dict[str, Any]) -> str:
         if not provider or provider == "none":
             return "none"
+        identity = (providers.get(provider, {}) or {}).get("provider_id")
+        if identity in SETUP_PROVIDER_PRESETS:
+            return identity
         if provider == "openai":
             openai_cfg = providers.get("openai", {}) or {}
             base_url = str(openai_cfg.get("base_url", "")).lower()
@@ -1543,9 +1611,29 @@ def create_app(config_path: str | None = None) -> FastAPI:
     def sse(event: str, data: dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
+    app.state.auth_enabled = lambda: auth_config()["enabled"]
+    remote_bind = bind_host not in {"127.0.0.1", "localhost", "::1"}
+    allowed_hosts = {"127.0.0.1", "localhost", "::1"}
+    if bind_host not in {"0.0.0.0", "::"}:
+        allowed_hosts.add(bind_host)
+    allowed_hosts.update(value.strip().lower() for value in
+                         os.environ.get("PANTHEON_ALLOWED_HOSTS", "").split(",") if value.strip())
+    terminal_enabled = env_value("PANTHEON_TERMINAL_ENABLED").lower() not in {"0", "false", "no"}
+    if remote_bind:
+        terminal_enabled = env_value("PANTHEON_TERMINAL_ENABLED").lower() in TRUE_VALUES
+
     @app.middleware("http")
     async def require_ui_auth(request: Request, call_next):
+        if (request.url.hostname or "").lower() not in allowed_hosts:
+            return JSONResponse({"detail": "Host is not allowed"}, status_code=400)
+        origin = request.headers.get("origin")
+        if origin and request.url.path != "/api/channels/webhook":
+            parsed = urlsplit(origin)
+            if parsed.scheme not in {"http", "https"} or parsed.netloc != request.headers.get("host"):
+                return JSONResponse({"detail": "Cross-origin access is not allowed"}, status_code=403)
         cfg = auth_config()
+        if remote_bind and not cfg["enabled"]:
+            return JSONResponse({"detail": "Remote access requires configured authentication"}, status_code=403)
         if not cfg["enabled"]:
             return await call_next(request)
 
@@ -1764,6 +1852,17 @@ def create_app(config_path: str | None = None) -> FastAPI:
         if saved is None:
             raise HTTPException(status_code=409, detail="Conversations changed in another tab; refresh and retry")
         return saved
+
+    @app.delete("/api/conversations/{session_id}")
+    async def delete_conversation(session_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_id):
+            raise HTTPException(status_code=400, detail="Invalid conversation ID")
+        for _ in range(3):
+            current = conversation_store.get()
+            saved = conversation_store.replace(current["sessions"], current["revision"], deleted_id=session_id)
+            if saved is not None:
+                return saved
+        raise HTTPException(status_code=409, detail="Conversations changed; retry deletion")
 
     @app.get("/api/usage")
     async def usage_summary() -> dict[str, Any]:
@@ -2183,7 +2282,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 },
                 "apollo": {
                     "name": "Apollo (艺术之神)",
-                    "description": "Generates images, audio, video",
+                    "description": "Writes image prompts, lyrics, and storyboards",
                     "temperature": 0.7,
                 },
             }
@@ -2207,6 +2306,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
         providers_cfg = config.setdefault("llm_providers", {})
         active_cfg = providers_cfg.setdefault(adapter, {})
+        active_cfg["provider_id"] = provider_id
         active_cfg["api_key"] = f"${{{env_var}}}" if env_var else ""
         active_cfg["base_url"] = base_url
         active_cfg["enabled"] = True
@@ -2384,7 +2484,9 @@ def create_app(config_path: str | None = None) -> FastAPI:
         memory_events = process_user_memory(req.user_task or req.task)
 
         try:
-            result = ask_with_memory(req.task, mode=mode, skill=req.skill)
+            result = await asyncio.to_thread(
+                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"ask failed: {e}") from e
 
@@ -2462,7 +2564,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
           data: {"message": "..."}
         """
         try:
-            p = get_pantheon()
+            p = request_pantheon(req.overrides)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -2470,41 +2572,14 @@ def create_app(config_path: str | None = None) -> FastAPI:
         if req.role:
             mode = f"role:{req.role}"
 
-        # Apply UI overrides (settings panel): change model on the role's llm client.
-        if req.overrides:
-            for role_name, override in req.overrides.items():
-                try:
-                    role = p.get_role(role_name)
-                except Exception:
-                    continue
-                provider_id = str(override.get("provider") or "").strip().lower()
-                if provider_id in SETUP_PROVIDER_PRESETS:
-                    preset = SETUP_PROVIDER_PRESETS[provider_id]
-                    adapter = str(preset["adapter"])
-                    api_key = env_value(str(preset.get("env_var") or ""))
-                    try:
-                        role.llm_client = get_llm_client(
-                            provider=adapter,
-                            api_key=api_key,
-                            base_url=str(preset.get("base_url") or "") or None,
-                        )
-                        role.llm_client.provider_name = provider_id
-                        role.llm_client.usage_recorder = p.usage_store.record
-                    except Exception:
-                        pass
-                if "model" in override and override["model"]:
-                    try:
-                        role.model = override["model"]
-                    except Exception:
-                        pass
-
         async def event_generator():
             # We run Hermes in a thread so the SSE loop stays responsive
             queue: asyncio.Queue = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
             def emit(event: str, data: dict) -> None:
-                loop.call_soon_threadsafe(queue.put_nowait, (event, data))
+                if not p.hermes.cancel_event.is_set() and not loop.is_closed():
+                    loop.call_soon_threadsafe(queue.put_nowait, (event, data))
 
             def run_sync() -> None:
                 """Run Hermes dispatch with streaming instrumentation."""
@@ -2573,6 +2648,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                         else:
                             emit(event, payload)
 
+                    stream_event.cancel_event = p.hermes.cancel_event
                     result = hermes.dispatch(task, on_event=stream_event)
                     memory_matches = result.get("memory_matches", [])
                     maybe_auto_capture_memory(req.task, result, mode)
@@ -2613,6 +2689,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     emit("done", {
                         "mode": result.get("mode", "single"),
                         "content": result.get("content", ""),
+                        "success": result.get("success", True),
+                        "status": result.get("status", "completed"),
                         "skills": result.get("skill_matches", []),
                         "memory_count": len(memory_matches),
                         "memory_saved_count": len(memory_events["saved"]),
@@ -2622,7 +2700,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 except Exception as e:
                     emit("error", {"message": str(e)})
                 finally:
-                    loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+                    if not p.hermes.cancel_event.is_set() and not loop.is_closed():
+                        loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
 
             # Run the blocking work in a thread
             fut = loop.run_in_executor(None, run_sync)
@@ -2636,58 +2715,64 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 "role": "hermes",
                 "detail": "Connecting to Pantheon",
             }
-            while True:
-                try:
-                    item = await asyncio.wait_for(
-                        queue.get(),
-                        timeout=min(1.0, STREAM_HEARTBEAT_SECONDS),
-                    )
-                except asyncio.TimeoutError:
-                    now = time.monotonic()
-                    if now - last_heartbeat >= STREAM_HEARTBEAT_SECONDS:
-                        progress = {
-                            **live_phase,
-                            "elapsed_seconds": round(now - stream_started, 1),
-                            "waiting_seconds": round(now - phase_started, 1),
-                        }
-                        yield (
-                            "event: progress\n"
-                            f"data: {json.dumps(progress, ensure_ascii=False)}\n\n"
-                        )
-                        last_heartbeat = now
-                    continue
-                if item is None:
-                    break
-                event, data = item
-                if event == "phase":
-                    live_phase = dict(data)
-                    phase_started = time.monotonic()
-                    last_heartbeat = phase_started
-                elif event == "step_start":
-                    live_phase = {
-                        "stage": "executing",
-                        "role": data.get("role", ""),
-                        "detail": data.get("task") or data.get("description") or "Working",
-                        "index": data.get("index", 0),
-                        "total": data.get("total", 1),
-                    }
-                    phase_started = time.monotonic()
-                    last_heartbeat = phase_started
-                elif event == "summary_start":
-                    live_phase = {
-                        "stage": "synthesizing",
-                        "role": "hermes",
-                        "detail": data.get("description") or "Preparing the final answer",
-                    }
-                    phase_started = time.monotonic()
-                    last_heartbeat = phase_started
-                yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-            # Ensure the executor finished (no exception swallowed)
             try:
-                await fut
-            except Exception as e:
-                yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+                while True:
+                    try:
+                        item = await asyncio.wait_for(
+                            queue.get(),
+                            timeout=min(1.0, STREAM_HEARTBEAT_SECONDS),
+                        )
+                    except asyncio.TimeoutError:
+                        now = time.monotonic()
+                        if now >= p.hermes.deadline:
+                            yield 'event: error\ndata: {"message": "Task exceeded its 10 minute execution budget"}\n\n'
+                            return
+                        if now - last_heartbeat >= STREAM_HEARTBEAT_SECONDS:
+                            progress = {
+                                **live_phase,
+                                "elapsed_seconds": round(now - stream_started, 1),
+                                "waiting_seconds": round(now - phase_started, 1),
+                            }
+                            yield (
+                                "event: progress\n"
+                                f"data: {json.dumps(progress, ensure_ascii=False)}\n\n"
+                            )
+                            last_heartbeat = now
+                        continue
+                    if item is None:
+                        break
+                    event, data = item
+                    if event == "phase":
+                        live_phase = dict(data)
+                        phase_started = time.monotonic()
+                        last_heartbeat = phase_started
+                    elif event == "step_start":
+                        live_phase = {
+                            "stage": "executing",
+                            "role": data.get("role", ""),
+                            "detail": data.get("task") or data.get("description") or "Working",
+                            "index": data.get("index", 0),
+                            "total": data.get("total", 1),
+                        }
+                        phase_started = time.monotonic()
+                        last_heartbeat = phase_started
+                    elif event == "summary_start":
+                        live_phase = {
+                            "stage": "synthesizing",
+                            "role": "hermes",
+                            "detail": data.get("description") or "Preparing the final answer",
+                        }
+                        phase_started = time.monotonic()
+                        last_heartbeat = phase_started
+                    yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                # Ensure the executor finished (no exception swallowed)
+                try:
+                    await fut
+                except Exception as e:
+                    yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+            finally:
+                p.hermes.cancel_event.set()
 
         return StreamingResponse(
             event_generator(),
@@ -2705,7 +2790,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
             "root": str(workspace_root),
             "name": workspace_root.name,
             "path": "",
-            "terminal": True,
+            "terminal": terminal_enabled,
         }
 
     @app.get("/api/workspace/files")
@@ -2807,6 +2892,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
     @app.post("/api/workspace/terminal/stream")
     async def terminal_stream(req: TerminalRequest):
+        if not terminal_enabled:
+            raise HTTPException(status_code=403, detail="Terminal execution is disabled by the server")
         command = req.command.strip()
         if not command:
             raise HTTPException(status_code=400, detail="command is required")
@@ -2821,6 +2908,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
         async def event_generator():
             queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
             proc: asyncio.subprocess.Process | None = None
+            tasks: list[asyncio.Task] = []
 
             async def pump(reader: asyncio.StreamReader | None, event: str) -> None:
                 if reader is None:
@@ -2838,6 +2926,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env={**os.environ, "TERM": "dumb"},
+                    start_new_session=True,
                 )
                 yield sse("start", {
                     "command": command,
@@ -2848,11 +2937,12 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 stdout_task = asyncio.create_task(pump(proc.stdout, "stdout"))
                 stderr_task = asyncio.create_task(pump(proc.stderr, "stderr"))
                 wait_task = asyncio.create_task(proc.wait())
+                tasks = [stdout_task, stderr_task, wait_task]
                 deadline = asyncio.get_running_loop().time() + timeout
 
                 while True:
                     if asyncio.get_running_loop().time() > deadline and wait_task.done() is False:
-                        proc.kill()
+                        os.killpg(proc.pid, signal.SIGKILL)
                         yield sse("error", {"message": f"command timed out after {timeout}s"})
                         break
 
@@ -2876,8 +2966,19 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 })
             except Exception as e:
                 if proc and proc.returncode is None:
-                    proc.kill()
+                    os.killpg(proc.pid, signal.SIGKILL)
                 yield sse("error", {"message": str(e)})
+            finally:
+                if proc is not None:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    await proc.wait()
+                for task in tasks:
+                    task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
 
         return StreamingResponse(
             event_generator(),

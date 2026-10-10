@@ -371,3 +371,51 @@ def test_explicit_role_skill_routes_without_planner_and_records_match(tmp_path):
     assert result["skill_matches"][0]["id"] == "fix-and-verify"
     assert result["skill_matches"][0]["invocation"] == "explicit"
     assert "Fix and Verify" in mock.calls[0]["messages"][0]["content"]
+
+
+def test_cancel_stops_later_steps_and_summary():
+    import pytest
+
+    from pantheon.core.base import Plan, PlanStep, TaskResult
+    from pantheon.core.hermes import ExecutionStoppedError
+
+    hermes, roles = _build_hermes(MockLLMClient())
+    calls = []
+
+    def run(task, context=None):
+        calls.append(task.content)
+        hermes.cancel_event.set()
+        return TaskResult(role="athena", content="finished accepted call")
+
+    roles["athena"].run = run
+    with pytest.raises(ExecutionStoppedError):
+        hermes._run_multi(Task(content="work"), Plan.multi([
+            PlanStep(role="athena", task="first"),
+            PlanStep(role="athena", task="second"),
+        ]))
+    assert len(calls) == 1
+
+
+def test_failed_dependency_skips_dependent_but_runs_independent_work():
+    from pantheon.core.base import Plan, PlanStep, TaskResult
+
+    mock = MockLLMClient()
+    mock.add_response("summary")
+    hermes, roles = _build_hermes(mock)
+    calls = []
+
+    def run(task, context=None):
+        calls.append(task.content)
+        return TaskResult(role="athena", content="result", success=len(calls) > 1)
+
+    roles["athena"].run = run
+    result = hermes._run_multi(Task(content="work"), Plan.multi([
+        PlanStep(role="athena", task="first"),
+        PlanStep(role="athena", task="dependent", depends_on=[1]),
+        PlanStep(role="athena", task="independent"),
+    ]))
+    assert len(calls) == 2
+    assert result["steps"][1].error == "dependency_failed"
+    assert result["status"] == "partial_failure"
+    assert result["success"] is False
+    assert "Partial failure" in result["content"]

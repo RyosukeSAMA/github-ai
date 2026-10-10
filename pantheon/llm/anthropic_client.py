@@ -25,7 +25,7 @@ class AnthropicClient(BaseLLMClient):
                 raise ImportError(
                     "anthropic package is required: pip install anthropic"
                 ) from e
-            kwargs: dict[str, Any] = {}
+            kwargs: dict[str, Any] = {"timeout": 120.0, "max_retries": 1}
             is_kie_gateway = "api.kie.ai" in (self.base_url or "").lower()
             if self.api_key:
                 if is_kie_gateway:

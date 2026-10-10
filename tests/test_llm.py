@@ -166,6 +166,8 @@ def test_anthropic_compatible_gateway_uses_bearer_auth_token():
     constructor.assert_called_once_with(
         auth_token="sk-kie-test",
         base_url="https://api.kie.ai/claude",
+        timeout=120.0,
+        max_retries=1,
     )
 
 

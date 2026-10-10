@@ -72,7 +72,7 @@ Only via Hermes in `multi` mode. There is no unrestricted role-to-role conversat
 
 ### Can I save conversation history?
 
-Yes in the Web UI. Conversations are stored in the browser's `localStorage`, while confirmed long-term memories are stored in `.pantheon/memory.sqlite`. CLI and SDK callers should still manage their own conversation transcript when they need full session history.
+Yes in the Web UI. Conversations are stored in `.pantheon/conversations.json` with a browser cache, JSON export/import, archive/restore, and deletion controls, while confirmed long-term memories are stored in `.pantheon/memory.sqlite`. CLI and SDK callers should still manage their own conversation transcript when they need full session history.
 
 ### Can I use Pantheon from a FastAPI / Django app?
 

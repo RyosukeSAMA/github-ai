@@ -127,3 +127,17 @@ async def test_update_checker_uses_latest_release_and_cache(monkeypatch) -> None
     assert len(calls) == 1
     assert (await checker.check(force=True))["update_available"] is True
     assert len(calls) == 2
+
+
+def test_deleted_conversation_cannot_be_resurrected_by_stale_tab(tmp_path):
+    from pantheon.web.conversations import ConversationStore
+
+    store = ConversationStore(tmp_path / 'chats.json')
+    chat = {"id": "chat-1", "title": "Old chat", "mode": "auto", "overrides": {},
+            "createdAt": 1, "updatedAt": 1, "messages": []}
+    initial = store.replace([chat], "")
+    deleted = store.replace([chat], initial["revision"], deleted_id="chat-1")
+    assert deleted["sessions"] == []
+    assert store.replace([chat], initial["revision"]) is None
+    assert store.replace([chat], deleted["revision"])["sessions"] == []
+    assert store.get()["deleted_ids"] == ["chat-1"]

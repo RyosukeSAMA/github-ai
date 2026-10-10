@@ -174,7 +174,7 @@ class Pantheon:
                     api_key=api_key,
                     base_url=cfg.get("base_url"),
                 )
-                client.provider_name = name
+                client.provider_name = cfg.get("provider_id") or name
                 client.usage_recorder = self.usage_store.record
                 clients[name] = client
             except Exception as e:

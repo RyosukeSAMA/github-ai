@@ -2,7 +2,17 @@
 
 All notable changes to Pantheon are documented in this file.
 
-## Unreleased
+## [0.2.3] - 2026-10-10
+
+### Fixed
+
+- Per-conversation model overrides now use independent execution snapshots, including concurrent and non-streaming requests.
+- Disconnected Web tasks stop before further role/tool calls or synthesis. Web tasks have a 10-minute budget; model requests have a 120-second timeout and at most one SDK retry. Already accepted requests may still complete and be billed.
+- Failed dependencies skip downstream steps; independent work continues and final results explicitly report partial failure. Plans are limited to eight steps and prior-result context is bounded.
+- Conversation deletion persists tombstones to prevent stale tabs from restoring deleted chats. Archive/restore, visible save errors, capacity notices, and conflict copies improve local chat management.
+- Tool descriptions reflect actual connected capabilities instead of claiming built-in browsing or multimedia generation.
+- Remote Web binds require authentication; Host and Origin checks protect local APIs. Remote terminal execution requires explicit server opt-in, and terminal disconnects kill the process group.
+- The installer selects stable release tags and supports explicit versions, updates, and rollback. WSL CI tests the proposed commit.
 
 ### Added
 

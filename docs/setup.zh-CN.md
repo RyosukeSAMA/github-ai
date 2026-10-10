@@ -293,12 +293,11 @@ Ollama 模型可能需要下载数 GB 文件，运行速度取决于模型大小
 先在终端按 `Control-C` 停止 Pantheon，然后执行：
 
 ```bash
-cd ~/github-ai
-source .venv/bin/activate
-git pull --ff-only
-python -m pip install -e .
-pantheon --version
+curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | PANTHEON_UPDATE=1 bash
 ```
+
+安装器默认选择最新稳定 Release 标签。指定版本或回退时，在 `PANTHEON_UPDATE=1` 旁添加 `PANTHEON_VERSION=v0.2.3`。先停止服务并导出会话备份；存在未提交改动时会拒绝更新。安装器保留被 Git 忽略的配置和工作区数据，更新后重启服务。旧版本可能无法读取新格式，降级时可能需要恢复备份。开发分支源码安装仍可使用 `git pull --ff-only` 和 `python -m pip install -e .`。
+
 
 更新后重新执行 `pantheon web`。Web 页面约每六小时检查一次 GitHub 最新正式 Release；有新版本时顶部会显示升级提示，不会在聊天中自动安装。**Settings → Info** 里也能点击 **Check now**，查看版本和更新入口。仅合并代码、未发布 Release 时不会提示新版本。
 
@@ -441,3 +440,9 @@ pytest e2e --browser chromium
 ```
 
 普通自动化测试使用 Mock Client，不需要 API key。实时 Provider 诊断需要用户主动开启，并可能产生 Provider 费用。
+
+### 远程访问与终端权限
+
+先在本机启动并开启 **Settings → Security**，再使用 `--host 0.0.0.0`。未配置登录时，远程绑定会拒绝启动。通过 `PANTHEON_ALLOWED_HOSTS` 设置浏览器访问使用的 IP 或域名，多个值用逗号分隔；跨来源 UI 请求会被拒绝。远程终端默认关闭，确有需要时在启动前设置 `PANTHEON_TERMINAL_ENABLED=true`；本机也可设置为 `false` 禁用。修改这些服务设置后需重启。
+
+停止 Web 任务后，不会再启动后续角色、工具或汇总。供应商已接受的同步模型请求可能继续完成并计费。模型请求超时为 120 秒，SDK 最多重试一次；Web 任务总执行预算为 10 分钟。计划最多八步，历史结果上下文会截断以限制大小，大任务可拆成多个请求。

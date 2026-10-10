@@ -27,6 +27,8 @@ def validate_sessions(value: Any) -> list[dict[str, Any]]:
         if not isinstance(session_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_id) or session_id in ids:
             raise ValueError("Invalid or duplicate conversation ID")
         ids.add(session_id)
+        if "archived" in item and not isinstance(item["archived"], bool):
+            raise ValueError("Invalid conversation archive flag")
         messages = item.get("messages", [])
         if not isinstance(messages, list) or len(messages) > MAX_MESSAGES:
             raise ValueError("Conversation has too many messages")
@@ -79,16 +81,21 @@ class ConversationStore:
         with self._lock:
             return self._read()
 
-    def replace(self, sessions: Any, expected_revision: str) -> dict[str, Any] | None:
+    def replace(self, sessions: Any, expected_revision: str, deleted_id: str | None = None) -> dict[str, Any] | None:
         validated = validate_sessions(sessions)
-        payload = {"schema_version": 1, "revision": uuid.uuid4().hex, "sessions": validated}
-        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        if len(encoded) > MAX_BYTES:
-            raise ValueError("Conversations exceed 10 MB")
         with self._lock:
             current = self._read()
             if current["revision"] != expected_revision:
                 return None
+            deleted = set(current.get("deleted_ids", []))
+            if deleted_id:
+                deleted.add(deleted_id)
+            payload = {"schema_version": 1, "revision": uuid.uuid4().hex,
+                       "sessions": [item for item in validated if item["id"] not in deleted],
+                       "deleted_ids": sorted(deleted)}
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            if len(encoded) > MAX_BYTES:
+                raise ValueError("Conversations exceed 10 MB")
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temp = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
             try:

@@ -56,5 +56,6 @@ UI_AUTH_ENV_KEYS = (
 @pytest.fixture(autouse=True)
 def isolate_ui_auth_env(monkeypatch):
     """Keep a local .env login lock from leaking across tests."""
+    monkeypatch.setenv("PANTHEON_ALLOWED_HOSTS", "testserver")
     for key in UI_AUTH_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)

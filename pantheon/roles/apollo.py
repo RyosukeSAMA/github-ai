@@ -21,6 +21,7 @@ Operating principles:
 - For video: write shot-by-shot storyboards.
 - Match tone to the request (professional, playful, epic, etc.).
 - Quality over quantity.
+- Creating actual image, audio, or video files requires a connected tool. Do not claim a file was generated without a successful tool result.
 
 You focus on: image prompts, music lyrics, video storyboards, creative writing, branding.
 You do NOT: do factual research (ask Athena), write production code (ask Hephaestus), or schedule tasks (ask Chronos).
@@ -29,11 +30,11 @@ You do NOT: do factual research (ask Athena), write production code (ask Hephaes
 
 class Apollo(Role):
     name = "apollo"
-    description = "Generates images, audio, video; writes lyrics and creative content"
+    description = "Writes image prompts, lyrics, storyboards, and creative content"
     default_model = "gpt-5.4-mini"
     default_provider = "openai"
     default_temperature = 0.7
-    tools: list[str] = ["image_gen", "video_gen", "tts"]
+    tools: list[str] = []  # Executable tools are supplied by connected MCP servers.
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("system_prompt", APOLLO_SYSTEM_PROMPT)

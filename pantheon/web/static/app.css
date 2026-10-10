@@ -5185,3 +5185,8 @@ body.font-lg .msg-content pre code { font-size: 15px; }
   .composer-inner, .composer-meta, .welcome, .msg { max-width: 100%; }
   .msg.user .msg-content { max-width: 90%; }
 }
+
+.conversation-row { display: flex; align-items: center; gap: 4px; }
+.conversation-row .chat-row { flex: 1; min-width: 0; }
+.conversation-delete { background: transparent; border: 0; color: var(--text-muted, #999); cursor: pointer; padding: 6px; font-size: 20px; }
+.conversation-save-notice { padding: 10px; color: #c78536; font-size: 12px; line-height: 1.5; }

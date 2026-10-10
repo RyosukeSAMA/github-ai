@@ -2,7 +2,7 @@
 
 本文记录当前 Web UI 与 Workspace 的主要改动、使用方式、测试方法，以及后续发布到 GitHub 前需要检查的事项。
 
-当前界面标识：`UI v0.2.1`
+当前界面标识：`UI v0.2.3`
 
 ## 改动总览
 
@@ -21,7 +21,7 @@
 - 将 Web UI 调整为更接近 agent workspace 的三栏布局：左侧会话与模式，中间对话，右侧 Workspace。
 - Light / Dark 主题统一使用变量与玻璃拟态风格，减少硬编码背景色。
 - 背景改为低饱和蓝紫渐变网格与柔和氛围层。
-- 左下角增加 `UI v0.2.1`，方便后续定位 UI 版本。
+- 左下角增加 `UI v0.2.3`，方便后续定位 UI 版本。
 - 左下角 GitHub 按钮改为官方 GitHub mark。
 
 ### 会话
@@ -34,7 +34,7 @@
   - 当前模式
   - 模型覆盖配置
   - Workspace 相关状态
-- 会话数据保存在浏览器 `localStorage`。
+- 会话数据保存在本地 `.pantheon/conversations.json`，浏览器 `localStorage` 保留缓存。可在 Settings → Info 导入/导出备份、显示归档会话，在侧栏归档或删除；保存失败会在侧栏提示。
 
 ### Agent 模式
 
@@ -556,7 +556,7 @@ Settings / Security，并显式传入 `--allow-network`。Chronos 仍依赖该�
 ### 基础界面
 
 1. 打开 `http://127.0.0.1:8000/`。
-2. 确认左下角显示 `UI v0.2.1`。
+2. 确认左下角显示 `UI v0.2.3`。
 3. 确认 GitHub 按钮使用 GitHub mark。
 4. 打开 Settings 切换 Light / Dark，刷新后确认主题保留。
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -11,6 +12,10 @@ from typing import Any
 
 from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult
 from pantheon.core.router import Router
+
+
+class ExecutionStoppedError(RuntimeError):
+    """The user cancelled execution or its time budget was exhausted."""
 
 
 class Hermes:
@@ -23,6 +28,8 @@ class Hermes:
     """
 
     def __init__(self, roles: dict[str, Any], router: Router) -> None:
+        self.cancel_event = threading.Event()
+        self.deadline: float | None = None
         self.roles = roles  # name -> Role instance
         self.router = router
         self.memory_context_provider: Any = None
@@ -49,6 +56,7 @@ class Hermes:
             "communications": [AgentMessage, ...]
           }
         """
+        self._checkpoint()
         requested_skill = self._requested_skill(task.skill)
         if task.skill and requested_skill is None:
             return self._skill_error(task.skill, "is not installed or is disabled")
@@ -258,6 +266,8 @@ class Hermes:
             "mode": "single",
             "plan": plan_reasoning,
             "content": result.content,
+            "success": result.success,
+            "status": "completed" if result.success else "failed",
             "steps": [result],
             "memory_matches": memories,
             "skill_matches": skills,
@@ -298,6 +308,19 @@ class Hermes:
         )
 
         for i, step in enumerate(plan.steps, 1):
+            self._checkpoint()
+            blocked = [dependency for dependency in step.depends_on
+                       if dependency < 1 or dependency >= i
+                       or not steps_output[dependency - 1].success]
+            if blocked:
+                result = TaskResult(role=step.role, content=f"Skipped: dependencies {blocked} failed.",
+                                    success=False, error="dependency_failed")
+                steps_output.append(result)
+                self._emit(on_event, "step_error", {
+                    "index": i - 1, "total": total_steps, "role": step.role,
+                    "content": result.content, "success": False, "error": result.error,
+                })
+                continue
             role = self.roles.get(step.role)
             if role is None:
                 step_payload = {
@@ -410,7 +433,9 @@ class Hermes:
                 {
                     "step": step.task,
                     "role": step.role,
-                    "result": result.content,
+                    "result": result.content[:12000],
+                    "success": result.success,
+                    "error": result.error,
                     "skills": [item.get("id") for item in skills],
                     "kind": step.kind,
                     "deliverable": step.deliverable,
@@ -443,14 +468,19 @@ class Hermes:
                 "total": total_steps,
             },
         )
-        summary = self.router.summarize(task.content, context)
+        self._checkpoint()
+        successful = [item for item in context if item.get("success", True)]
+        summary = self.router.summarize(task.content, successful) if successful else "No steps completed successfully."
+        all_succeeded = all(item.success for item in steps_output)
+        if not all_succeeded:
+            summary = "Partial failure: some steps failed or were skipped.\n\n" + summary
         self._emit(
             on_event,
             "summary_done",
             {
                 "role": "hermes",
                 "content": summary,
-                "success": True,
+                "success": all_succeeded,
             },
         )
 
@@ -458,6 +488,8 @@ class Hermes:
             "mode": "multi",
             "plan": plan.reasoning,
             "content": summary,
+            "success": all_succeeded,
+            "status": "completed" if all_succeeded else "partial_failure",
             "steps": steps_output,
             "communications": communications,
             "memory_matches": self._merge_memory_matches(*[
@@ -738,7 +770,9 @@ Workflow rules:
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> TaskResult:
         """Run a role and handle the explicit MCP tool-call envelope."""
+        self._checkpoint()
         result = role.run(task, context=context)
+        self._checkpoint()
         executor = self.mcp_tool_executor
         if not callable(executor):
             return result
@@ -807,7 +841,9 @@ Workflow rules:
                 context=list(task.context),
                 task_id=task.task_id,
             )
+            self._checkpoint()
             result = role.run(continuation, context=context)
+            self._checkpoint()
         if calls:
             result.metadata["mcp_calls"] = calls
         return result
@@ -864,13 +900,20 @@ Workflow rules:
         payload["arguments"] = arguments if isinstance(arguments, dict) else {}
         return payload
 
-    @staticmethod
+    def _checkpoint(self) -> None:
+        if self.cancel_event.is_set():
+            raise ExecutionStoppedError("Task stopped by user")
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            raise ExecutionStoppedError("Task exceeded its execution time budget")
+
     def _emit(
+        self,
         callback: Callable[[str, dict[str, Any]], None] | None,
         event: str,
         data: dict[str, Any],
     ) -> None:
         """Send an optional progress event without affecting task execution."""
+        self._checkpoint()
         if not callable(callback):
             return
         try:

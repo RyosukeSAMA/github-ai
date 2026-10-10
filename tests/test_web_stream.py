@@ -1,5 +1,6 @@
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 import pantheon.web.app as web_app
@@ -102,3 +103,139 @@ def test_stream_reports_live_phases_steps_and_heartbeats(tmp_path, monkeypatch) 
     assert "event: agent_message" in stream
     assert '"type": "result"' in stream
     assert stream.index("event: summary_start") < stream.index("event: done")
+
+
+def test_model_overrides_are_isolated_between_requests(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    barrier = threading.Barrier(2)
+
+    class FakeHermes:
+        def dispatch(self, task, on_event=None):
+            if task.content == "parallel":
+                barrier.wait(timeout=5)
+            content = self.roles["athena"].model
+            return {"mode": "single", "content": content, "steps": []}
+
+    instances = []
+
+    class FakePantheon:
+        def __init__(self, *args, **kwargs):
+            self.roles = {"athena": SimpleNamespace(model="default", config={})}
+            self.hermes = FakeHermes()
+            self.hermes.roles = self.roles
+            instances.append(self)
+
+        def get_role(self, name):
+            return self.roles.get(name)
+
+        def ask(self, content, mode="auto", skill=None):
+            return self.hermes.dispatch(SimpleNamespace(content=content))
+
+    monkeypatch.setenv("PANTHEON_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(web_app, "Pantheon", FakePantheon)
+    client = TestClient(web_app.create_app())
+    override = {"athena": {"model": "session-a"}}
+    assert client.post("/api/ask", json={"task": "a", "overrides": override}).json()["content"] == "session-a"
+    assert client.post("/api/ask", json={"task": "b"}).json()["content"] == "default"
+    assert 'session-a' in client.post("/api/ask/stream", json={"task": "a", "overrides": override}).text
+    assert instances[0].roles["athena"].model == "default"
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        a = executor.submit(client.post, "/api/ask", json={"task": "parallel", "overrides": override})
+        b = executor.submit(client.post, "/api/ask", json={"task": "parallel"})
+        assert a.result().json()["content"] == "session-a"
+        assert b.result().json()["content"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_stream_disconnect_cancels_remaining_backend_work(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+
+    from pantheon.core.base import Plan, PlanStep, TaskResult
+    from pantheon.core.hermes import Hermes
+
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    class FakeRouter:
+        def plan(self, *args, **kwargs):
+            return Plan.multi([PlanStep(role='athena', task='one'), PlanStep(role='athena', task='two')])
+
+    class FakeRole:
+        config = {}
+        description = 'Research'
+
+        def run(self, task, context=None):
+            calls.append(task.content)
+            started.set()
+            release.wait(timeout=5)
+            return TaskResult(role='athena', content='completed')
+
+    class FakePantheon:
+        def __init__(self, *args, **kwargs):
+            self.roles = {'athena': FakeRole()}
+            self.router = FakeRouter()
+            self.hermes = Hermes(self.roles, self.router)
+
+        def get_role(self, name):
+            return self.roles.get(name)
+
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    monkeypatch.setattr(web_app, 'Pantheon', FakePantheon)
+    app = web_app.create_app()
+    endpoint = next(route.endpoint for route in app.routes if getattr(route, 'path', '') == '/api/ask/stream')
+    response = await endpoint(web_app.AskRequest(task='work', mode='multi'))
+    iterator = response.body_iterator
+    await anext(iterator)
+    assert await asyncio.to_thread(started.wait, 2)
+    await iterator.aclose()
+    release.set()
+    # Let the accepted call return and hit the cancellation checkpoint.
+    await asyncio.sleep(0.1)
+    assert len(calls) == 1
+
+
+def test_provider_override_preserves_custom_endpoint_and_separates_compatible_api(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from pantheon.core.hermes import Hermes
+
+    configured = SimpleNamespace(base_url='https://custom.deepseek.example/v1')
+    created = []
+
+    class FakePantheon:
+        def __init__(self, *args, **kwargs):
+            self.config = {'llm_providers': {'openai': {
+                'provider_id': 'deepseek', 'api_key': 'fake-deepseek', 'base_url': configured.base_url,
+            }}}
+            self.llm_clients = {'openai': configured}
+            self.roles = {'athena': SimpleNamespace(config={}, llm_client=configured)}
+            self.hermes = Hermes(self.roles, SimpleNamespace())
+            self.usage_store = SimpleNamespace(record=lambda *args, **kwargs: None)
+
+        def get_role(self, name):
+            return self.roles.get(name)
+
+        def ask(self, *args, **kwargs):
+            return {'content': self.roles['athena'].llm_client.base_url}
+
+    def create_client(**kwargs):
+        created.append(kwargs)
+        return SimpleNamespace(base_url=kwargs['base_url'])
+
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    monkeypatch.setattr(web_app, 'Pantheon', FakePantheon)
+    monkeypatch.setattr(web_app, 'get_llm_client', create_client)
+    client = TestClient(web_app.create_app())
+    same = client.post('/api/ask', json={'task': 'same', 'overrides': {'athena': {'provider': 'deepseek'}}})
+    switched = client.post('/api/ask', json={'task': 'switch', 'overrides': {'athena': {'provider': 'openai'}}})
+    default = client.post('/api/ask', json={'task': 'default'})
+    assert same.json()['content'] == configured.base_url
+    assert switched.json()['content'] == 'https://api.openai.com/v1'
+    assert default.json()['content'] == configured.base_url
+    assert len(created) == 1
+    assert created[0]['api_key'] != 'fake-deepseek'

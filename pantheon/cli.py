@@ -554,7 +554,7 @@ def web(
     # Lazy import to avoid pulling fastapi/uvicorn when only using CLI
     from pantheon.web import create_app
 
-    app_instance = create_app(config_path=config)
+    app_instance = create_app(config_path=config, bind_host=host)
     console.print()
     console.print(
         _brand_header(
@@ -563,11 +563,9 @@ def web(
             [f"http://{host}:{port}", f"cwd {_workspace_name()}"],
         )
     )
-    if host not in {"127.0.0.1", "localhost", "::1"}:
-        console.print(
-            "[bold yellow]Warning:[/bold yellow] this exposes file and terminal APIs to "
-            "the network. Enable Settings -> Security and restrict network access.\n"
-        )
+    if host not in {"127.0.0.1", "localhost", "::1"} and not app_instance.state.auth_enabled():
+        console.print("[red]Remote access requires authentication. Enable Settings → Security locally first.[/red]")
+        raise typer.Exit(code=1)
 
     uvicorn.run(app_instance, host=host, port=port, reload=reload, log_level="info")
 

@@ -293,12 +293,11 @@ Ollama model downloads can be several gigabytes. Performance depends on the mode
 Stop Pantheon with `Control-C`, then run:
 
 ```bash
-cd ~/github-ai
-source .venv/bin/activate
-git pull --ff-only
-python -m pip install -e .
-pantheon --version
+curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | PANTHEON_UPDATE=1 bash
 ```
+
+The installer defaults to the latest stable release tag. To install or roll back to a specific release, add `PANTHEON_VERSION=v0.2.3` beside `PANTHEON_UPDATE=1`. Stop the service first and export a conversation backup. Local uncommitted changes block updates; the installer preserves ignored config and workspace data. Restart the service after installation. Downgrades may require restoring a backup if an older version cannot read newer data. Source checkouts on a development branch can continue to use `git pull --ff-only` and `python -m pip install -e .`.
+
 
 Restart `pantheon web` after updating. The Web UI checks the latest published GitHub Release about every six hours and shows a banner when a newer version is available. It never installs an update while a chat is running. The **Settings → Info** panel also has **Check now** and a release link. Changes merged to GitHub without a Release tag do not trigger a version alert.
 
@@ -441,3 +440,9 @@ pytest e2e --browser chromium
 ```
 
 Normal automated tests use mock clients and do not require API keys. Live provider diagnostics are opt-in and can incur a provider charge.
+
+### Remote access and terminal permissions
+
+Start locally and enable **Settings → Security** before binding with `--host 0.0.0.0`. Remote binds refuse to start without a configured login. Set `PANTHEON_ALLOWED_HOSTS` to a comma-separated list of the IP addresses or domain names used in your browser. Cross-origin UI requests are rejected. Remote terminal execution defaults to disabled; enable it only when intended with `PANTHEON_TERMINAL_ENABLED=true` before startup. Set the same variable to `false` to disable terminal execution locally. Restart after changing these server settings.
+
+Stopping a Web task prevents later agent/tool calls and synthesis. A synchronous model request already accepted by the provider may finish and be billed. Model requests have a 120-second timeout with at most one SDK retry; Web task execution has a 10-minute budget. Plans have at most eight steps, and prior-result context is truncated to bound its size. Large tasks may need to be split into smaller requests.
