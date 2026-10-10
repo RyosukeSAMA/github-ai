@@ -582,12 +582,20 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
             if provider_id:
                 if provider_id not in SETUP_PROVIDER_PRESETS:
                     raise ValueError(f"Unknown provider: {provider_id}")
-                client = getattr(base, "llm_clients", {}).get(provider_id)
+                preset = SETUP_PROVIDER_PRESETS[provider_id]
+                adapter = str(preset["adapter"])
+                providers = getattr(base, "config", {}).get("llm_providers", {})
+                provider_config = providers.get(adapter, {})
+                configured_provider = provider_config.get("provider_id") or provider_key_from_adapter(adapter, providers)
+                if adapter == "openai" and not provider_config.get("provider_id"):
+                    deepseek_key = env_value("DEEPSEEK_API_KEY")
+                    if deepseek_key and provider_config.get("api_key") == deepseek_key:
+                        configured_provider = "deepseek"
+                matches = configured_provider == provider_id
+                client = getattr(base, "llm_clients", {}).get(adapter) if matches else None
                 if client is None:
-                    preset = SETUP_PROVIDER_PRESETS[provider_id]
-                    provider_config = getattr(base, "config", {}).get(
-                        "llm_providers", {}
-                    ).get(provider_id, {})
+                    if not matches:
+                        provider_config = {}
                     client = get_llm_client(
                         provider=str(preset["adapter"]),
                         api_key=provider_config.get("api_key") or env_value(
@@ -1352,6 +1360,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
     def provider_key_from_adapter(provider: str, providers: dict[str, Any]) -> str:
         if not provider or provider == "none":
             return "none"
+        identity = (providers.get(provider, {}) or {}).get("provider_id")
+        if identity in SETUP_PROVIDER_PRESETS:
+            return identity
         if provider == "openai":
             openai_cfg = providers.get("openai", {}) or {}
             base_url = str(openai_cfg.get("base_url", "")).lower()
@@ -2295,6 +2306,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
 
         providers_cfg = config.setdefault("llm_providers", {})
         active_cfg = providers_cfg.setdefault(adapter, {})
+        active_cfg["provider_id"] = provider_id
         active_cfg["api_key"] = f"${{{env_var}}}" if env_var else ""
         active_cfg["base_url"] = base_url
         active_cfg["enabled"] = True
