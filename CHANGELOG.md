@@ -2,6 +2,14 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.2.5] - 2026-10-10
+
+### Changed
+
+- The top bar shows the Pantheon server connection state and opens Models for the current chat. Full model IDs no longer repeat in the top bar.
+- Agent navigation shows each role's responsibility. Setup shows provider and readiness, with saved model IDs and key variable names in a collapsed details section.
+- Saved model details flag defaults absent from the latest account model list. Catalog updates continue to preserve saved defaults and per-chat selections.
+
 ## [0.2.4] - 2026-10-10
 
 ### Fixed

@@ -3,5 +3,5 @@
 from pantheon.core.base import Plan, PlanStep, Role, Task, TaskResult
 from pantheon.core.pantheon import Pantheon
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 __all__ = ["Pantheon", "Role", "Task", "TaskResult", "Plan", "PlanStep"]
