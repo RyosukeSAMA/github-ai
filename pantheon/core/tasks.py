@@ -83,4 +83,9 @@ class TaskStore:
                     db.execute('UPDATE tasks SET status="interrupted", updated=? WHERE id=? AND status="running"',
                                (time.time(), row['id']))
             rows = db.execute('SELECT * FROM tasks ORDER BY updated DESC LIMIT 100').fetchall()
-            return [{**dict(row), 'data': json.loads(row['data'])} for row in rows]
+            history = []
+            for row in rows:
+                data = json.loads(row['data'])
+                data.pop('result', None)  # History remains small; original results stay on disk.
+                history.append({**dict(row), 'data': data})
+            return history

@@ -45,8 +45,12 @@ class Hermes:
     def dispatch(self, task: Task, on_event=None) -> dict[str, Any]:
         store = self.task_store
         self.active_task_id = task.task_id
-        if store is not None:
-            store.start(task.task_id, task.content, task.mode)
+        try:
+            if store is not None:
+                store.start(task.task_id, task.content, task.mode)
+        except Exception:
+            self.active_task_id = None
+            raise
         try:
             result = self._dispatch(task, on_event=on_event)
             if store is not None:

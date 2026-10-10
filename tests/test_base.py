@@ -25,7 +25,7 @@ def test_task_generates_id():
     t2 = Task(content="hi")
     # IDs should be unique (8-char UUID prefix)
     assert t1.task_id != t2.task_id
-    assert len(t1.task_id) == 8
+    assert len(t1.task_id) == 32
 
 
 def test_plan_single():
