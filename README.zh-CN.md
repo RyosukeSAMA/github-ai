@@ -478,6 +478,7 @@ CI 不会获取或测试真实 Provider 密钥。
 | 文档 | 内容 |
 |---|---|
 | [中文新手安装指南](docs/setup.zh-CN.md) | 按系统准备环境、安装、首次配置、更新、卸载和逐项排错 |
+| [核心补齐进度与数据备份](docs/core-readiness.zh-CN.md) | 开发进度、数据路径、任务管理和离线备份恢复 |
 | [English setup guide](docs/setup.md) | English OS-specific installation and troubleshooting |
 | [Web UI 指南](docs/web-ui.md) | Workspace、Memory、Integrations、测试和快捷键 |
 | [架构说明](docs/architecture.md) | 路由、执行流程与组件设计 |

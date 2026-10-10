@@ -84,7 +84,12 @@ if ! "$python_cmd" -m venv "$install_dir/.venv"; then
   say_error 'Could not create the virtual environment. On Ubuntu install python3-venv, then remove the incomplete destination and retry.'
 fi
 "$install_dir/.venv/bin/python" -m pip install --upgrade pip
-"$install_dir/.venv/bin/python" -m pip install -e "$install_dir"
+if [ -f "$install_dir/requirements.lock" ]; then
+  "$install_dir/.venv/bin/python" -m pip install --require-hashes -r "$install_dir/requirements.lock"
+  "$install_dir/.venv/bin/python" -m pip install -e "$install_dir" --no-deps
+else
+  "$install_dir/.venv/bin/python" -m pip install -e "$install_dir"
+fi
 "$install_dir/.venv/bin/pantheon" --version
 
 printf '\nInstallation complete. Start the local Web UI with:\n  cd %q && .venv/bin/pantheon web\n' "$install_dir"

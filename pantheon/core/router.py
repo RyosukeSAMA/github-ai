@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from pantheon.core.base import PLAN_STEP_KINDS, Plan, PlanStep
+from pantheon.core.context import compact_context
 
 
 class Router:
@@ -129,6 +130,11 @@ Produce a JSON plan."""
 
         return self._parse_plan(raw, available_roles, requested_skill=requested_skill)
 
+    def compact_context(self, context, checkpoint=None):
+        return compact_context(context, client=self.llm_client,
+                               model=self.hermes_model or getattr(self.llm_client, "default_model", ""),
+                               checkpoint=checkpoint)
+
     def summarize(
         self,
         original_task: str,
@@ -138,6 +144,7 @@ Produce a JSON plan."""
         if not context:
             return ""
 
+        context = self.compact_context(context)
         steps_text = "\n\n".join(
             f"[{step.get('role', '?')}] {step.get('step', '?')}\n"
             f"Result: {str(step.get('result', '?'))[:12000]}"

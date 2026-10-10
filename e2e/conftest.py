@@ -53,6 +53,7 @@ def live_server_url(e2e_workspace: Path) -> str:
     env.update(
         {
             "PANTHEON_WORKSPACE": str(e2e_workspace),
+            "PANTHEON_STATE_MODE": "workspace",
             "PANTHEON_UI_AUTH_ENABLED": "false",
             "PYTHONUNBUFFERED": "1",
         }

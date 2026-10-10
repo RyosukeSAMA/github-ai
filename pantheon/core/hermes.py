@@ -30,6 +30,8 @@ class Hermes:
     def __init__(self, roles: dict[str, Any], router: Router) -> None:
         self.cancel_event = threading.Event()
         self.deadline: float | None = None
+        self.task_store: Any = None
+        self.active_task_id: str | None = None
         self.roles = roles  # name -> Role instance
         self.router = router
         self.memory_context_provider: Any = None
@@ -40,7 +42,28 @@ class Hermes:
         self.mcp_context_provider: Any = None
         self.mcp_tool_executor: Any = None
 
-    def dispatch(
+    def dispatch(self, task: Task, on_event=None) -> dict[str, Any]:
+        store = self.task_store
+        self.active_task_id = task.task_id
+        if store is not None:
+            store.start(task.task_id, task.content, task.mode)
+        try:
+            result = self._dispatch(task, on_event=on_event)
+            if store is not None:
+                store.finish(task.task_id, result.get("status", "completed"), result.get("content", ""))
+            return result
+        except ExecutionStoppedError as exc:
+            if store is not None:
+                store.finish(task.task_id, "stopped", str(exc))
+            raise
+        except Exception as exc:
+            if store is not None:
+                store.finish(task.task_id, "failed", str(exc))
+            raise
+        finally:
+            self.active_task_id = None
+
+    def _dispatch(
         self,
         task: Task,
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
@@ -433,7 +456,7 @@ class Hermes:
                 {
                     "step": step.task,
                     "role": step.role,
-                    "result": result.content[:12000],
+                    "result": result.content,
                     "success": result.success,
                     "error": result.error,
                     "skills": [item.get("id") for item in skills],
@@ -445,6 +468,16 @@ class Hermes:
                     ],
                 }
             )
+
+            compact = getattr(self.router, "compact_context", None)
+            if callable(compact):
+                compacted = compact(context, checkpoint=self._checkpoint)
+                if compacted is not context:
+                    context = compacted
+                    self._emit(on_event, "context_compacted", {
+                        "steps": len(context),
+                        "incomplete": any(item.get("context_incomplete") for item in context),
+                    })
 
             if result.success:
                 acknowledgement = self._completion_message(
@@ -901,6 +934,8 @@ Workflow rules:
         return payload
 
     def _checkpoint(self) -> None:
+        if self.task_store is not None and self.active_task_id and self.task_store.cancelled(self.active_task_id):
+            self.cancel_event.set()
         if self.cancel_event.is_set():
             raise ExecutionStoppedError("Task stopped by user")
         if self.deadline is not None and time.monotonic() >= self.deadline:
@@ -917,7 +952,7 @@ Workflow rules:
         if not callable(callback):
             return
         try:
-            callback(event, data)
+            callback(event, {**data, "task_id": self.active_task_id} if event == "plan_start" else data)
         except Exception:
             return
 
@@ -969,6 +1004,8 @@ Workflow rules:
         return {
             "mode": "single",
             "plan": "Explicit skill validation failed.",
+            "status": "failed",
+            "success": False,
             "content": f"Skill '${str(skill_id).lstrip('$')}' {reason}.",
             "steps": [],
             "memory_matches": [],

@@ -69,6 +69,7 @@ include = ["pantheon*"]
 
 [tool.setuptools.package-data]
 pantheon = [
+    "defaults/*.yaml",
     "web/static/*",
     "web/static/avatars/*",
     "skills/*/SKILL.md",

@@ -25,6 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.lock
           pip install -e ".[dev]"
 
       - name: Lint with ruff
@@ -65,6 +66,7 @@ jobs:
       - name: Install Pantheon and Playwright
         run: |
           python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.lock
           pip install -e ".[e2e]"
           playwright install --with-deps chromium
 

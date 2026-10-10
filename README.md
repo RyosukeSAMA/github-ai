@@ -482,6 +482,7 @@ Chromium E2E job. CI never receives or tests real provider credentials.
 |---|---|
 | [Beginner setup guide](docs/setup.md) | OS-specific installation, first launch, updating, uninstalling, and troubleshooting |
 | [中文新手安装指南](docs/setup.zh-CN.md) | 中文系统准备、安装、首次配置和逐项排错 |
+| [Core readiness and backup (中文)](docs/core-readiness.zh-CN.md) | Development status, data paths, task management, and offline backup/restore |
 | [Web UI guide](docs/web-ui.md) | Workspace, Memory, Integrations, testing, and shortcuts |
 | [Architecture](docs/architecture.md) | Routing, execution flow, and component design |
 | [Role guides](docs/roles/) | Prompts and responsibilities for every god |

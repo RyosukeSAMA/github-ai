@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 from pantheon.core.base import Task
 from pantheon.core.extensions import SkillStore
 from pantheon.core.hermes import Hermes
+from pantheon.core.paths import DataPaths
 from pantheon.core.router import Router
+from pantheon.core.tasks import TaskStore
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.roles import register_default_roles
@@ -33,7 +35,8 @@ class Pantheon:
         verbose: bool = False,
     ) -> None:
         # Load .env if present (silently)
-        env_path = env_path or ".env"
+        self.paths = DataPaths.for_workspace()
+        env_path = env_path or str(self.paths.env)
         if Path(env_path).exists():
             load_dotenv(env_path)
 
@@ -51,8 +54,7 @@ class Pantheon:
         if verbose:
             self.log.setLevel("DEBUG")
 
-        workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
-        self.usage_store = UsageStore(workspace_root / ".pantheon" / "usage.sqlite")
+        self.usage_store = UsageStore(self.paths.state / "usage.sqlite")
 
         # Build LLM clients (one per provider)
         self.llm_clients: dict[str, Any] = self._build_llm_clients()
@@ -75,9 +77,10 @@ class Pantheon:
 
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
+        self.hermes.task_store = TaskStore(self.paths.state / "tasks.sqlite")
         self.skill_store = SkillStore(
-            workspace_root / ".pantheon" / "skills",
-            legacy_path=workspace_root / ".pantheon" / "skills.json",
+            self.paths.state / "skills",
+            legacy_path=self.paths.state / "skills.json",
         )
         self.hermes.skill_context_provider = self.skill_store.context_block
         self.hermes.skill_catalog_provider = self.skill_store.catalog_for_roles
@@ -123,17 +126,20 @@ class Pantheon:
         """Find the config file by searching in standard locations."""
         candidates = [
             os.environ.get("PANTHEON_CONFIG"),
-            "config/pantheon.yaml",
-            "config/pantheon.yml",
-            "pantheon.yaml",
-            "pantheon.yml",
+            str(self.paths.config),
+            str(self.paths.workspace / "config/pantheon.yaml"),
+            str(self.paths.workspace / "config/pantheon.yml"),
+            str(self.paths.workspace / "pantheon.yaml"),
+            str(self.paths.workspace / "pantheon.yml"),
             str(Path.home() / ".pantheon.yaml"),
         ]
         for c in candidates:
             if c and Path(c).exists():
                 return c
         # Fall back to the example file (read-only)
-        example = Path("config/pantheon.example.yaml")
+        example = self.paths.workspace / "config/pantheon.example.yaml"
+        if not example.exists():
+            example = Path(__file__).parents[1] / "defaults" / "pantheon.yaml"
         if example.exists():
             # Logger isn't initialized yet, so use the root logger.
             logging.getLogger("pantheon").warning(
