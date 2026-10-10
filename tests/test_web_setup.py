@@ -737,3 +737,63 @@ def test_security_save_can_disable_login_after_authentication(tmp_path, monkeypa
     guest = TestClient(app)
     workspace = guest.get("/api/workspace")
     assert workspace.status_code == 200
+
+
+def test_auto_refresh_includes_saved_keys_for_inactive_providers(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_minimal_config(tmp_path / 'config/pantheon.yaml')
+    config_path = tmp_path / 'config/pantheon.yaml'
+    config = yaml.safe_load(config_path.read_text())
+    config['llm_providers']['openai'] = {'base_url': 'https://api.deepseek.com', 'api_key': '${DEEPSEEK_API_KEY}'}
+    config_path.write_text(yaml.safe_dump(config))
+    (tmp_path / '.env').write_text('OPENAI_API_KEY=test-openai\nANTHROPIC_API_KEY=test-anthropic\n')
+    calls = []
+    async def discover(provider, base_url, api_key):
+        calls.append((provider, base_url, api_key))
+        return [{'id': 'gpt-6.1-sol' if provider == 'openai' else 'claude-haiku-5-5'}]
+    monkeypatch.setattr('pantheon.web.app.discover_provider_models', discover)
+    app = create_app()
+    result = asyncio.run(app.state.refresh_model_catalogs())
+    assert result['refreshed'] == ['openai', 'anthropic']
+    assert calls == [('openai', 'https://api.openai.com/v1', 'test-openai'), ('anthropic', 'https://api.anthropic.com', 'test-anthropic')]
+    providers = TestClient(app).get('/api/setup/status').json()['providers']
+    assert next(p for p in providers if p['id'] == 'openai')['catalog_refresh_status'] == 'ready'
+
+
+def test_refresh_failure_retains_cache_and_surfaces_sanitized_error(tmp_path, monkeypatch):
+    from pantheon.web.model_catalog import ModelDiscoveryError
+    monkeypatch.chdir(tmp_path)
+    _write_minimal_config(tmp_path / 'config/pantheon.yaml')
+    (tmp_path / '.env').write_text('OPENAI_API_KEY=test-private-secret\n')
+    async def success(*args):
+        return [{'id': 'gpt-6.1-sol'}]
+    monkeypatch.setattr('pantheon.web.app.discover_provider_models', success)
+    app = create_app()
+    asyncio.run(app.state.refresh_model_catalogs())
+    monkeypatch.setattr('pantheon.web.app.time.time', lambda: 2000000000)
+    async def failure(*args):
+        raise ModelDiscoveryError('rejected test-private-secret')
+    monkeypatch.setattr('pantheon.web.app.discover_provider_models', failure)
+    assert asyncio.run(app.state.refresh_model_catalogs())['failed'] == ['openai']
+    response = TestClient(app).get('/api/setup/status')
+    provider = next(p for p in response.json()['providers'] if p['id'] == 'openai')
+    assert provider['catalog_refresh_status'] == 'error'
+    assert 'test-private-secret' not in response.text
+    assert any(item['id'] == 'gpt-6.1-sol' for item in provider['models'])
+
+
+def test_keyless_public_sync_updates_recommendations_without_claiming_access(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('PANTHEON_MODEL_DOCS_SYNC', '1')
+    async def discover(provider):
+        return [{'id': 'gpt-6.1-sol' if provider == 'openai' else 'claude-haiku-5-5', 'label': 'new release'}]
+    monkeypatch.setattr('pantheon.web.app.discover_documented_models', discover)
+    app = create_app()
+    asyncio.run(app.state.refresh_documented_catalogs())
+    providers = TestClient(app).get('/api/setup/status').json()['providers']
+    for provider_id in ['openai', 'anthropic']:
+        provider = next(p for p in providers if p['id'] == provider_id)
+        assert provider['catalog_source'] == 'documented'
+        assert not provider['key_configured']
+        assert provider['models'][0]['available'] is None
+        assert provider['models'][0]['label'] == 'new release'

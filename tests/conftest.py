@@ -5,6 +5,15 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def isolate_model_sync(monkeypatch, request):
+    if "tests/live" in str(request.fspath):
+        return
+    monkeypatch.setenv("PANTHEON_MODEL_DOCS_SYNC", "0")
+    for name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
 # Make project root importable
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
