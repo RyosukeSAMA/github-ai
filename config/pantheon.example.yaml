@@ -78,7 +78,7 @@ pantheon:
 
     apollo:
       name: "Apollo (艺术之神)"
-      description: "Generates images, audio, and video"
+      description: "Writes image prompts, lyrics, and storyboards"
       model: gpt-5.4-mini                   # creative text / drafting
       provider: openai
       temperature: 0.7

@@ -239,3 +239,20 @@ def test_router_enhance_prompt_rejects_empty_draft():
         assert str(exc) == "prompt is required"
     else:
         raise AssertionError("empty prompts must be rejected")
+
+
+def test_plan_and_summary_context_are_bounded():
+    import json
+
+    from pantheon.core.router import Router
+    from tests.conftest import MockLLMClient
+
+    client = MockLLMClient()
+    router = Router(client)
+    raw = json.dumps({'type': 'multi', 'steps': [
+        {'role': 'athena', 'task': str(i)} for i in range(100)
+    ]})
+    plan = router._parse_plan(raw, {'athena': {'description': 'research'}})
+    assert len(plan.steps) == 8
+    router.summarize('work', [{'role': 'athena', 'result': 'x' * 100000}] * 8)
+    assert len(client.calls[-1]['messages'][0]['content']) < 35000

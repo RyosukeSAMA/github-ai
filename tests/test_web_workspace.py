@@ -88,3 +88,15 @@ def test_workspace_terminal_streams_command_output(tmp_path, monkeypatch) -> Non
     assert "event: stdout" in resp.text
     assert "hello" in resp.text
     assert "event: exit" in resp.text
+
+
+def test_host_origin_and_terminal_permissions(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PANTHEON_TERMINAL_ENABLED", "false")
+    client = TestClient(create_app())
+    assert client.get('/api/health', headers={"host": "attacker.example"}).status_code == 400
+    assert client.get('/api/workspace', headers={"origin": "https://attacker.example"}).status_code == 403
+    assert client.get('/api/workspace', headers={"origin": "http://testserver"}).status_code == 200
+    assert client.post('/api/workspace/terminal/stream', json={"command": "printf hello"}).status_code == 403
+    remote = TestClient(create_app(bind_host="0.0.0.0"))
+    assert remote.get('/api/workspace').status_code == 403

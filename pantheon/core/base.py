@@ -203,7 +203,7 @@ class Role(abc.ABC):
                     str(item) for item in criteria
                 )
             lines.append(block)
-        return "\n".join(lines)
+        return "\n".join(lines)[:32000]
 
 
 def time_ms() -> int:

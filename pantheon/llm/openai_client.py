@@ -32,7 +32,7 @@ class OpenAIClient(BaseLLMClient):
                 raise ImportError(
                     "openai package is required: pip install openai"
                 ) from e
-            kwargs: dict[str, Any] = {}
+            kwargs: dict[str, Any] = {"timeout": 120.0, "max_retries": 1}
             if self.api_key:
                 kwargs["api_key"] = self.api_key
             if self.base_url:

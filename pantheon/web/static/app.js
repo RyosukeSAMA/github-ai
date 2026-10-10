@@ -1038,7 +1038,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.2';
+    const version = latestAppInfo?.ui_version || '0.2.3';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1085,7 +1085,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.2';
+    const version = info.ui_version || '0.2.3';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -5269,11 +5269,38 @@
   let conversationRevision = null;
   let conversationSyncTimer = null;
   let conversationSyncing = false;
+  let showArchivedConversations = false;
+  const deletedConversationIds = new Set();
+  const saveNotice = document.createElement('div');
+  saveNotice.className = 'conversation-save-notice';
+  saveNotice.setAttribute('role', 'status');
+  saveNotice.hidden = true;
+  chatListEl?.before(saveNotice);
+  function showSaveNotice(message) { saveNotice.textContent = message; saveNotice.hidden = !message; }
+  function absorbDeleted(data) {
+    for (const id of data.deleted_ids || []) deletedConversationIds.add(id);
+    sessions = sessions.filter((item) => !deletedConversationIds.has(item.id));
+  }
+
 
   function mergeConversations(local, remote) {
+    function isPrefix(a, b) { return a.length <= b.length && a.every((item, i) => JSON.stringify(item) === JSON.stringify(b[i])); }
+    function conflictId(session) {
+      let hash = 0;
+      for (const char of JSON.stringify(session.messages)) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+      return `${session.id.slice(0, 70)}-conflict-${(hash >>> 0).toString(16)}`;
+    }
     const merged = new Map();
     for (const session of [...remote, ...local]) {
+      if (deletedConversationIds.has(session.id)) continue;
       const previous = merged.get(session.id);
+      if (previous && !isPrefix(previous.messages || [], session.messages || []) &&
+          !isPrefix(session.messages || [], previous.messages || [])) {
+        const older = (session.updatedAt || 0) > (previous.updatedAt || 0) ? previous : session;
+        const copy = { ...older, id: conflictId(older), title: `Conflict copy: ${older.title}`.slice(0, 200) };
+        merged.set(copy.id, copy);
+        showSaveNotice('Changes from another tab were preserved in a conflict copy.');
+      }
       if (!previous || (session.updatedAt || 0) > (previous.updatedAt || 0)) merged.set(session.id, session);
     }
     return [...merged.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -5284,6 +5311,7 @@
       const resp = await fetch('/api/conversations');
       const data = await resp.json();
       if (!resp.ok || data.schema_version !== 1 || !Array.isArray(data.sessions)) throw data;
+      absorbDeleted(data);
       conversationRevision = data.revision;
       const browserSessions = data.sessions.length && sessions.length === 1 &&
         sessions[0].title === 'New chat' && !sessions[0].messages.length ? [] : sessions;
@@ -5293,10 +5321,12 @@
       const selected = sessions.some((s) => s.id === activeSessionId) ? activeSessionId : sessions[0]?.id;
       renderSessions();
       if (selected && !isStreaming) activateSession(selected, true);
+      showSaveNotice('');
       infoConversationPill.textContent = 'saved';
       infoConversationStatus.textContent = `${sessions.length} conversations saved on this device. Export a backup before moving computers.`;
       if (needsSave) scheduleConversationSync();
     } catch (e) {
+      showSaveNotice('Chats are saved only in this browser. Open Settings → Info to retry or export.');
       infoConversationPill.textContent = 'browser only';
       infoConversationStatus.textContent = 'Could not save to the local server. Chats remain in this browser; export a backup.';
     }
@@ -5322,6 +5352,7 @@
         const latest = await fetch('/api/conversations');
         if (!latest.ok) throw Error('Could not reconcile conversations');
         const data = await latest.json();
+        absorbDeleted(data);
         conversationRevision = data.revision;
         sessions = mergeConversations(sessions, data.sessions);
         try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch (_) {}
@@ -5331,11 +5362,14 @@
       }
       if (!resp.ok) throw Error((await resp.json()).detail || 'Save failed');
       const data = await resp.json();
+      absorbDeleted(data);
       conversationRevision = data.revision;
+      showSaveNotice('');
       infoConversationPill.textContent = 'saved';
       infoConversationStatus.textContent = `${sessions.length} conversations saved on this device. Export a backup before moving computers.`;
       if (snapshot !== JSON.stringify(sessions)) scheduleConversationSync();
     } catch (e) {
+      showSaveNotice(`Chat save failed: ${e.message || 'unknown error'}. Export a backup in Settings → Info.`);
       infoConversationPill.textContent = 'save error';
       infoConversationStatus.textContent = `Could not save to the local server: ${e.message || 'unknown error'}. Export a backup.`;
     } finally {
@@ -5392,6 +5426,14 @@
   infoBackupImport?.addEventListener('click', () => infoBackupFile.click());
   infoBackupFile?.addEventListener('change', () => importConversationBackup(infoBackupFile.files?.[0]));
   infoConversationRetry?.addEventListener('click', loadConversations);
+  document.querySelector('#info-conversation-archive')?.addEventListener('click', (event) => {
+    showArchivedConversations = !showArchivedConversations;
+    event.target.textContent = showArchivedConversations ? 'Show active chats' : 'Show archived chats';
+    renderSessions();
+  });
+  window.addEventListener('storage', (event) => {
+    if (event.key === SESSIONS_KEY && !isStreaming) loadConversations();
+  });
 
   function cloneJSON(value, fallback) {
     try { return JSON.parse(JSON.stringify(value == null ? fallback : value)); }
@@ -5467,14 +5509,14 @@
   }
 
   function persistSessions() {
-    try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch (_) {}
+    try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch (_) { showSaveNotice('Browser storage is full. Export a backup in Settings → Info.'); }
     scheduleConversationSync();
   }
 
   function renderSessions() {
     if (!chatListEl) return;
     chatListEl.innerHTML = '';
-    for (const session of sessions) {
+    for (const session of sessions.filter((item) => showArchivedConversations ? item.archived : !item.archived)) {
       const btn = document.createElement('button');
       btn.className = 'chat-row';
       btn.type = 'button';
@@ -5488,7 +5530,47 @@
         </span>
       `;
       btn.addEventListener('click', () => activateSession(session.id));
-      chatListEl.appendChild(btn);
+      const row = document.createElement('div');
+      row.className = 'conversation-row';
+      row.appendChild(btn);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'conversation-delete';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `Delete ${session.title || 'chat'}`);
+      remove.addEventListener('click', async () => {
+        if (isStreaming || !confirm('Delete this conversation? Export a backup first if you need it.')) return;
+        try {
+          const resp = await fetch(`/api/conversations/${encodeURIComponent(session.id)}`, { method: 'DELETE' });
+          if (!resp.ok) throw Error('Could not delete conversation');
+          const data = await resp.json();
+          absorbDeleted(data);
+          conversationRevision = data.revision;
+          if (activeSessionId === session.id) {
+            activeSessionId = null;
+            if (sessions.length) activateSession(sessions[0].id, true);
+            else startNewSession();
+          }
+          persistSessions();
+          renderSessions();
+        } catch (e) { showSaveNotice(e.message); }
+      });
+      const archive = document.createElement('button');
+      archive.type = 'button';
+      archive.className = 'conversation-delete';
+      archive.textContent = session.archived ? '↩' : '↓';
+      archive.setAttribute('aria-label', session.archived ? 'Restore conversation' : 'Archive conversation');
+      archive.addEventListener('click', () => {
+        if (isStreaming) return;
+        saveActiveSession();
+        session.archived = !session.archived;
+        session.updatedAt = Date.now();
+        persistSessions();
+        renderSessions();
+      });
+      row.appendChild(archive);
+      row.appendChild(remove);
+      chatListEl.appendChild(row);
     }
   }
 
@@ -5497,6 +5579,9 @@
     const session = sessions.find((item) => item.id === activeSessionId);
     if (!session) return;
     const messages = snapshotChat();
+    const overrides = cloneJSON(roleOverrides, {});
+    if (JSON.stringify(session.messages) === JSON.stringify(messages) &&
+        session.mode === currentMode && JSON.stringify(session.overrides) === JSON.stringify(overrides)) return;
     session.messages = messages;
     session.mode = currentMode;
     session.overrides = cloneJSON(roleOverrides, {});
@@ -5566,6 +5651,7 @@
   function startNewSession() {
     if (isStreaming) return;
     saveActiveSession();
+    if (sessions.length >= 200) { showSaveNotice('200 conversation limit reached. Export a backup and delete older chats.'); return; }
     const session = createSession('New chat');
     sessions.unshift(session);
     activeSessionId = session.id;

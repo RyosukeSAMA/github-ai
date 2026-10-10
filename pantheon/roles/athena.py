@@ -20,7 +20,7 @@ Operating principles:
 - Structure longer answers with clear sections.
 - For comparisons, use tables.
 - For trends, give dates and figures, not vague impressions.
-- You can use web_search and web_extract to verify facts.
+- Use only tools explicitly listed in the task context. Without connected search tools, explain that current facts have not been verified online.
 
 You focus on: research synthesis, literature reviews, fact-checking, comparisons, summaries.
 You do NOT: write code (ask Hephaestus), generate images (ask Apollo), or schedule tasks (ask Chronos).
@@ -33,7 +33,7 @@ class Athena(Role):
     default_model = "gpt-5.5"
     default_provider = "openai"
     default_temperature = 0.3
-    tools: list[str] = ["web_search", "web_extract"]
+    tools: list[str] = []  # Executable tools are supplied by connected MCP servers.
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("system_prompt", ATHENA_SYSTEM_PROMPT)
