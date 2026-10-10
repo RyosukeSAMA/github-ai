@@ -5301,7 +5301,11 @@
         merged.set(copy.id, copy);
         showSaveNotice('Changes from another tab were preserved in a conflict copy.');
       }
-      if (!previous || (session.updatedAt || 0) > (previous.updatedAt || 0)) merged.set(session.id, session);
+      const extendsPrevious = previous && (session.messages || []).length > (previous.messages || []).length &&
+        isPrefix(previous.messages || [], session.messages || []);
+      const previousExtends = previous && (previous.messages || []).length > (session.messages || []).length &&
+        isPrefix(session.messages || [], previous.messages || []);
+      if (!previous || extendsPrevious || (!previousExtends && (session.updatedAt || 0) > (previous.updatedAt || 0))) merged.set(session.id, session);
     }
     return [...merged.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   }
@@ -5318,6 +5322,7 @@
       const merged = mergeConversations(browserSessions, data.sessions);
       const needsSave = JSON.stringify(merged) !== JSON.stringify(data.sessions);
       sessions = merged;
+      if (!sessions.length) sessions = [createSession()];
       const selected = sessions.some((s) => s.id === activeSessionId) ? activeSessionId : sessions[0]?.id;
       renderSessions();
       if (selected && !isStreaming) activateSession(selected, true);
