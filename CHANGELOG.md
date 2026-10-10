@@ -2,6 +2,20 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.2.4] - 2026-10-10
+
+### Fixed
+
+- OpenAI and Anthropic recommendations now sync from public official model documents every six hours, including when no API key is configured. Published recommendations remain distinct from account-listed models.
+- Official account catalogs refresh hourly, retry failures every five minutes, and include saved provider keys even when another provider handles the current chat. Custom endpoint credentials are never sent to official endpoints.
+- Open Web pages pick up changed model catalogs every minute and when refocused, preserving unsaved Setup fields and per-chat model choices. Refresh errors and last successful sync time are visible.
+- Anthropic discovery reads every page, excludes retired models, and retains the previous cache when pagination fails. OpenAI discovery excludes models whose shutdown date has passed.
+- Current Claude models omit unsupported sampling parameters.
+
+### Added
+
+- GPT-6.1 Sol, Claude Sonnet 5.5, Claude Haiku 5.5, and Claude Fable 5.1 to the startup recommendations. Saved execution models remain unchanged.
+
 ## [0.2.3] - 2026-10-10
 
 ### Fixed

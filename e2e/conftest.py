@@ -54,6 +54,7 @@ def live_server_url(e2e_workspace: Path) -> str:
         {
             "PANTHEON_WORKSPACE": str(e2e_workspace),
             "PANTHEON_UI_AUTH_ENABLED": "false",
+            "PANTHEON_MODEL_DOCS_SYNC": "0",
             "PYTHONUNBUFFERED": "1",
         }
     )

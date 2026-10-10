@@ -427,6 +427,8 @@ Add keys to `.env`, then set matching providers, models, and Base URLs in `confi
 
 Pantheon refreshes configured official model catalogs in the background and caches results in `.pantheon/model_catalog.json`. After a successful refresh, the model menus show only models returned for that API key. A saved model that is absent from the list remains visible with a warning so you can test or change it; refreshing never rewrites your saved configuration. A model-list result alone does not prove that a generation request will succeed, so use **Test API** before saving a new choice. If refresh fails, Pantheon keeps the cached list or the built-in recommendations.
 
+Official account catalogs synchronize at startup and hourly, with failed attempts retried every five minutes. Open pages pick up changes every minute and when refocused, preserving Setup drafts. Without OpenAI or Anthropic keys, public official recommendations still synchronize every six hours; these do not claim account access. Add the matching API key to query the account catalog. Setup shows sync time and failures. Set `PANTHEON_MODEL_DOCS_SYNC=0` to disable public-document synchronization for offline use.
+
 ## 15. Contributor installation
 
 Regular users should install only `-e .`. Contributors can add development or browser-test dependencies:

@@ -1038,7 +1038,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.3';
+    const version = latestAppInfo?.ui_version || '0.2.4';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1085,7 +1085,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.3';
+    const version = info.ui_version || '0.2.4';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1145,21 +1145,32 @@
 
   function setupModelStatusText(provider) {
     if (!provider) return '';
+    if (provider.catalog_refresh_status === 'error') {
+      return `Automatic refresh failed · ${provider.catalog_error || 'check connection and API key'} · previous choices retained`;
+    }
+    if (provider.catalog_refresh_status === 'manual_endpoint') {
+      return 'Custom endpoint · use Refresh models to query your provider';
+    }
+    if (provider.recommendations_error && !['cache', 'live'].includes(provider.catalog_source)) {
+      return 'Official recommendations could not refresh · previous choices retained · retrying automatically';
+    }
     const options = setupModelOptions(provider);
     const count = options.length;
     const available = options.filter((model) => model.available === true).length;
     if (provider.catalog_source === 'live') return `${available} listed by provider · ${count} choices · Test API confirms access`;
     if (provider.catalog_source === 'cache') {
-      const suffix = provider.catalog_stale ? ' · refresh recommended' : '';
-      return `${available} listed · ${count} choices · cached${suffix}`;
+      const time = provider.models_fetched_at ? new Date(provider.models_fetched_at * 1000).toLocaleString() : '';
+      const suffix = provider.catalog_stale ? ' · awaiting automatic refresh' : ' · updates hourly';
+      return `${available} listed · ${count} choices · updated ${time}${suffix}`;
     }
     if (provider.catalog_source === 'documented') {
-      return `${count} documented models · use Test API to verify access`;
+      const time = provider.models_fetched_at ? new Date(provider.models_fetched_at * 1000).toLocaleString() : '';
+      return `${count} recommendations · official docs updated ${time || 'with this release'} · add an API key to check account access`;
     }
     if (provider.requires_key && !provider.key_configured) {
       return 'Official recommendations · add an API key to refresh models and verify access';
     }
-    return 'Official recommendations · configured official providers are checked every 24 hours';
+    return 'Official recommendations · automatic account catalog refresh pending';
   }
 
   function setSetupCustomModel(enabled, value = '') {
@@ -7653,4 +7664,13 @@
   setInterval(() => {
     if (protectedDataLoaded && (!authState.enabled || authState.authenticated)) loadUpdateStatus();
   }, 6 * 60 * 60 * 1000);
+  function syncModelCatalogs() {
+    if (document.visibilityState !== 'visible' || !protectedDataLoaded
+        || (authState.enabled && !authState.authenticated)
+        || setupSaveBtn?.disabled || setupRefreshModelsBtn?.disabled) return;
+    void loadSetupStatus({ quiet: true, preserveForm: true });
+  }
+  setInterval(syncModelCatalogs, 60 * 1000);
+  document.addEventListener('visibilitychange', syncModelCatalogs);
+  window.addEventListener('focus', syncModelCatalogs);
 })();
