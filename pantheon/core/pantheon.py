@@ -12,10 +12,10 @@ import yaml
 from dotenv import load_dotenv
 
 from pantheon.core.base import Task
-from pantheon.core.extensions import SkillStore
 from pantheon.core.hermes import Hermes
 from pantheon.core.paths import DataPaths
 from pantheon.core.router import Router
+from pantheon.core.services import WorkspaceServices
 from pantheon.core.tasks import TaskStore
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
@@ -78,13 +78,10 @@ class Pantheon:
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
         self.hermes.task_store = TaskStore(self.paths.state / "tasks.sqlite")
-        self.skill_store = SkillStore(
-            self.paths.state / "skills",
-            legacy_path=self.paths.state / "skills.json",
-        )
-        self.hermes.skill_context_provider = self.skill_store.context_block
-        self.hermes.skill_catalog_provider = self.skill_store.catalog_for_roles
-        self.hermes.skill_lookup_provider = self.skill_store.get
+        self.services = WorkspaceServices(self.paths)
+        self.skill_store = self.services.skills
+        self.services.attach(self)
+        self.handle_memory = True
 
     # ---------- public API ----------
 
@@ -110,7 +107,12 @@ class Pantheon:
             Dict with keys: mode, plan, content, steps.
         """
         task = Task(content=content, mode=mode, skill=skill)
-        return self.hermes.dispatch(task, on_event=on_event)
+        memory_events = self.services.process_input(content) if self.handle_memory else {'saved': [], 'suggestions': []}
+        result = self.hermes.dispatch(task, on_event=on_event)
+        if self.handle_memory:
+            self.services.capture_result(content, result, mode)
+        result['memory_events'] = memory_events
+        return result
 
     def list_roles(self) -> list[str]:
         """Return names of all enabled roles."""

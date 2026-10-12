@@ -310,6 +310,53 @@ def main(
         os.environ["PANTHEON_WORKSPACE"] = str(workspace.expanduser().resolve())
 
 
+def _workspace_services():
+    from pantheon.core.paths import DataPaths
+    from pantheon.core.services import WorkspaceServices
+    return WorkspaceServices(DataPaths.for_workspace())
+
+
+@app.command("jobs")
+def jobs(pause: str | None = typer.Option(None, "--pause"),
+         resume: str | None = typer.Option(None, "--resume"),
+         delete: str | None = typer.Option(None, "--delete")) -> None:
+    """View or manage Chronos jobs shared with Web. The background service runs them."""
+    if sum(bool(value) for value in (pause, resume, delete)) > 1:
+        raise typer.BadParameter("Choose only one of --pause, --resume and --delete")
+    scheduler = _workspace_services().scheduler
+    if pause or resume:
+        if not scheduler.set_enabled(pause or resume, bool(resume)):
+            raise typer.BadParameter("Job not found")
+    if delete and not scheduler.delete_job(delete):
+        raise typer.BadParameter("Job not found")
+    console.print_json(data={'jobs': scheduler.list_jobs(), 'runs': scheduler.list_runs()})
+
+
+@app.command("memory")
+def memory(add: str | None = typer.Option(None, "--add"),
+           query: str = typer.Option('', "--query"),
+           role: str = typer.Option('', "--role")) -> None:
+    """Save or search the same Memory used by the Web workspace."""
+    store = _workspace_services().memory
+    if add:
+        console.print_json(data=store.add(add, role=role))
+    else:
+        console.print_json(data={'items': store.list(query=query, role=role), 'stats': store.stats()})
+
+
+@app.command("plugins")
+def plugins() -> None:
+    """List shared prompt plugins. Configure them in Web Settings or the SDK."""
+    console.print_json(data={'plugins': _workspace_services().plugins.list()})
+
+
+@app.command("mcp")
+def mcp(inspect: str | None = typer.Option(None, "--inspect")) -> None:
+    """List shared MCP connections or explicitly test a connection (no tool execution)."""
+    manager = _workspace_services().mcp
+    console.print_json(data=manager.inspect(inspect) if inspect else {'servers': manager.list()})
+
+
 @app.command("tasks")
 def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID."),
           show: str | None = typer.Option(None, "--show", help="View a stored task result by ID.")) -> None:
@@ -414,6 +461,12 @@ def ask(
             )
         )
         console.print(_task_panel(task, mode, skill))
+
+    if not raw and sys.stdin.isatty():
+        def approve_tool(payload):
+            console.print(Panel(Text(json.dumps(payload, ensure_ascii=False, indent=2)), title="Tool approval"))
+            return typer.confirm("Allow this tool call once?", default=False)
+        p.services.approval_handler = approve_tool
 
     started_at = time.perf_counter()
     try:

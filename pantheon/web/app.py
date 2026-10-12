@@ -31,7 +31,6 @@ from pantheon import __version__
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
     MCPError,
-    MCPManager,
     PluginStore,
     SkillStore,
     mcp_available,
@@ -39,15 +38,13 @@ from pantheon.core.extensions import (
 from pantheon.core.memory import (
     DEFAULT_MEMORY_KINDS,
     DEFAULT_MEMORY_ROLES,
-    MemoryStore,
     classify_memory_text,
-    detect_memory_candidate,
-    normalize_memory_role,
 )
 from pantheon.core.pantheon import Pantheon
 from pantheon.core.paths import DataPaths
 from pantheon.core.runtime import RuntimeLease
-from pantheon.core.scheduler import ChronosScheduler, ScheduleParseError, parse_schedule_request
+from pantheon.core.scheduler import ScheduleParseError, parse_schedule_request
+from pantheon.core.services import WorkspaceServices
 from pantheon.core.tasks import TaskStore
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
@@ -492,18 +489,16 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     _pantheon: dict[str, Pantheon | None] = {"instance": None}
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
     data_paths = DataPaths.for_workspace(workspace_root)
-    chronos_scheduler = ChronosScheduler(data_paths.state / "chronos_jobs.json")
-    memory_store = MemoryStore(data_paths.state / "memory.sqlite")
+    workspace_services = WorkspaceServices(data_paths)
+    chronos_scheduler = workspace_services.scheduler
+    memory_store = workspace_services.memory
     conversation_store = ConversationStore(data_paths.state / "conversations.json")
     usage_store = UsageStore(data_paths.state / "usage.sqlite")
     task_store = TaskStore(data_paths.state / "tasks.sqlite")
     update_checker = UpdateChecker(__version__)
-    skill_store = SkillStore(
-        data_paths.state / "skills",
-        legacy_path=data_paths.state / "skills.json",
-    )
-    plugin_store = PluginStore(data_paths.state / "plugins.json")
-    mcp_manager = MCPManager(data_paths.state / "mcp_servers.json")
+    skill_store = workspace_services.skills
+    plugin_store = workspace_services.plugins
+    mcp_manager = workspace_services.mcp
     mcp_approval_lock = threading.Lock()
     pending_mcp_approvals: dict[str, dict[str, Any]] = {}
     chronos_runner: dict[str, asyncio.Task | None] = {"task": None}
@@ -562,6 +557,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 config_path=active_config_path,
                 env_path=str(env_path) if env_path.exists() else None,
             )
+            if hasattr(_pantheon["instance"], "services"):
+                _pantheon["instance"].services = workspace_services
+                _pantheon["instance"].handle_memory = False
             chronos_role = _pantheon["instance"].get_role("chronos")
             if chronos_role is not None:
                 chronos_role.config["scheduler"] = chronos_scheduler
@@ -801,42 +799,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         }
 
     def process_user_memory(user_text: str) -> dict[str, list[dict[str, Any]]]:
-        detected = detect_memory_candidate(user_text)
-        if not detected:
-            return {"saved": [], "suggestions": []}
-        if detected["action"] == "save":
-            item = memory_store.add(
-                detected["content"],
-                kind=detected["kind"],
-                source=detected["source"],
-                role=detected["role"],
-            )
-            return {"saved": [item], "suggestions": []}
-        suggestion = memory_store.suggest(
-            detected["content"],
-            kind=detected["kind"],
-            source=detected["source"],
-            role=detected["role"],
-            reason=detected["reason"],
-        )
-        suggestions = [suggestion] if suggestion.get("status") == "pending" else []
-        return {"saved": [], "suggestions": suggestions}
+        return workspace_services.process_input(user_text)
 
     def maybe_auto_capture_memory(task: str, result: dict[str, Any], mode: str) -> None:
-        settings = memory_store.settings()
-        if not settings["enabled"] or not settings["auto_capture"]:
-            return
-        content = str(result.get("content") or "").strip()
-        if not task.strip() or not content:
-            return
-        if mode.startswith("role:chronos"):
-            return
-        compact_content = re.sub(r"\s+", " ", content)
-        summary = (
-            f"Task: {task.strip()[:500]}\n"
-            f"Result: {compact_content[:1000]}"
-        )
-        memory_store.add(summary, kind="task", source="auto", role=normalize_memory_role(mode))
+        workspace_services.capture_result(task, result, mode)
 
     def ask_with_memory(
         content: str,

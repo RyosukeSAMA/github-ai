@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from pantheon.core.runtime import file_mutex
 
 
 class ScheduleParseError(ValueError):
@@ -247,6 +252,13 @@ class ChronosScheduler:
         self._lock = threading.RLock()
         self._data: dict[str, Any] | None = None
 
+    @contextmanager
+    def _locked(self):
+        state = self.store_path.parent
+        with self._lock, file_mutex(state / 'maintenance.lock'), file_mutex(state / '.locks' / (self.store_path.name + '.lock')):
+            self._data = None
+            yield
+
     def _empty_data(self) -> dict[str, Any]:
         return {"jobs": [], "runs": []}
 
@@ -258,8 +270,8 @@ class ChronosScheduler:
             return self._data
         try:
             self._data = json.loads(self.store_path.read_text(encoding="utf-8"))
-        except Exception:
-            self._data = self._empty_data()
+        except (OSError, ValueError) as exc:
+            raise RuntimeError('Scheduling data could not be read. Restore a backup instead of overwriting it.') from exc
         self._data.setdefault("jobs", [])
         self._data.setdefault("runs", [])
         return self._data
@@ -268,10 +280,13 @@ class ChronosScheduler:
         if self._data is None:
             return
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        self.store_path.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        fd, temporary = tempfile.mkstemp(dir=self.store_path.parent, suffix='.partial')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                stream.write(json.dumps(self._data, ensure_ascii=False, indent=2, sort_keys=True) + '\n')
+            os.replace(temporary, self.store_path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
     def _public_job(self, job: dict[str, Any]) -> dict[str, Any]:
         item = dict(job)
@@ -309,7 +324,7 @@ class ChronosScheduler:
             "last_output": "",
             "last_run_at": None,
         }
-        with self._lock:
+        with self._locked():
             data = self._load()
             data["jobs"].append(job)
             self._save()
@@ -319,13 +334,13 @@ class ChronosScheduler:
         return self.add_job(parse_schedule_request(text))
 
     def list_jobs(self) -> list[dict[str, Any]]:
-        with self._lock:
+        with self._locked():
             data = self._load()
             jobs = sorted(data["jobs"], key=lambda item: item.get("created_at", 0), reverse=True)
             return [self._public_job(job) for job in jobs]
 
     def list_runs(self, job_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        with self._lock:
+        with self._locked():
             data = self._load()
             runs = data["runs"]
             if job_id:
@@ -334,7 +349,7 @@ class ChronosScheduler:
             return [self._public_run(run) for run in runs]
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        with self._lock:
+        with self._locked():
             data = self._load()
             for job in data["jobs"]:
                 if job.get("id") == job_id:
@@ -342,7 +357,7 @@ class ChronosScheduler:
         return None
 
     def set_enabled(self, job_id: str, enabled: bool) -> dict[str, Any]:
-        with self._lock:
+        with self._locked():
             data = self._load()
             for job in data["jobs"]:
                 if job.get("id") != job_id:
@@ -357,7 +372,7 @@ class ChronosScheduler:
         raise KeyError(job_id)
 
     def delete_job(self, job_id: str) -> bool:
-        with self._lock:
+        with self._locked():
             data = self._load()
             before = len(data["jobs"])
             data["jobs"] = [job for job in data["jobs"] if job.get("id") != job_id]
@@ -370,7 +385,7 @@ class ChronosScheduler:
     def claim_due_jobs(self, now_ts: float | None = None) -> list[dict[str, Any]]:
         current = now_ts or time.time()
         due: list[dict[str, Any]] = []
-        with self._lock:
+        with self._locked():
             data = self._load()
             for job in data["jobs"]:
                 if not job.get("enabled") or job.get("running"):
@@ -426,7 +441,7 @@ class ChronosScheduler:
             "finished_at": finished,
             "duration_ms": duration_ms,
         }
-        with self._lock:
+        with self._locked():
             data = self._load()
             data["runs"].append(run)
             data["runs"] = data["runs"][-200:]
