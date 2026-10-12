@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.2.5-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.6-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -156,7 +156,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-最后一条命令应显示 `pantheon 0.2.5` 或更新版本。
+最后一条命令应显示 `pantheon 0.2.6` 或更新版本。
 
 ### 第三步：启动并配置 Web UI
 
@@ -386,7 +386,7 @@ for step in result["steps"]:
 
 ## 当前边界
 
-Pantheon v0.2.5 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
+Pantheon v0.2.6 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
 - Chat Agent 为同步执行；Multi-role 会按计划顺序执行步骤，而不是并行运行。
 - Agent 之间使用由 Hermes 中介的结构化消息，不会进行无边界的点对点群聊或自主反馈循环。

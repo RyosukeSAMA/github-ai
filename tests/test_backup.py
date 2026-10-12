@@ -56,3 +56,55 @@ def test_backup_requires_stopped_runtime(tmp_path):
             export_backup(paths, tmp_path / 'backup.zip')
     finally:
         lease.release()
+
+
+def test_backup_blocks_task_start_while_copying(tmp_path, monkeypatch):
+    import pantheon.core.backup as backup
+    from pantheon.core.tasks import TaskStore
+
+    paths = DataPaths.for_workspace(tmp_path)
+    idle = backup._require_idle
+    store = TaskStore(paths.state / 'tasks.sqlite')
+
+    def check_before_copy(selected):
+        idle(selected)
+        with pytest.raises(RuntimeError, match='backup or restore'):
+            store.start('racing', 'must not start', 'auto')
+
+    monkeypatch.setattr(backup, '_require_idle', check_before_copy)
+    archive = tmp_path / 'safe.zip'
+    export_backup(paths, archive)
+    with zipfile.ZipFile(archive) as saved:
+        assert 'state/maintenance.lock' not in saved.namelist()
+        assert 'state/runtime.lock' not in saved.namelist()
+    store.start('after', 'now allowed', 'auto')
+    store.finish('after', 'completed')
+
+
+def test_restore_rolls_back_all_writes_after_copy_failure(tmp_path, monkeypatch):
+    import pantheon.core.backup as backup
+
+    paths = DataPaths.for_workspace(tmp_path)
+    paths.state.mkdir(parents=True)
+    data = paths.state / 'conversations.json'
+    data.write_text('old')
+    archive = tmp_path / 'saved.zip'
+    export_backup(paths, archive)
+    data.write_text('new')
+    original = backup.shutil.copy2
+    failed = False
+
+    def fail_once(source, target, *args, **kwargs):
+        nonlocal failed
+        if not failed and str(source).startswith(tempfile.gettempdir()) and 'pantheon-restore-' in str(source):
+            failed = True
+            raise OSError('Injected restore failure')
+        return original(source, target, *args, **kwargs)
+
+    import tempfile
+    monkeypatch.setattr(backup.shutil, 'copy2', fail_once)
+    with pytest.raises(OSError, match='Injected'):
+        restore_backup(paths, archive)
+    assert data.read_text() == 'new'
+    with RuntimeLease(paths.state / 'runtime.lock', {}):
+        pass

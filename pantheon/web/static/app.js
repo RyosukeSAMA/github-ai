@@ -1045,7 +1045,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.5';
+    const version = latestAppInfo?.ui_version || '0.2.6';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1092,7 +1092,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.5';
+    const version = info.ui_version || '0.2.6';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1542,6 +1542,7 @@
           const button = document.createElement('button');
           button.className = 'ghost-btn';
           button.type = 'button';
+          button.dataset.stopTask = task.id;
           button.textContent = task.cancel ? 'Stop requested' : 'Stop';
           button.disabled = !!task.cancel;
           button.addEventListener('click', async () => {
@@ -1553,6 +1554,33 @@
             } catch (error) {
               button.disabled = false;
               status.textContent = error.message;
+            }
+          });
+          row.appendChild(button);
+        } else {
+          const button = document.createElement('button');
+          button.className = 'ghost-btn';
+          button.type = 'button';
+          button.textContent = 'View result';
+          button.dataset.taskResult = task.id;
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              const response = await fetch(`/api/tasks/${encodeURIComponent(task.id)}`);
+              if (!response.ok) throw new Error('Stored result unavailable');
+              const result = await response.json();
+              const details = $('#info-task-result-details');
+              $('#info-task-result-title').textContent = `${result.status} · ${result.id}`;
+              const data = result.data || {};
+              $('#info-task-result').textContent = (data.result_truncated
+                ? `Stored excerpt: first 200,000 of ${data.result_characters} characters.\n\n` : '')
+                + (data.result || 'No result was saved before this task ended.');
+              details.hidden = false;
+              details.open = true;
+            } catch (error) {
+              status.textContent = error.message;
+            } finally {
+              button.disabled = false;
             }
           });
           row.appendChild(button);

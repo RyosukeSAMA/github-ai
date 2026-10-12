@@ -2,6 +2,22 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.2.6] - 2026-10-12
+
+### Added
+
+- Source-labelled continuation summaries for long multi-agent outputs, while retaining original step results. Failed summaries use explicit excerpts; summary calls count as normal model usage.
+- Hashed runtime dependency locks shared by installers and CI.
+- Stable per-workspace data locations shared by CLI, Web and SDK, preserving existing project data and configuration. `pantheon --workspace <path> paths` shows the effective paths.
+- Exclusive Web runtime ownership, durable task status, cross-process stop requests, and interrupted-owner recovery after a crash.
+- Task results in Web Settings → Info and `pantheon tasks --show <id>`. Stored results are limited to 200,000 characters and mark excerpts explicitly.
+- Offline backup and restore, SQLite snapshots, retained recovery copies, and rollback after a failed restore. Maintenance prevents new CLI tasks from starting while data is copied.
+
+### Fixed
+
+- Task identifiers are unique across process restarts and available during direct-mode Web execution.
+- Explicit configuration paths are resolved against the selected workspace.
+
 ## [0.2.5] - 2026-10-10
 
 ### Changed

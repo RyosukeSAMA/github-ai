@@ -19,3 +19,8 @@ def test_existing_workspace_keeps_its_data_and_config(tmp_path, monkeypatch):
     assert paths.legacy
     assert paths.state == tmp_path / '.pantheon'
     assert paths.config == tmp_path / 'config' / 'pantheon.yaml'
+
+
+def test_explicit_config_path_is_resolved_against_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv('PANTHEON_CONFIG', 'custom.yaml')
+    assert DataPaths.for_workspace(tmp_path).config == tmp_path / 'custom.yaml'

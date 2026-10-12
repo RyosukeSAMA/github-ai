@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from pantheon.core.runtime import maintenance_lease
+
 
 def _process_alive(pid: int) -> bool:
     if os.name == 'nt':
@@ -55,14 +57,30 @@ class TaskStore:
 
     def start(self, task_id: str, task: str, mode: str):
         now = time.time()
-        with self.connect() as db:
-            db.execute('INSERT INTO tasks VALUES (?, ?, ?, ?, 0, ?)',
-                       (task_id, now, now, 'running', json.dumps({'task': task[:2000], 'mode': mode, 'owner_pid': os.getpid()})))
+        lease = maintenance_lease(self.path.parent)
+        lease.acquire(timeout=2)
+        try:
+            with self.connect() as db:
+                db.execute('INSERT INTO tasks VALUES (?, ?, ?, ?, 0, ?)',
+                           (task_id, now, now, 'running', json.dumps({'task': task[:2000], 'mode': mode, 'owner_pid': os.getpid()})))
+        finally:
+            lease.release()
 
     def finish(self, task_id: str, status: str, content: str = ''):
         with self.connect() as db:
-            db.execute('UPDATE tasks SET updated=?, status=?, data=json_set(data, "$.result", ?) WHERE id=?',
-                       (time.time(), status, content[:200000], task_id))
+            row = db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if row is None:
+                return
+            data = json.loads(row['data'])
+            data.update(result=content[:200000], result_truncated=len(content) > 200000,
+                        result_characters=len(content))
+            db.execute('UPDATE tasks SET updated=?, status=?, data=? WHERE id=?',
+                       (time.time(), status, json.dumps(data), task_id))
+
+    def get(self, task_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
+            return {**dict(row), 'data': json.loads(row['data'])} if row else None
 
     def cancelled(self, task_id: str) -> bool:
         with self.connect() as db:

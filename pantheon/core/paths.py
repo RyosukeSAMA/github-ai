@@ -38,7 +38,13 @@ class DataPaths:
         identity = hashlib.sha256(os.path.normcase(str(workspace)).encode()).hexdigest()[:24]
         state = legacy if use_legacy else root / 'workspaces' / identity
         config = workspace / 'config' / 'pantheon.yaml'
+        explicit_config = os.environ.get('PANTHEON_CONFIG')
+        if explicit_config:
+            config = Path(explicit_config).expanduser()
+            if not config.is_absolute():
+                config = workspace / config
+            config = config.resolve()
         env = workspace / '.env'
         return cls(workspace, root, state,
-                   config if config.exists() or use_legacy else root / 'config' / 'pantheon.yaml',
+                   config if explicit_config or config.exists() or use_legacy else root / 'config' / 'pantheon.yaml',
                    env if env.exists() or use_legacy else root / '.env', use_legacy)

@@ -55,6 +55,7 @@ class Hermes:
             result = self._dispatch(task, on_event=on_event)
             if store is not None:
                 store.finish(task.task_id, result.get("status", "completed"), result.get("content", ""))
+            result['task_id'] = task.task_id
             return result
         except ExecutionStoppedError as exc:
             if store is not None:

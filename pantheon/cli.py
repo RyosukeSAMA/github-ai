@@ -311,11 +311,19 @@ def main(
 
 
 @app.command("tasks")
-def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID.")) -> None:
+def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID."),
+          show: str | None = typer.Option(None, "--show", help="View a stored task result by ID.")) -> None:
     """List shared task history or stop an executing task."""
     from pantheon.core.paths import DataPaths
     from pantheon.core.tasks import TaskStore
     store = TaskStore(DataPaths.for_workspace().state / "tasks.sqlite")
+    if show:
+        task = store.get(show)
+        if task is None:
+            console.print("Task not found")
+            raise typer.Exit(1)
+        console.print_json(data=task)
+        return
     console.print_json(data={"stop_requested": store.cancel(stop)} if stop else {"tasks": store.list()})
 
 

@@ -3408,6 +3408,15 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
 }
 .setup-model-details summary { cursor: pointer; }
 .setup-model-review-count { margin-left: 8px; color: var(--accent-warn); font-size: 10px; }
+.task-stored-result {
+  margin-top: 10px;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font: 11px/1.6 var(--font-mono);
+}
 .setup-model-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .setup-model-details .setup-muted { line-height: 1.5; margin-bottom: 10px; }
 .setup-saved-model {

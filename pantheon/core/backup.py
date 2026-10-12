@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from pantheon.core.paths import DataPaths
-from pantheon.core.runtime import RuntimeLease
+from pantheon.core.runtime import RuntimeLease, maintenance_lease
 from pantheon.core.tasks import TaskStore
 
 MAX_BYTES = 512 * 1024 * 1024
@@ -37,6 +37,11 @@ def _require_idle(paths: DataPaths) -> None:
 
 
 def export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool = False) -> None:
+    with maintenance_lease(paths.state):
+        _export_backup(paths, destination, include_secrets=include_secrets)
+
+
+def _export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool = False) -> None:
     destination = destination.expanduser().resolve()
     if destination.exists():
         raise ValueError('Backup destination already exists; choose a new filename.')
@@ -55,7 +60,7 @@ def export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool 
             for source in paths.state.rglob('*'):
                 if source.is_symlink():
                     raise ValueError('Backups do not follow symbolic links.')
-                if not source.is_file() or source.name == 'runtime.lock' or source.name.endswith(('-wal', '-shm', '-journal')):
+                if not source.is_file() or source.name in {'runtime.lock', 'maintenance.lock'} or source.name.endswith(('-wal', '-shm', '-journal')):
                     continue
                 if not include_secrets and source.name in {'mcp_servers.json', 'plugins.json', '.env'}:
                     continue
@@ -69,24 +74,35 @@ def export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool 
                     archive.write(source, name)
             if include_secrets:
                 for name, source in [('config.yaml', paths.config), ('credentials.env', paths.env)]:
+                    if source.is_symlink():
+                        raise ValueError('Backups do not follow symbolic links.')
                     if source.is_file():
                         archive.write(source, name)
         os.replace(temporary, destination)
         temporary = None
     finally:
-        if temporary:
-            Path(temporary).unlink(missing_ok=True)
-        lease.release()
+        try:
+            if temporary:
+                Path(temporary).unlink(missing_ok=True)
+        finally:
+            lease.release()
 
 
 def restore_backup(paths: DataPaths, source: Path) -> Path:
+    with maintenance_lease(paths.state):
+        return _restore_backup(paths, source.expanduser().resolve())
+
+
+def _restore_backup(paths: DataPaths, source: Path) -> Path:
     """Merge saved files; retain original files in a rollback directory."""
     lease = _lease(paths)
     lease.acquire()
-    staging = Path(tempfile.mkdtemp(prefix='pantheon-restore-'))
-    rollback = Path(tempfile.mkdtemp(prefix='pantheon-before-restore-', dir=paths.state.parent))
+    staging = None
+    rollback = None
     changed: list[tuple[Path, Path | None]] = []
     try:
+        staging = Path(tempfile.mkdtemp(prefix='pantheon-restore-'))
+        rollback = Path(tempfile.mkdtemp(prefix='pantheon-before-restore-', dir=paths.state.parent))
         _require_idle(paths)
         with zipfile.ZipFile(source) as archive:
             entries = archive.infolist()
@@ -100,7 +116,7 @@ def restore_backup(paths: DataPaths, source: Path) -> Path:
                     raise ValueError('Unsafe backup entry.')
                 names.add(entry.filename)
                 if entry.filename not in {'manifest.json', 'config.yaml', 'credentials.env'} and not (
-                    len(path.parts) > 1 and path.parts[0] == 'state' and 'runtime.lock' not in path.parts
+                    len(path.parts) > 1 and path.parts[0] == 'state' and not {'runtime.lock', 'maintenance.lock'}.intersection(path.parts)
                 ):
                     raise ValueError('Unknown backup entry.')
             manifest = json.loads(archive.read('manifest.json'))
@@ -149,5 +165,8 @@ def restore_backup(paths: DataPaths, source: Path) -> Path:
                 target.unlink(missing_ok=True)
         raise
     finally:
-        shutil.rmtree(staging)
-        lease.release()
+        try:
+            if staging is not None:
+                shutil.rmtree(staging)
+        finally:
+            lease.release()

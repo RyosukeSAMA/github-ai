@@ -1946,10 +1946,17 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     async def task_stop(task_id: str) -> dict[str, Any]:
         return {"stop_requested": task_store.cancel(task_id)}
 
+    @app.get("/api/tasks/{task_id}")
+    async def task_details(task_id: str) -> dict[str, Any]:
+        result = task_store.get(task_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return result
+
     @app.get("/api/runtime")
     async def runtime_info() -> dict[str, Any]:
         return {"workspace": str(workspace_root), "data_directory": str(data_paths.state),
-                "config_path": str(data_paths.config), "legacy_data": data_paths.legacy,
+                "config_path": str(setup_config_path()), "legacy_data": data_paths.legacy,
                 "host": bind_host, "port": bind_port, "version": __version__}
 
     @app.get("/api/usage")
@@ -2596,6 +2603,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             })
 
         return JSONResponse({
+            "task_id": result.get("task_id"),
             "mode": result.get("mode", "single"),
             "content": result.get("content", ""),
             "plan": result.get("plan", ""),
@@ -2673,18 +2681,20 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 """Run Hermes dispatch with streaming instrumentation."""
                 try:
                     from pantheon.core.base import Task
+                    task = Task(content=req.task, mode=mode, skill=req.skill)
                     emit("start", {
+                        "task_id": task.task_id,
                         "task": req.task,
                         "mode": mode,
                         "requested_skill": req.skill or "",
                     })
                     emit("phase", {
+                        "task_id": task.task_id,
                         "stage": "preparing",
                         "role": "hermes",
                         "detail": "Preparing memory, Skills, and task context",
                     })
                     memory_events = process_user_memory(req.user_task or req.task)
-                    task = Task(content=req.task, mode=mode, skill=req.skill)
                     hermes = p.hermes
                     streamed = {"plan": False, "step": False, "summary": False}
 

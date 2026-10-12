@@ -307,20 +307,27 @@ def test_task_history_can_stop_a_running_task(page: Page, live_server_url: str) 
     stopped = []
     def history(route):
         route.fulfill(status=200, content_type='application/json', body=json.dumps({'tasks': [
-            {'id': 'task-demo', 'status': 'running', 'cancel': bool(stopped), 'data': {'task': 'Research a topic'}}
+            {'id': 'task-demo', 'status': 'running', 'cancel': bool(stopped), 'data': {'task': 'Research a topic'}},
+            {'id': 'completed-demo', 'status': 'completed', 'data': {'task': 'Finished research'}}
         ]}))
     def stop(route):
         stopped.append(True)
         route.fulfill(status=200, content_type='application/json', body='{"stop_requested": true}')
     page.route('**/api/tasks', history)
+    page.route('**/api/tasks/completed-demo', lambda route: route.fulfill(json={
+        'id': 'completed-demo', 'status': 'completed', 'data': {'result': '<script>untrusted source</script> Stored answer'},
+    }))
     page.route('**/api/tasks/task-demo/stop', stop)
     page.goto(live_server_url)
     page.locator('#toggle-settings').click()
     page.locator('[data-tab="info"]').click()
     expect(page.locator('#info-tasks-list')).to_contain_text('Research a topic')
-    page.locator('#info-tasks-list button').click()
-    expect(page.locator('#info-tasks-list button')).to_have_text('Stop requested')
-    expect(page.locator('#info-tasks-list button')).to_be_disabled()
+    page.locator('[data-stop-task="task-demo"]').click()
+    expect(page.locator('[data-stop-task="task-demo"]')).to_have_text('Stop requested')
+    expect(page.locator('[data-stop-task="task-demo"]')).to_be_disabled()
+    page.locator('[data-task-result="completed-demo"]').click()
+    expect(page.locator('#info-task-result')).to_have_text('<script>untrusted source</script> Stored answer')
+    expect(page.locator('#info-task-result script')).to_have_count(0)
 
 
 def test_model_catalog_updates_on_focus_without_overwriting_setup_draft(page: Page, live_server_url: str):
