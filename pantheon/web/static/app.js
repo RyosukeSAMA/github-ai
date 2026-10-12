@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Pantheon Web UI — Frontend logic (v2: 2-pane layout, god rows w/ model)
+   Pantheon Web UI — Frontend logic
    ========================================================================== */
 
 (function () {
@@ -48,6 +48,7 @@
   const topbarIcon   = $('#topbar-mode-icon');
   const topbarName   = $('#topbar-mode-name');
   const providerPill = $('#provider-name');
+  const connectionButton = $('#provider-pill');
   const providerDot  = providerPill.previousElementSibling;
   const godsList     = $('#gods-list');
   const aboutBtn     = $('#about-btn');
@@ -173,6 +174,8 @@
   const setupStatusTitle = $('#setup-status-title');
   const setupStatusPill = $('#setup-status-pill');
   const setupRoleList = $('#setup-role-list');
+  const setupSavedModels = $('#setup-saved-models');
+  const setupModelReviewCount = $('#setup-model-review-count');
   const setupProviderNote = $('#setup-provider-note');
   const setupKeyStatus = $('#setup-key-status');
   const setupCheckResult = $('#setup-check-result');
@@ -533,8 +536,10 @@
     $$('.god-row').forEach((row) => row.classList.remove('active'));
   }
 
-  function setProvider(name, status = 'online') {
-    providerPill.textContent = name || 'disconnected';
+  function setConnectionStatus(status = 'online') {
+    const labels = { online: 'Connected', offline: 'Disconnected', connecting: 'Connecting…' };
+    providerPill.textContent = labels[status] || labels.offline;
+    connectionButton.title = `Pantheon server: ${providerPill.textContent}. View models for this chat.`;
     providerDot.classList.remove('offline', 'connecting');
     if (status === 'offline')    providerDot.classList.add('offline');
     if (status === 'connecting') providerDot.classList.add('connecting');
@@ -634,14 +639,13 @@
       row.className = 'god-row';
       row.dataset.role = r.name;
       row.style.setProperty('--god-color', meta.color);
-      const modelShort = (r.model || '').replace(/^deepseek-/, '').replace(/^claude-/, '').replace(/^gpt-/, '');
       const isChronosRow = (r.name === 'chronos');
       const badge = isChronosRow ? '<span class="god-badge" title="Scheduling role - no LLM">schedule</span>' : '';
       row.innerHTML = `
         ${avatarHtml(meta)}
         <div class="god-info">
           <div class="god-name">${escapeHtml(meta.label)}${badge}</div>
-          <div class="god-model" title="${escapeHtml(r.model || 'no model')}">${isChronosRow ? 'scheduling' : escapeHtml(modelShort || r.model || '—')}</div>
+          <div class="god-model">${escapeHtml(roleKind(r.name))}</div>
         </div>
       `;
       if (isChronosRow) row.classList.add('scheduling');
@@ -656,7 +660,8 @@
 
   // ---------- About modal ----------
   function openAbout() {
-    aboutProvider.textContent = providerPill.textContent;
+    aboutProvider.textContent = [...new Set(roles.filter((r) => r.provider && r.provider !== 'none')
+      .map((r) => providerLabelFromSetup(r.provider)))].join(' · ') || 'No provider';
     aboutRoles.textContent = String(roles.length);
     aboutStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
 
@@ -824,6 +829,7 @@
   }
   toggleSetBtn.addEventListener('click', toggleSettings);
   settingsClose.addEventListener('click', closeSettings);
+  connectionButton.addEventListener('click', () => openSettingsPane('models'));
 
   // ---------- Settings tab switching ----------
   function activateSettingsTab(target) {
@@ -1039,7 +1045,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.3';
+    const version = latestAppInfo?.ui_version || '0.2.5';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1086,7 +1092,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.3';
+    const version = info.ui_version || '0.2.5';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1146,21 +1152,32 @@
 
   function setupModelStatusText(provider) {
     if (!provider) return '';
+    if (provider.catalog_refresh_status === 'error') {
+      return `Automatic refresh failed · ${provider.catalog_error || 'check connection and API key'} · previous choices retained`;
+    }
+    if (provider.catalog_refresh_status === 'manual_endpoint') {
+      return 'Custom endpoint · use Refresh models to query your provider';
+    }
+    if (provider.recommendations_error && !['cache', 'live'].includes(provider.catalog_source)) {
+      return 'Official recommendations could not refresh · previous choices retained · retrying automatically';
+    }
     const options = setupModelOptions(provider);
     const count = options.length;
     const available = options.filter((model) => model.available === true).length;
     if (provider.catalog_source === 'live') return `${available} listed by provider · ${count} choices · Test API confirms access`;
     if (provider.catalog_source === 'cache') {
-      const suffix = provider.catalog_stale ? ' · refresh recommended' : '';
-      return `${available} listed · ${count} choices · cached${suffix}`;
+      const time = provider.models_fetched_at ? new Date(provider.models_fetched_at * 1000).toLocaleString() : '';
+      const suffix = provider.catalog_stale ? ' · awaiting automatic refresh' : ' · updates hourly';
+      return `${available} listed · ${count} choices · updated ${time}${suffix}`;
     }
     if (provider.catalog_source === 'documented') {
-      return `${count} documented models · use Test API to verify access`;
+      const time = provider.models_fetched_at ? new Date(provider.models_fetched_at * 1000).toLocaleString() : '';
+      return `${count} recommendations · official docs updated ${time || 'with this release'} · add an API key to check account access`;
     }
     if (provider.requires_key && !provider.key_configured) {
       return 'Official recommendations · add an API key to refresh models and verify access';
     }
-    return 'Official recommendations · configured official providers are checked every 24 hours';
+    return 'Official recommendations · automatic account catalog refresh pending';
   }
 
   function setSetupCustomModel(enabled, value = '') {
@@ -1271,14 +1288,14 @@
     if (!setupRoleList) return;
     if (!Array.isArray(statuses) || !statuses.length) {
       setupRoleList.innerHTML = '<div class="settings-hint">No saved role config found yet.</div>';
+      if (setupSavedModels) setupSavedModels.innerHTML = '';
+      if (setupModelReviewCount) setupModelReviewCount.hidden = true;
       return;
     }
     setupRoleList.innerHTML = statuses.map((item) => {
       const label = item.label || item.role || 'Role';
       const purpose = item.purpose || '';
       const provider = item.provider_label || item.provider || 'Provider';
-      const model = item.model || 'not set';
-      const env = item.env_var ? ` · ${item.env_var}` : '';
       const status = item.status || 'not_configured';
       const statusLabel = item.status_label || status;
       return `
@@ -1287,14 +1304,39 @@
             <span class="setup-role-name">${escapeHtml(label)}</span>
             <span class="setup-role-purpose">${escapeHtml(purpose)}</span>
           </div>
-          <div class="setup-role-model">
-            <strong title="${escapeHtml(model)}">${escapeHtml(model)}</strong>
-            <span>${escapeHtml(provider)}${escapeHtml(env)}</span>
+          <div class="setup-role-provider">
+            <strong>${escapeHtml(item.role === 'chronos' ? 'Local scheduler' : provider)}</strong>
           </div>
           <span class="setup-role-status ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
         </div>
       `;
     }).join('');
+    if (setupSavedModels) {
+      let reviewCount = 0;
+      setupSavedModels.innerHTML = statuses.map((item) => {
+        const model = item.model || 'not set';
+        const provider = setupProviders.get(item.provider);
+        const listed = provider?.models?.find((entry) => entry.id === model);
+        const notListed = item.role !== 'chronos'
+          && ['cache', 'live'].includes(provider?.catalog_source) && !provider.catalog_stale
+          && listed?.available !== true;
+        if (notListed) reviewCount += 1;
+        return `
+          <div class="setup-saved-model" data-role="${escapeHtml(item.role || '')}">
+            <span>${escapeHtml(item.label || item.role || 'Role')}</span>
+            <div>
+              <code>${escapeHtml(item.role === 'chronos' ? 'No model required' : model)}</code>
+              ${item.env_var ? `<small>${escapeHtml(item.env_var)}</small>` : ''}
+              ${notListed ? '<small class="setup-model-unlisted">Not in the latest provider list · review in Setup</small>' : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+      if (setupModelReviewCount) {
+        setupModelReviewCount.textContent = `${reviewCount} to review`;
+        setupModelReviewCount.hidden = reviewCount === 0;
+      }
+    }
   }
 
   function applySetupStatus(status, options = {}) {
@@ -6494,7 +6536,7 @@
 
   // ---------- Bootstrap ----------
   async function loadRoles() {
-    setProvider('connecting…', 'connecting');
+    setConnectionStatus('connecting');
     try {
       const r = await fetch('/api/roles');
       if (!r.ok) throw new Error('failed to fetch roles');
@@ -6509,15 +6551,13 @@
         recreateWelcome();
       }
       if (roles.length) {
-        // Show provider as a comma-separated list of unique providers
-        const providers = [...new Set(roles.map(r => r.model || '').filter(Boolean))];
-        setProvider(providers.join(' · ') || 'connected', 'online');
+        setConnectionStatus('online');
       } else {
-        setProvider('no roles', 'offline');
+        setConnectionStatus('offline');
       }
     } catch (e) {
       console.error(e);
-      setProvider('disconnected', 'offline');
+      setConnectionStatus('offline');
     }
   }
 
@@ -7698,7 +7738,7 @@
   }
 
   // Init
-  setProvider('connecting…', 'connecting');
+  setConnectionStatus('connecting');
   wireOptBtns();
   loadSessions();
   renderSessions();
@@ -7708,4 +7748,13 @@
   setInterval(() => {
     if (protectedDataLoaded && (!authState.enabled || authState.authenticated)) loadUpdateStatus();
   }, 6 * 60 * 60 * 1000);
+  function syncModelCatalogs() {
+    if (document.visibilityState !== 'visible' || !protectedDataLoaded
+        || (authState.enabled && !authState.authenticated)
+        || setupSaveBtn?.disabled || setupRefreshModelsBtn?.disabled) return;
+    void loadSetupStatus({ quiet: true, preserveForm: true });
+  }
+  setInterval(syncModelCatalogs, 60 * 1000);
+  document.addEventListener('visibilitychange', syncModelCatalogs);
+  window.addEventListener('focus', syncModelCatalogs);
 })();

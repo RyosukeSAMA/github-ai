@@ -53,13 +53,18 @@ from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.llm.openai_client import is_responses_api_model
 from pantheon.web.conversations import ConversationStore
-from pantheon.web.model_catalog import ModelDiscoveryError, discover_provider_models
+from pantheon.web.model_catalog import (
+    ModelDiscoveryError,
+    discover_documented_models,
+    discover_provider_models,
+)
 from pantheon.web.updates import UpdateChecker
 
 STATIC_DIR = Path(__file__).parent / "static"
 STREAM_HEARTBEAT_SECONDS = 5.0
-MODEL_CACHE_TTL_SECONDS = 24 * 60 * 60
-MODEL_CATALOG_CHECK_INTERVAL_SECONDS = 60 * 60
+MODEL_CACHE_TTL_SECONDS = 60 * 60
+MODEL_DOCUMENTED_TTL_SECONDS = 6 * 60 * 60
+MODEL_CATALOG_CHECK_INTERVAL_SECONDS = 5 * 60
 MODEL_CACHE_VERSION = 1
 OFFICIAL_MODEL_CATALOG_BASE_URLS = {
     "deepseek": {"https://api.deepseek.com", "https://api.deepseek.com/v1"},
@@ -268,6 +273,7 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "model": "gpt-6-astra",
         "models": [
             {"id": "gpt-6-astra", "label": "GPT-6 Astra"},
+            {"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol"},
             {"id": "gpt-6-sol", "label": "GPT-6 Sol"},
             {"id": "gpt-6-luna", "label": "GPT-6 Luna"},
             {"id": "gpt-5.6", "label": "GPT-5.6 Sol (alias)"},
@@ -293,7 +299,10 @@ SETUP_PROVIDER_PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://api.anthropic.com",
         "model": "claude-sonnet-4-6",
         "models": [
+            {"id": "claude-fable-5-1", "label": "Claude Fable 5.1"},
             {"id": "claude-opus-5-5", "label": "Claude Opus 5.5"},
+            {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5"},
+            {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5"},
             {"id": "claude-opus-5", "label": "Claude Opus 5 (most capable)"},
             {"id": "claude-sonnet-5", "label": "Claude Sonnet 5 (balanced)"},
             {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
@@ -501,6 +510,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     chronos_job_tasks: set[asyncio.Task[None]] = set()
     model_catalog_runner: dict[str, asyncio.Task | None] = {"task": None}
     model_catalog_attempts: dict[str, int] = {}
+    model_catalog_errors: dict[str, str] = {}
 
     runtime = RuntimeLease(data_paths.state / "runtime.lock", {
         "host": bind_host, "port": bind_port, "workspace": str(workspace_root), "version": __version__,
@@ -992,6 +1002,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         base_url: str,
         models: list[dict[str, str]],
         api_key: str = "",
+        *,
+        documented: bool = False,
     ) -> dict[str, Any]:
         path = setup_model_cache_path()
         payload = read_model_cache()
@@ -1000,10 +1012,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "provider": provider_id,
             "fetched_at": fetched_at,
             "models": models,
+            "source": "documented" if documented else "account",
         }
         payload["version"] = MODEL_CACHE_VERSION
         payload.setdefault("catalogs", {})[
-            model_cache_key(provider_id, base_url, api_key)
+            f"{provider_id}:documented" if documented else model_cache_key(provider_id, base_url, api_key)
         ] = entry
         path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = path.with_suffix(".tmp")
@@ -1337,20 +1350,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         config: dict[str, Any],
     ) -> dict[str, Any]:
         preset = SETUP_PROVIDER_PRESETS[provider_id]
-        base_url = str(preset["base_url"])
-        raw_api_key = ""
-        if provider_id == current_provider:
-            adapter = str(preset["adapter"])
-            llm_cfg = (config.get("llm_providers", {}) or {}).get(adapter, {}) or {}
-            base_url = str(llm_cfg.get("base_url") or base_url)
-            raw_api_key = str(llm_cfg.get("api_key") or "")
-        env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
-        api_key = env_value(env_var)
-        if not api_key and raw_api_key and "${" not in raw_api_key:
-            api_key = raw_api_key
+        base_url, api_key = provider_catalog_connection(provider_id, config)
         key_configured = not preset["requires_key"] or bool(api_key)
         cached = cached_model_catalog(provider_id, base_url, api_key)
-        return provider_payload(
+        documented = read_model_cache().get("catalogs", {}).get(f"{provider_id}:documented")
+        if not isinstance(documented, dict) or not isinstance(documented.get("models"), list):
+            documented = None
+        payload = provider_payload(
             provider_id,
             current_model=current_model if provider_id == current_provider else "",
             discovered=cached.get("models") if cached else None,
@@ -1363,6 +1369,36 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             base_url=base_url,
             key_configured=key_configured,
         )
+        if not cached and documented:
+            additions = [{**item, "label": model_label_from_preset(provider_id, item["id"])
+                          if item.get("label") == item["id"] else item.get("label", item["id"]),
+                          "source": "documented", "available": None}
+                         for item in documented["models"]]
+            ids = {item["id"] for item in additions}
+            payload["models"] = additions + [item for item in payload["models"] if item["id"] not in ids]
+            payload["catalog_source"] = "documented"
+            payload["models_fetched_at"] = documented.get("fetched_at")
+            payload["catalog_stale"] = int(time.time()) - int(documented.get("fetched_at") or 0) >= MODEL_DOCUMENTED_TTL_SECONDS
+        payload["recommendations_error"] = model_catalog_errors.get(f"{provider_id}:documented", "")
+
+        identity = model_cache_key(provider_id, base_url, api_key)
+        error = model_catalog_errors.get(identity, "")
+        status = "ready" if cached else "pending"
+        if not key_configured:
+            status = "missing_key"
+        elif not official_catalog_base_url(provider_id, base_url):
+            status = "manual_endpoint"
+        elif error:
+            status = "error"
+        elif payload["catalog_stale"]:
+            status = "stale"
+        payload.update({
+            "catalog_refresh_status": status,
+            "catalog_error": error,
+            "models_last_attempt_at": model_catalog_attempts.get(identity),
+            "models_refresh_interval_seconds": MODEL_CACHE_TTL_SECONDS,
+        })
+        return payload
 
     def provider_key_from_adapter(provider: str, providers: dict[str, Any]) -> str:
         if not provider or provider == "none":
@@ -1400,33 +1436,37 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             for item in OFFICIAL_MODEL_CATALOG_BASE_URLS.get(provider_id, set())
         }
 
+    def provider_catalog_connection(provider_id: str, config: dict[str, Any]) -> tuple[str, str]:
+        preset = SETUP_PROVIDER_PRESETS[provider_id]
+        providers = config.get("llm_providers", {}) or {}
+        raw_config = next((value for adapter, value in providers.items()
+                           if isinstance(value, dict)
+                           and provider_key_from_adapter(str(adapter), providers) == provider_id), {})
+        base_url = str(raw_config.get("base_url") or preset["base_url"]).strip()
+        raw_api_key = str(raw_config.get("api_key") or "")
+        env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
+        # An explicit literal key belongs to this endpoint; do not override it
+        # with another account's environment key.
+        api_key = raw_api_key if raw_api_key and "${" not in raw_api_key else env_value(env_var)
+        return base_url, normalized_provider_api_key(provider_id, api_key)
+
     def configured_model_catalogs() -> list[dict[str, str]]:
         config = read_yaml_config(setup_config_path())
         providers = config.get("llm_providers", {}) or {}
+        configured_ids = {provider_key_from_adapter(str(adapter), providers)
+                          for adapter, value in providers.items() if isinstance(value, dict)}
         catalogs: list[dict[str, str]] = []
-        for adapter, raw_config in providers.items():
-            if not isinstance(raw_config, dict):
-                continue
-            provider_id = provider_key_from_adapter(str(adapter), providers)
-            preset = SETUP_PROVIDER_PRESETS.get(provider_id)
-            if not preset:
-                continue
-            base_url = str(raw_config.get("base_url") or preset["base_url"]).strip()
+        for provider_id, preset in SETUP_PROVIDER_PRESETS.items():
+            base_url, api_key = provider_catalog_connection(provider_id, config)
             if not official_catalog_base_url(provider_id, base_url):
                 continue
-            raw_api_key = str(raw_config.get("api_key") or "")
-            env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
-            api_key = env_value(env_var)
-            if not api_key and raw_api_key and "${" not in raw_api_key:
-                api_key = raw_api_key
-            api_key = normalized_provider_api_key(provider_id, api_key)
             if preset["requires_key"] and not api_key:
+                continue
+            if not preset["requires_key"] and provider_id not in configured_ids:
                 continue
             catalogs.append({
                 "provider": provider_id,
-                "discovery_provider": str(
-                    preset.get("discovery_provider") or provider_id
-                ),
+                "discovery_provider": str(preset.get("discovery_provider") or provider_id),
                 "base_url": base_url,
                 "api_key": api_key,
             })
@@ -1460,8 +1500,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     api_key,
                 )
                 write_model_cache(provider_id, base_url, discovered, api_key)
+                model_catalog_errors.pop(attempt_key, None)
                 result["refreshed"].append(provider_id)
             except (ModelDiscoveryError, OSError) as exc:
+                model_catalog_errors[attempt_key] = sanitize_error(str(exc), [api_key])[:240]
                 result["failed"].append(provider_id)
                 LOGGER.warning(
                     "Could not refresh the %s model catalog: %s",
@@ -1470,11 +1512,32 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 )
         return result
 
+    async def refresh_due_documented_catalogs() -> None:
+        if os.environ.get("PANTHEON_MODEL_DOCS_SYNC", "1") == "0":
+            return
+        for provider_id in ("openai", "anthropic"):
+            identity = f"{provider_id}:documented"
+            cached = read_model_cache().get("catalogs", {}).get(identity, {})
+            now = int(time.time())
+            if now - int(cached.get("fetched_at") or 0) < MODEL_DOCUMENTED_TTL_SECONDS:
+                continue
+            if now - model_catalog_attempts.get(identity, 0) < MODEL_CATALOG_CHECK_INTERVAL_SECONDS:
+                continue
+            model_catalog_attempts[identity] = now
+            try:
+                models = await discover_documented_models(provider_id)
+                write_model_cache(provider_id, "", models, documented=True)
+                model_catalog_errors.pop(identity, None)
+            except (ModelDiscoveryError, OSError) as exc:
+                model_catalog_errors[identity] = str(exc)[:240]
+                LOGGER.warning("Could not refresh public %s model recommendations", provider_id)
+
     async def model_catalog_loop() -> None:
         try:
             while True:
                 try:
                     await refresh_due_model_catalogs()
+                    await refresh_due_documented_catalogs()
                 except Exception:
                     LOGGER.exception("Unexpected model catalog refresh failure")
                 await asyncio.sleep(MODEL_CATALOG_CHECK_INTERVAL_SECONDS)
@@ -1482,6 +1545,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             raise
 
     app.state.refresh_model_catalogs = refresh_due_model_catalogs
+    app.state.refresh_documented_catalogs = refresh_due_documented_catalogs
     app.state.model_catalog_attempts = model_catalog_attempts
 
     def provider_label(provider_key: str) -> str:
@@ -1780,6 +1844,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 api_key,
             )
             cache_entry = write_model_cache(provider_id, base_url, discovered, api_key)
+            identity = model_cache_key(provider_id, base_url, api_key)
+            model_catalog_errors.pop(identity, None)
+            model_catalog_attempts[identity] = int(time.time())
         except (ModelDiscoveryError, OSError) as exc:
             cached = cached_model_catalog(provider_id, base_url, api_key)
             problem = sanitize_error(str(exc), [api_key])

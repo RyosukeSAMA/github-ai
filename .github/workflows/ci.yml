@@ -39,7 +39,7 @@ jobs:
       - name: Smoke test one-line installer
         if: matrix.python-version == '3.11'
         run: |
-          git tag -f v0.2.3
+          git tag -f v0.2.5
           install_dir="$(mktemp -d)/github-ai"
           PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
           "$install_dir/.venv/bin/pantheon" --version
@@ -82,7 +82,7 @@ jobs:
           python-version: "3.12"
       - name: Install stable-tag checkout and verify CLI
         run: |
-          git tag -f v0.2.3
+          git tag -f v0.2.5
           install_dir="$(mktemp -d)/github-ai"
           PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
           "$install_dir/.venv/bin/pantheon" --version

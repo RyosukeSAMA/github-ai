@@ -321,3 +321,27 @@ def test_task_history_can_stop_a_running_task(page: Page, live_server_url: str) 
     page.locator('#info-tasks-list button').click()
     expect(page.locator('#info-tasks-list button')).to_have_text('Stop requested')
     expect(page.locator('#info-tasks-list button')).to_be_disabled()
+
+
+def test_model_catalog_updates_on_focus_without_overwriting_setup_draft(page: Page, live_server_url: str):
+    changed = False
+    def status(route):
+        response = route.fetch()
+        payload = response.json()
+        if changed:
+            provider = next(p for p in payload['providers'] if p['id'] == 'openai')
+            provider['models'].append({'id': 'gpt-future-release', 'label': 'Future release', 'source': 'available', 'available': True})
+        route.fulfill(response=response, json=payload)
+    page.route('**/api/setup/status', status)
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('#setup-provider').select_option('openai')
+    page.locator('#setup-model').select_option('gpt-6.1-sol')
+    page.locator('#setup-api-key').fill('unsaved-test-key')
+    page.locator('#setup-base-url').fill('https://draft.example/v1')
+    changed = True
+    page.evaluate('window.dispatchEvent(new Event("focus"))')
+    expect(page.locator('#setup-model option[value="gpt-future-release"]')).to_have_count(1)
+    expect(page.locator('#setup-model')).to_have_value('gpt-6.1-sol')
+    expect(page.locator('#setup-api-key')).to_have_value('unsaved-test-key')
+    expect(page.locator('#setup-base-url')).to_have_value('https://draft.example/v1')

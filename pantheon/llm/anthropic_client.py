@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pantheon.llm.base import BaseLLMClient
@@ -55,8 +56,10 @@ class AnthropicClient(BaseLLMClient):
 
         target_model = model or self.default_model
         request_kwargs = dict(kwargs)
-        if target_model == "claude-opus-5-5":
-            # Adaptive thinking is always on; non-default sampling is rejected.
+        generation = re.match(r"^claude-[a-z]+-(\d+)(?:-|$)", target_model.lower())
+        if generation and int(generation.group(1)) >= 5:
+            # Current Claude 5 models reject non-default sampling. Leaving it
+            # unset also keeps discovered models on their supported defaults.
             for unsupported in ("top_p", "top_k"):
                 request_kwargs.pop(unsupported, None)
         else:

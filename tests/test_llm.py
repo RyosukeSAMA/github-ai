@@ -128,7 +128,8 @@ def test_anthropic_complete():
     assert call_kwargs["system"] == "be brief"
 
 
-def test_anthropic_opus_55_omits_unsupported_sampling_parameters():
+@pytest.mark.parametrize("model", ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"])
+def test_anthropic_current_models_omit_unsupported_sampling_parameters(model):
     fake_response = MagicMock()
     fake_response.content = [MagicMock(text="hello from opus 5.5")]
     fake_client = MagicMock()
@@ -138,7 +139,7 @@ def test_anthropic_opus_55_omits_unsupported_sampling_parameters():
         client = AnthropicClient(api_key="sk-ant-test")
         result = client.complete(
             messages=[{"role": "user", "content": "hi"}],
-            model="claude-opus-5-5",
+            model=model,
             temperature=0.3,
             top_p=0.8,
             top_k=10,
@@ -146,7 +147,7 @@ def test_anthropic_opus_55_omits_unsupported_sampling_parameters():
 
     assert result == "hello from opus 5.5"
     call_kwargs = fake_client.messages.create.call_args.kwargs
-    assert call_kwargs["model"] == "claude-opus-5-5"
+    assert call_kwargs["model"] == model
     assert call_kwargs["max_tokens"] == 4096
     assert "temperature" not in call_kwargs
     assert "top_p" not in call_kwargs
