@@ -227,6 +227,7 @@
   let promptBeforeEnhance = '';
   let enhancedPromptValue = '';
   let abortCtrl = null;
+  let activeTaskId = null;
   let turns = [];   // conversation history (in-memory only)
   let sessions = [];
   let activeSessionId = null;
@@ -1044,7 +1045,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.5';
+    const version = latestAppInfo?.ui_version || '0.2.6';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1091,7 +1092,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.5';
+    const version = info.ui_version || '0.2.6';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1518,6 +1519,79 @@
     }
   }
   infoUsageRefresh?.addEventListener('click', loadUsage);
+
+  async function loadTasks() {
+    const list = $('#info-tasks-list');
+    const status = $('#info-tasks-status');
+    if (!list || !status) return;
+    try {
+      const response = await fetch('/api/tasks');
+      if (!response.ok) throw new Error('Task history unavailable');
+      const data = await response.json();
+      list.replaceChildren();
+      status.textContent = `${data.tasks.length} recent tasks. Stop requests take effect between model and tool calls.`;
+      for (const task of data.tasks) {
+        const row = document.createElement('div');
+        row.className = 'usage-model';
+        const name = document.createElement('strong');
+        name.textContent = `${task.status} · ${task.id}`;
+        const description = document.createElement('span');
+        description.textContent = task.data?.task || 'Task';
+        row.append(name, description);
+        if (task.status === 'running') {
+          const button = document.createElement('button');
+          button.className = 'ghost-btn';
+          button.type = 'button';
+          button.dataset.stopTask = task.id;
+          button.textContent = task.cancel ? 'Stop requested' : 'Stop';
+          button.disabled = !!task.cancel;
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              const result = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/stop`, { method: 'POST' });
+              if (!result.ok) throw new Error('Stop request failed');
+              await loadTasks();
+            } catch (error) {
+              button.disabled = false;
+              status.textContent = error.message;
+            }
+          });
+          row.appendChild(button);
+        } else {
+          const button = document.createElement('button');
+          button.className = 'ghost-btn';
+          button.type = 'button';
+          button.textContent = 'View result';
+          button.dataset.taskResult = task.id;
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              const response = await fetch(`/api/tasks/${encodeURIComponent(task.id)}`);
+              if (!response.ok) throw new Error('Stored result unavailable');
+              const result = await response.json();
+              const details = $('#info-task-result-details');
+              $('#info-task-result-title').textContent = `${result.status} · ${result.id}`;
+              const data = result.data || {};
+              $('#info-task-result').textContent = (data.result_truncated
+                ? `Stored excerpt: first 200,000 of ${data.result_characters} characters.\n\n` : '')
+                + (data.result || 'No result was saved before this task ended.');
+              details.hidden = false;
+              details.open = true;
+            } catch (error) {
+              status.textContent = error.message;
+            } finally {
+              button.disabled = false;
+            }
+          });
+          row.appendChild(button);
+        }
+        list.appendChild(row);
+      }
+    } catch (error) {
+      status.textContent = 'Task history unavailable. Try refreshing.';
+    }
+  }
+  $('#info-tasks-refresh')?.addEventListener('click', loadTasks);
 
   async function checkSetup() {
     if (!setupForm) return;
@@ -3132,6 +3206,7 @@
       loadConversations(),
       loadUpdateStatus(),
       loadUsage(),
+      loadTasks(),
     ]);
   }
 
@@ -6224,6 +6299,7 @@
             }
             break;
           case 'phase': {
+            if (data.task_id) activeTaskId = data.task_id;
             const stage = data.stage || 'running';
             const labels = {
               preparing: 'Preparing',
@@ -6243,6 +6319,9 @@
             pushWorkspaceLine(`${labels[stage] || 'Running'}: ${data.detail || stage}`);
             break;
           }
+          case 'context_compacted':
+            pushWorkspaceLine(data.incomplete ? 'Prior results compacted; some notes use excerpts. Full outputs remain in this chat.' : 'Prior results summarized for continuation. Full outputs remain in this chat.');
+            break;
           case 'progress': {
             const liveStep = currentWorkspaceStep || planningWorkspaceStep;
             updateWorkspaceStepProgress(liveStep, data);
@@ -6459,6 +6538,7 @@
       clearGodHighlight();
       isStreaming = false;
       abortCtrl = null;
+      activeTaskId = null;
       setSendState(false);
       providerDot.classList.remove('connecting');
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -7265,6 +7345,9 @@
   composerForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (isStreaming) {
+      if (activeTaskId) {
+        fetch(`/api/tasks/${encodeURIComponent(activeTaskId)}/stop`, { method: 'POST' }).catch(() => {});
+      }
       if (abortCtrl) abortCtrl.abort();
       return;
     }

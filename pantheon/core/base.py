@@ -22,7 +22,7 @@ class Task:
     mode: str = "auto"  # "auto" | "role:<name>" | "multi"
     skill: str | None = None
     context: list[dict[str, Any]] = field(default_factory=list)
-    task_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    task_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def __post_init__(self) -> None:
         if self.mode not in ("auto", "multi") and not self.mode.startswith("role:"):

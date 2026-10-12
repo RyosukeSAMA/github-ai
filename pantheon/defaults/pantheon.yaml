@@ -1,0 +1,129 @@
+# ============================================================================
+# Pantheon configuration — EXAMPLE / DEMO
+# ============================================================================
+#
+# This file demonstrates the IDEAL setup of Pantheon, where each god uses a
+# model best suited to its specialty:
+#
+#   📨 Hermes (orchestrator)  → Anthropic Claude Opus 4.8 (deep reasoning)
+#   🔨 Hephaestus (code)      → Anthropic Claude Sonnet 4.6 (balanced code)
+#   🦉 Athena (research)      → OpenAI GPT-5.5 (broad knowledge)
+#   🎵 Apollo (creative)      → OpenAI GPT-5.4 mini (drafting / creative text)
+#   ⏰ Chronos (scheduler)    → (no LLM needed)
+#
+# ⚠️  This is a DEMO configuration. To actually run Pantheon you need to:
+#
+#   1. Copy this file to `pantheon.yaml`:
+#        cp config/pantheon.example.yaml config/pantheon.yaml
+#
+#   2. Edit `pantheon.yaml` and replace each role's `model:` and `provider:`
+#      with providers/models YOU have API keys for. Below we list a few
+#      common "all-in-one" alternatives that work with just ONE provider.
+#
+#   3. Put your API keys in `.env` (see `.env.example`).
+#
+# ----------------------------------------------------------------------------
+# Common single-provider alternatives (pick one and replace below):
+#
+#   DeepSeek (cheap, Chinese-friendly, recommended for getting started):
+#     provider: openai, base_url: https://api.deepseek.com
+#     model: deepseek-flash    (DeepSeek V4.1 Flash)
+#
+#   OpenAI (broad capabilities, US-based):
+#     provider: openai, base_url: https://api.openai.com/v1
+#     model: gpt-5.5
+#
+#   Anthropic Claude (strong reasoning + code):
+#     provider: anthropic, base_url: https://api.anthropic.com
+#     model: claude-sonnet-4-6
+#
+#   Ollama (fully local, free, requires a running Ollama server):
+#     provider: ollama, base_url: http://localhost:11434
+#     model: llama3.1
+#
+# ============================================================================
+
+pantheon:
+  # --------------------------------------------------------------------------
+  # Hermes — the orchestrator. Routes tasks to other gods.
+  # Recommended: a strong reasoning model.
+  # --------------------------------------------------------------------------
+  hermes:
+    model: claude-opus-4-8
+    provider: anthropic
+    temperature: 0.2
+    max_tokens: 4096
+
+  # --------------------------------------------------------------------------
+  # The five gods. Each has its own model + provider.
+  # --------------------------------------------------------------------------
+  roles:
+    hephaestus:
+      name: "Hephaestus (锻造之神)"
+      description: "Writes and refactors code"
+      model: claude-sonnet-4-6              # balanced code / speed
+      provider: anthropic
+      temperature: 0.1
+      tools: []
+      enabled: true
+
+    athena:
+      name: "Athena (智慧之神)"
+      description: "Researches and gathers information"
+      model: gpt-5.5                        # broad knowledge
+      provider: openai
+      temperature: 0.3
+      tools: []
+      enabled: true
+
+    apollo:
+      name: "Apollo (艺术之神)"
+      description: "Writes image prompts, lyrics, and storyboards"
+      model: gpt-5.4-mini                   # creative text / drafting
+      provider: openai
+      temperature: 0.7
+      tools: []
+      enabled: true
+
+    chronos:
+      name: "Chronos (时间之神)"
+      description: "Schedules and runs periodic tasks (no LLM)"
+      model: none
+      provider: none
+      tools: []
+      enabled: true
+
+# ============================================================================
+# LLM providers. Each role above references one of these by name.
+# API keys are read from environment variables; see .env.example.
+# ============================================================================
+llm_providers:
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: https://api.anthropic.com
+    enabled: true
+
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+    enabled: true
+
+  ollama:
+    api_key: ""
+    base_url: http://localhost:11434
+    enabled: false   # Set to true if you have Ollama running locally
+
+# ============================================================================
+# Web UI
+# ============================================================================
+web:
+  host: 127.0.0.1
+  port: 8000
+  reload: false
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: INFO
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

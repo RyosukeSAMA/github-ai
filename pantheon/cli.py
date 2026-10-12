@@ -296,6 +296,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
+    workspace: Path | None = typer.Option(None, "--workspace", help="Project folder shared by CLI and Web."),
     version: bool | None = typer.Option(
         None,
         "--version",
@@ -305,7 +306,60 @@ def main(
     ),
 ) -> None:
     """🏛️ Pantheon — multi-AI-role collaboration framework."""
-    pass
+    if workspace is not None:
+        os.environ["PANTHEON_WORKSPACE"] = str(workspace.expanduser().resolve())
+
+
+@app.command("tasks")
+def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID."),
+          show: str | None = typer.Option(None, "--show", help="View a stored task result by ID.")) -> None:
+    """List shared task history or stop an executing task."""
+    from pantheon.core.paths import DataPaths
+    from pantheon.core.tasks import TaskStore
+    store = TaskStore(DataPaths.for_workspace().state / "tasks.sqlite")
+    if show:
+        task = store.get(show)
+        if task is None:
+            console.print("Task not found")
+            raise typer.Exit(1)
+        console.print_json(data=task)
+        return
+    console.print_json(data={"stop_requested": store.cancel(stop)} if stop else {"tasks": store.list()})
+
+
+@app.command("paths")
+def paths() -> None:
+    """Show effective data locations without displaying credentials."""
+    from pantheon.core.paths import DataPaths
+    selected = DataPaths.for_workspace()
+    console.print_json(data={"workspace": str(selected.workspace), "data": str(selected.state),
+                             "config": str(selected.config), "legacy": selected.legacy})
+
+
+@app.command("backup")
+def backup(destination: Path, include_secrets: bool = typer.Option(False, "--include-secrets")) -> None:
+    """Back up local data. Stop the Web service first; keep the archive private."""
+    from pantheon.core.backup import export_backup
+    from pantheon.core.paths import DataPaths
+    try:
+        export_backup(DataPaths.for_workspace(), destination, include_secrets=include_secrets)
+    except (ValueError, RuntimeError) as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from exc
+    console.print(f"Backup saved: {destination}")
+
+
+@app.command("restore")
+def restore(source: Path) -> None:
+    """Restore a trusted backup with a saved copy of overwritten files."""
+    from pantheon.core.backup import restore_backup
+    from pantheon.core.paths import DataPaths
+    try:
+        previous = restore_backup(DataPaths.for_workspace(), source)
+    except (ValueError, RuntimeError) as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from exc
+    console.print(f"Restored. Previous files saved at: {previous}")
 
 
 @app.command("ask")
@@ -554,7 +608,7 @@ def web(
     # Lazy import to avoid pulling fastapi/uvicorn when only using CLI
     from pantheon.web import create_app
 
-    app_instance = create_app(config_path=config, bind_host=host)
+    app_instance = create_app(config_path=config, bind_host=host, bind_port=port)
     console.print()
     console.print(
         _brand_header(

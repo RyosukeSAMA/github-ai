@@ -60,12 +60,12 @@ def test_pantheon_get_unknown_role_returns_none(temp_config):
     assert p.get_role("ghost") is None
 
 
-def test_pantheon_missing_config_raises(tmp_path, monkeypatch):
+def test_pantheon_missing_config_uses_packaged_defaults(tmp_path, monkeypatch):
     # Make sure no .env or other config is found
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("PANTHEON_CONFIG", raising=False)
-    with pytest.raises(FileNotFoundError):
-        Pantheon()
+    p = Pantheon()
+    assert "athena" in p.list_roles()
 
 
 def test_pantheon_env_var_expansion(temp_config, monkeypatch):

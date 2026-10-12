@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.2.5-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.6-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -156,7 +156,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-The last command should print `pantheon 0.2.5` or a newer version.
+The last command should print `pantheon 0.2.6` or a newer version.
 
 ### 3. Start and configure the Web UI
 
@@ -386,7 +386,7 @@ These repository-local state files are covered by `.gitignore` and should remain
 
 ## Current Boundaries
 
-Pantheon v0.2.5 is still an alpha local workspace. Understand these limits before deployment:
+Pantheon v0.2.6 is still an alpha local workspace. Understand these limits before deployment:
 
 - Chat agents execute synchronously. Multi-role steps run in plan order, not in parallel.
 - Agent communication is structured and mediated by Hermes. Pantheon does not run
@@ -482,6 +482,7 @@ Chromium E2E job. CI never receives or tests real provider credentials.
 |---|---|
 | [Beginner setup guide](docs/setup.md) | OS-specific installation, first launch, updating, uninstalling, and troubleshooting |
 | [中文新手安装指南](docs/setup.zh-CN.md) | 中文系统准备、安装、首次配置和逐项排错 |
+| [Core readiness and backup (中文)](docs/core-readiness.zh-CN.md) | Development status, data paths, task management, and offline backup/restore |
 | [Web UI guide](docs/web-ui.md) | Workspace, Memory, Integrations, testing, and shortcuts |
 | [Architecture](docs/architecture.md) | Routing, execution flow, and component design |
 | [Role guides](docs/roles/) | Prompts and responsibilities for every god |

@@ -45,7 +45,10 @@ from pantheon.core.memory import (
     normalize_memory_role,
 )
 from pantheon.core.pantheon import Pantheon
+from pantheon.core.paths import DataPaths
+from pantheon.core.runtime import RuntimeLease
 from pantheon.core.scheduler import ChronosScheduler, ScheduleParseError, parse_schedule_request
+from pantheon.core.tasks import TaskStore
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.llm.openai_client import is_responses_api_model
@@ -484,21 +487,23 @@ INTEGRATION_CATALOG: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> FastAPI:
+def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bind_port: int = 8000) -> FastAPI:
     """Build the FastAPI app. Pantheon instance is created lazily."""
     _pantheon: dict[str, Pantheon | None] = {"instance": None}
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
-    chronos_scheduler = ChronosScheduler(workspace_root / ".pantheon" / "chronos_jobs.json")
-    memory_store = MemoryStore(workspace_root / ".pantheon" / "memory.sqlite")
-    conversation_store = ConversationStore(workspace_root / ".pantheon" / "conversations.json")
-    usage_store = UsageStore(workspace_root / ".pantheon" / "usage.sqlite")
+    data_paths = DataPaths.for_workspace(workspace_root)
+    chronos_scheduler = ChronosScheduler(data_paths.state / "chronos_jobs.json")
+    memory_store = MemoryStore(data_paths.state / "memory.sqlite")
+    conversation_store = ConversationStore(data_paths.state / "conversations.json")
+    usage_store = UsageStore(data_paths.state / "usage.sqlite")
+    task_store = TaskStore(data_paths.state / "tasks.sqlite")
     update_checker = UpdateChecker(__version__)
     skill_store = SkillStore(
-        workspace_root / ".pantheon" / "skills",
-        legacy_path=workspace_root / ".pantheon" / "skills.json",
+        data_paths.state / "skills",
+        legacy_path=data_paths.state / "skills.json",
     )
-    plugin_store = PluginStore(workspace_root / ".pantheon" / "plugins.json")
-    mcp_manager = MCPManager(workspace_root / ".pantheon" / "mcp_servers.json")
+    plugin_store = PluginStore(data_paths.state / "plugins.json")
+    mcp_manager = MCPManager(data_paths.state / "mcp_servers.json")
     mcp_approval_lock = threading.Lock()
     pending_mcp_approvals: dict[str, dict[str, Any]] = {}
     chronos_runner: dict[str, asyncio.Task | None] = {"task": None}
@@ -507,13 +512,18 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
     model_catalog_attempts: dict[str, int] = {}
     model_catalog_errors: dict[str, str] = {}
 
+    runtime = RuntimeLease(data_paths.state / "runtime.lock", {
+        "host": bind_host, "port": bind_port, "workspace": str(workspace_root), "version": __version__,
+    })
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        if chronos_runner["task"] is None or chronos_runner["task"].done():
-            chronos_runner["task"] = asyncio.create_task(chronos_loop())
-        if model_catalog_runner["task"] is None or model_catalog_runner["task"].done():
-            model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
+        runtime.acquire()
         try:
+            if chronos_runner["task"] is None or chronos_runner["task"].done():
+                chronos_runner["task"] = asyncio.create_task(chronos_loop())
+            if model_catalog_runner["task"] is None or model_catalog_runner["task"].done():
+                model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
             yield
         finally:
             runner_tasks = [
@@ -524,13 +534,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
                 if task is None:
                     continue
                 task.cancel()
-            for task in runner_tasks:
-                if task is None:
-                    continue
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            await asyncio.gather(*(task for task in runner_tasks if task is not None), return_exceptions=True)
             active_jobs = tuple(chronos_job_tasks)
             for job_task in active_jobs:
                 job_task.cancel()
@@ -539,6 +543,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
             chronos_job_tasks.clear()
             chronos_runner["task"] = None
             model_catalog_runner["task"] = None
+            runtime.release()
 
     app = FastAPI(title="Pantheon Web UI", version=__version__, lifespan=lifespan)
     app.state.chronos_runner = chronos_runner
@@ -575,6 +580,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
         p = copy.copy(base)
         p.hermes = copy.copy(base.hermes)
         p.hermes.cancel_event = threading.Event()
+        p.hermes.task_store = task_store
+        p.hermes.active_task_id = None
         p.hermes.deadline = time.monotonic() + 600
         if hasattr(base, "roles"):
             p.roles = {name: copy.copy(role) for name, role in base.roles.items()}
@@ -789,7 +796,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
                 "env_path": str(setup_env_path()),
                 "plugins_path": str((workspace_root / "plugins").resolve()),
                 "skills_path": str(skill_store.path.resolve()),
-                "extension_state_path": str((workspace_root / ".pantheon").resolve()),
+                "extension_state_path": str((data_paths.state).resolve()),
             },
         }
 
@@ -943,13 +950,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
         if raw:
             path = Path(raw)
             return (workspace_root / path).resolve() if not path.is_absolute() else path.resolve()
-        return (workspace_root / "config" / "pantheon.yaml").resolve()
+        return data_paths.config
 
     def setup_env_path() -> Path:
-        return (workspace_root / ".env").resolve()
+        return data_paths.env
 
     def setup_model_cache_path() -> Path:
-        return (workspace_root / ".pantheon" / "model_catalog.json").resolve()
+        return (data_paths.state / "model_catalog.json").resolve()
 
     def read_yaml_config(path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -1931,6 +1938,27 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
                 return saved
         raise HTTPException(status_code=409, detail="Conversations changed; retry deletion")
 
+    @app.get("/api/tasks")
+    async def task_list() -> dict[str, Any]:
+        return {"tasks": task_store.list()}
+
+    @app.post("/api/tasks/{task_id}/stop")
+    async def task_stop(task_id: str) -> dict[str, Any]:
+        return {"stop_requested": task_store.cancel(task_id)}
+
+    @app.get("/api/tasks/{task_id}")
+    async def task_details(task_id: str) -> dict[str, Any]:
+        result = task_store.get(task_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return result
+
+    @app.get("/api/runtime")
+    async def runtime_info() -> dict[str, Any]:
+        return {"workspace": str(workspace_root), "data_directory": str(data_paths.state),
+                "config_path": str(setup_config_path()), "legacy_data": data_paths.legacy,
+                "host": bind_host, "port": bind_port, "version": __version__}
+
     @app.get("/api/usage")
     async def usage_summary() -> dict[str, Any]:
         return usage_store.summary()
@@ -2575,6 +2603,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
             })
 
         return JSONResponse({
+            "task_id": result.get("task_id"),
             "mode": result.get("mode", "single"),
             "content": result.get("content", ""),
             "plan": result.get("plan", ""),
@@ -2652,18 +2681,20 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
                 """Run Hermes dispatch with streaming instrumentation."""
                 try:
                     from pantheon.core.base import Task
+                    task = Task(content=req.task, mode=mode, skill=req.skill)
                     emit("start", {
+                        "task_id": task.task_id,
                         "task": req.task,
                         "mode": mode,
                         "requested_skill": req.skill or "",
                     })
                     emit("phase", {
+                        "task_id": task.task_id,
                         "stage": "preparing",
                         "role": "hermes",
                         "detail": "Preparing memory, Skills, and task context",
                     })
                     memory_events = process_user_memory(req.user_task or req.task)
-                    task = Task(content=req.task, mode=mode, skill=req.skill)
                     hermes = p.hermes
                     streamed = {"plan": False, "step": False, "summary": False}
 
@@ -2672,6 +2703,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1") -> 
                         if event == "plan_start":
                             emit("phase", {
                                 "stage": "planning",
+                                "task_id": payload.get("task_id"),
                                 "role": payload.get("role", "hermes"),
                                 "detail": payload.get("description") or "Building the execution plan",
                             })

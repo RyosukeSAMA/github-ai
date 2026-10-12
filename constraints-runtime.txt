@@ -1,0 +1,11 @@
+# Tested direct dependency baseline. MCP/transitives are resolved universally.
+typer==0.26.7
+rich==15.0.0
+pyyaml==6.0.3
+python-dotenv==1.2.2
+pydantic==2.13.4
+httpx==0.28.1
+fastapi==0.137.1
+uvicorn==0.49.0
+openai==2.42.0
+anthropic==0.109.2
