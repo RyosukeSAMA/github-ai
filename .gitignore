@@ -26,6 +26,7 @@ venv/
 env/
 ENV/
 .venv/
+.venv
 
 # ----- Testing / coverage -----
 .pytest_cache/
@@ -53,6 +54,8 @@ dmypy.json
 
 # ----- Environment / secrets -----
 .env
+.env.credentials.json
+.credentials.lock
 .env.local
 .env.*.local
 *.pem

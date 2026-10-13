@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -314,6 +315,23 @@ def _workspace_services():
     from pantheon.core.paths import DataPaths
     from pantheon.core.services import WorkspaceServices
     return WorkspaceServices(DataPaths.for_workspace())
+
+
+@app.command("update")
+def update(version: str = typer.Option('latest', '--version'),
+           rollback: bool = typer.Option(False, '--rollback'),
+           target: Path | None = typer.Option(None, '--target', help='Installer checkout; defaults to this installation.'),
+           repo: str | None = typer.Option(None, '--repo')) -> None:
+    """Install a stable version transactionally, or restore the previous installation."""
+    from pantheon import installer
+    metadata = Path(sys.prefix) / 'pantheon-install.json'
+    saved = json.loads(metadata.read_text(encoding='utf-8')) if metadata.exists() else {}
+    root = (target or Path(saved.get('target', Path(__file__).resolve().parents[1]))).expanduser().absolute()
+    args = [sys.executable, '-m', 'pantheon.installer', '--target', str(root), '--repo', repo or saved.get('repo', installer.REPOSITORY)]
+    args += ['--rollback'] if rollback else ['--update', '--version', version]
+    # A separate installer process avoids keeping the replaced package/environment open on Windows.
+    result = subprocess.run(args)
+    raise typer.Exit(result.returncode)
 
 
 @app.command("budgets")

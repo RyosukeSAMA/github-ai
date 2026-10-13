@@ -41,21 +41,27 @@ Start with one provider. Pantheon can assign different providers to different ag
 |---|---|---|
 | macOS 13 or newer | Terminal and Homebrew | 3.11 or 3.12 recommended |
 | Ubuntu 22.04 or 24.04 | Native Terminal | 3.10-3.12 |
-| Windows 11 | WSL2 running Ubuntu 22.04 or 24.04 | Ubuntu's Python |
-| Native Windows PowerShell | Not currently supported | — |
+| Windows 11 | Native PowerShell | 3.11 or 3.12 |
+| Windows + WSL2 | Optional Ubuntu environment | 3.10–3.12 |
 
 Pantheon CI tests Python 3.10, 3.11, and 3.12 on Ubuntu. Python 3.13 and newer may work, but are not yet part of the tested support range.
 
-If Git, `curl`, and a supported Python with `venv` are already installed, you can use the [one-line installer](../scripts/install.sh) in macOS, Ubuntu, or WSL Ubuntu:
+After preparing the prerequisites below, install with one command.
+
+**macOS / Ubuntu:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
-cd ~/github-ai && .venv/bin/pantheon web
 ```
 
-The first line installs into a new `~/github-ai` directory; the second starts Pantheon. The installer refuses to overwrite an existing directory and does not install system packages. On Windows, complete the WSL2 and Ubuntu preparation in section 3 first. You can then run the installer inside Ubuntu, or from PowerShell with `wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"`. Pantheon still runs inside WSL. Continue at section 6 for provider configuration. If a prerequisite is missing, follow sections 3-5 below.
+**Native Windows 11 PowerShell:**
 
-For a cloud provider, 4 GB RAM and about 1 GB of free disk space are sufficient for Pantheon and its Python environment. Local Ollama models need additional memory and disk; check the requirements of the model you plan to download.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.ps1 | iex"
+```
+
+Open a new terminal after installation, run `pantheon web`, and continue at section 6. Windows needs neither WSL nor a virtual environment activation script. The default checkout is `%LOCALAPPDATA%\Pantheon\app` on Windows and `~/github-ai` on macOS/Ubuntu. The installer selects the latest stable release, prepares and verifies a separate permanent environment, then promotes the checkout and `.venv` entry point. It adds a launcher to the current user's PATH.
+
 
 ## 3. Prepare the operating system
 
@@ -110,9 +116,27 @@ Continue only when `python3.12` reports Python 3.12 and Git prints a version.
 
 Continue only when Python reports 3.10-3.12 and Git prints a version.
 
-### Windows 11 with WSL2
+### Windows 11 with native PowerShell
 
-Pantheon currently uses Linux commands on Windows. Do not run the later commands in PowerShell.
+In a regular PowerShell window, prepare prerequisites:
+
+```powershell
+winget install --id Git.Git -e --source winget
+winget install --id Python.Python.3.12 -e --scope user
+```
+
+Finish the installer prompts, open a new PowerShell window, and check:
+
+```powershell
+git --version
+py -3.12 --version
+```
+
+Run the PowerShell installer in section 2, open a new window, and run `pantheon --version` and `pantheon web`. Continue at section 6. No `source .venv/bin/activate` is needed. If WinGet is missing, use [Git for Windows](https://git-scm.com/install/windows) and [Python for Windows](https://www.python.org/downloads/windows/), enabling the Python launcher.
+
+### Windows with WSL2 (optional)
+
+This optional path is for users choosing WSL. Run the Linux commands below in Ubuntu; native Windows users can use the PowerShell installation above.
 
 1. Open **PowerShell as Administrator**.
 2. Install WSL2 and Ubuntu:
@@ -138,7 +162,7 @@ If PowerShell says `Ubuntu-24.04` is unavailable, run `wsl --list --online` and 
 
 ## 4. Download and install Pantheon
 
-These commands are the same on macOS, Ubuntu, and the Ubuntu window in WSL.
+This manual source path applies to macOS, Ubuntu and WSL. One-line installer users have already installed dependencies and can continue at section 5.
 
 1. Go to your home folder and download the repository:
 
@@ -181,14 +205,14 @@ These commands are the same on macOS, Ubuntu, and the Ubuntu window in WSL.
 Expected result:
 
 ```text
-pantheon 0.2.1
+pantheon 0.2.6
 ```
 
 A newer version number is also valid. Do not use `sudo pip install`.
 
 ## 5. Start the Web UI
 
-With `(.venv)` still visible, run:
+One-line installer users can open a new terminal; manual source users should keep `(.venv)` active. Run:
 
 ```bash
 pantheon web
@@ -213,11 +237,11 @@ Keep this terminal window open. Open <http://127.0.0.1:8000/> in a current versi
 5. Paste the API key from that provider's official console.
 6. Select a model.
    Keep **Use this model for all chat agents** checked for the first setup.
-7. Select **Test API**. This checks the values currently in the form, makes a small real request, and may incur a small provider charge.
-8. When the test succeeds, select **Save local config**.
-9. Select **Check setup**. This checks the saved local configuration; confirm that every enabled agent is ready.
+7. Choose `.env` or available **System credential storage**, then **Save local config**. Saving makes no model request.
+8. Select **Test API**. It sends one short request and may incur a provider charge. Check that the saved model shows **API verified**.
+9. **Check setup** validates only local configuration. **configured · untested** means no API request has verified it. Verification lasts 24 hours and is bound to model, endpoint and credential. Expand **Saved model details** to review a model absent from the fresh provider catalog.
 
-Pantheon stores the key in the repository's local `.env` file and the provider/model choices in `config/pantheon.yaml`. Both are ignored by Git. Do not paste API keys into GitHub issues, screenshots, or chat messages.
+Setup shows the actual config and credential paths. Existing source installations keep local `.env` and `config/pantheon.yaml`; new workspaces default to user application data. System credential storage uses a supported OS keyring; `pantheon credentials --migrate` explicitly migrates saved API keys and channel tokens, verifies them, then removes dotenv values. Do not paste secrets into issues, screenshots, or chat messages.
 
 If the test fails, do not save yet. Use the matching troubleshooting entry below.
 
@@ -269,7 +293,7 @@ pantheon service stop
 pantheon service uninstall
 ```
 
-The service uses the current repository and virtual environment. macOS uses a per-user LaunchAgent; Linux uses user systemd. WSL users should keep using the manual start command unless systemd is enabled in WSL.
+The service uses your selected workspace and installation. macOS uses a LaunchAgent, Linux uses user systemd, and Windows uses a current-user Startup shortcut and windowless runner, without administrator rights. Windows jobs run after login; WSL needs systemd for background service management. Stop a manually running Web instance before installing the service.
 
 ## 10. Optional: use Ollama without a cloud API key
 
@@ -290,20 +314,28 @@ Ollama model downloads can be several gigabytes. Performance depends on the mode
 
 ## 11. Update Pantheon
 
-Stop Pantheon with `Control-C`, then run:
+Wait for active tasks to finish and stop a manually running Web instance, then run:
+
+```text
+pantheon update
+pantheon update --rollback
+```
+
+Use the second command only when restoring the previous installation. Updates prepare and verify a new environment, create an offline data backup, and then promote code. A background service belonging to this installation is paused and restarted. If startup or health verification fails, the previous code and environment are restored. Active tasks and uncommitted source changes block promotion. Config and current workspace data are preserved. Rollback switches program versions; it does not silently revert data formats. Use the offline backup if downgrading across incompatible formats.
+
+Older versions without `update` can use this on macOS/Ubuntu:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | PANTHEON_UPDATE=1 bash
 ```
 
-The installer defaults to the latest stable release tag. To install or roll back to a specific release, add `PANTHEON_VERSION=v0.2.3` beside `PANTHEON_UPDATE=1`. Stop the service first and export a conversation backup. Local uncommitted changes block updates; the installer preserves ignored config and workspace data. Restart the service after installation. Downgrades may require restoring a backup if an older version cannot read newer data. Source checkouts on a development branch can continue to use `git pull --ff-only` and `python -m pip install -e .`.
+On Windows set `$env:PANTHEON_UPDATE='1'` before running the native installer. Development source checkouts can continue to use `git pull --ff-only` and `python -m pip install -e .`; do not apply release updates to uncommitted development work.
 
+The Web UI checks published GitHub Releases about every six hours and displays an upgrade banner. Settings → Info includes Check now, a Release link and the update command. Merged code without a Release does not trigger an alert; the page never installs a version automatically.
 
-Restart `pantheon web` after updating. The Web UI checks the latest published GitHub Release about every six hours and shows a banner when a newer version is available. It never installs an update while a chat is running. The **Settings → Info** panel also has **Check now** and a release link. Changes merged to GitHub without a Release tag do not trigger a version alert.
+`pantheon doctor` shows real workspace, state, config and credential paths. `pantheon backup export /path/to/backup.zip` exports an offline workspace backup after stopping the service and waiting for CLI tasks. `pantheon backup restore /path/to/backup.zip` restores it and retains a rollback copy. System keyring secrets are not in ordinary backups; configure credentials again on another computer. Info's Export backup/Import backup controls export conversation JSON, not the entire workspace.
 
-Before changing computers, use **Settings → Info → Export backup**. Conversations are saved in the workspace at `.pantheon/conversations.json` and migrated from this browser's older local history on first load. Use **Import backup** on the new computer; existing chats remain intact. `.pantheon/conversations.json.bak` retains the preceding local snapshot.
-
-The same Info panel shows API call and provider-reported token totals for the last 30 days, also saved locally in `.pantheon/usage.sqlite`. Calls made before upgrading have no usage records. These totals are not a provider invoice; check provider billing for charges.
+Info's API usage shows provider-reported tokens. Budgets limit task and rolling 24-hour attempts and output tokens; 0 disables a limit. Optional model rates enable local cost estimates; unpriced calls have unknown cost. CLI uses `pantheon budgets` and SDK uses `p.services.budget`. Estimates are not provider invoices.
 
 ## 12. Troubleshooting
 

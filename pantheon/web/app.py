@@ -3026,6 +3026,15 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             raise HTTPException(status_code=400, detail="cwd is not a directory")
         timeout = max(1, min(req.timeout_seconds, 600))
 
+        if os.name == 'nt':
+            from pantheon.web.windows_terminal import command_events
+            async def windows_generator():
+                async for event, payload in command_events(command, cwd, timeout):
+                    payload['cwd'] = relative_workspace_path(cwd)
+                    yield sse(event, payload)
+            return StreamingResponse(windows_generator(), media_type='text/event-stream',
+                                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
         async def event_generator():
             queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
             proc: asyncio.subprocess.Process | None = None
@@ -3169,6 +3178,6 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     # ----- Health -----
     @app.get("/api/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": __version__}
 
     return app

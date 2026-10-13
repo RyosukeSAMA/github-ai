@@ -57,32 +57,37 @@ This path is for a first-time user starting from a new computer. Pantheon is tes
 |---|---|---|
 | macOS 13 or newer | Terminal + Homebrew + Python 3.11/3.12 | Recommended |
 | Ubuntu 22.04/24.04 | Terminal + system Python | Recommended; covered by CI |
-| Windows 11 | WSL2 with Ubuntu 22.04/24.04 | Documented path; Ubuntu 24.04 smoke-tested in CI |
-| Native Windows PowerShell | — | Not currently supported |
+| Windows 11 | Native PowerShell + Python 3.11/3.12 | Native installer, startup and ConPTY checks in CI |
+| Windows + WSL2 Ubuntu | Ubuntu 22.04/24.04 | Optional Linux environment |
 
 You also need Git, `curl`, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).
 
-### One-line install (macOS, Ubuntu, or WSL Ubuntu)
+### One-line install
 
-If Git, `curl`, and Python 3.10-3.12 with `venv` are already installed, run this in Terminal or the Ubuntu window:
+Prepare Git and Python 3.10–3.12; macOS/Ubuntu also need `curl` and `venv`. The installer checks prerequisites and prints the missing component's installation command.
+
+**macOS / Ubuntu:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
 ```
 
-The [installer script](scripts/install.sh) creates `~/github-ai/.venv`, installs Pantheon there, and prints the start command. It selects the latest stable release tag and refuses to change an existing folder unless `PANTHEON_UPDATE=1` is explicitly set. See [updates and rollback](docs/setup.md#11-update-pantheon). Then start the Web UI:
-
-```bash
-cd ~/github-ai && .venv/bin/pantheon web
-```
-
-On Windows, first install WSL2 and Ubuntu using step 1 below. After installing Git, `curl`, Python, and `venv` inside Ubuntu, you can run the same installer from **PowerShell** with one line:
+**Windows 11 (native PowerShell, no WSL required):**
 
 ```powershell
-wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.ps1 | iex"
 ```
 
-This installs Pantheon **inside WSL**, not as a native Windows application. Continue with step 3 to configure a provider. If the installer reports a missing prerequisite, follow the operating-system steps below and rerun it.
+If needed, install Windows prerequisites first and open a new PowerShell window:
+
+```powershell
+winget install --id Git.Git -e --source winget
+winget install --id Python.Python.3.12 -e --scope user
+```
+
+After installation, open a new terminal, run `pantheon web`, open <http://127.0.0.1:8000/>, and follow Settings → Setup. The default checkout is `~/github-ai` on macOS/Ubuntu and `%LOCALAPPDATA%\Pantheon\app` on Windows. A CLI launcher is added to the current user's PATH.
+
+The installer selects the latest stable release. Use `pantheon update` to upgrade and `pantheon update --rollback` to restore the previous installation. New dependencies are verified before promotion; active tasks or uncommitted source changes block updates. Settings and workspace data are preserved. See [installation and updates](docs/setup.md).
 
 To install each component manually, follow the steps below.
 

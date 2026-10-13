@@ -38,6 +38,10 @@ dependencies = [
     "anthropic>=0.18.0",
     "mcp>=1.27,<2",
     "keyring>=25.6,<27",
+    "pywinpty>=2.0.15,<4; sys_platform == 'win32'",
+    "tzdata>=2025.2; sys_platform == 'win32'",
+    "setuptools>=68",
+    "wheel>=0.45",
 ]
 
 [project.optional-dependencies]

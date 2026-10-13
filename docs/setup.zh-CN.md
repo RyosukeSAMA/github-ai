@@ -41,21 +41,27 @@ Pantheon 本身免费并运行在本机，但模型执行需要以下方式之�
 |---|---|---|
 | macOS 13 或更新版本 | Terminal + Homebrew | 推荐 3.11 或 3.12 |
 | Ubuntu 22.04 或 24.04 | 原生终端 | 3.10-3.12 |
-| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 使用 Ubuntu 的 Python |
-| Windows 原生 PowerShell | 当前不支持 | — |
+| Windows 11 | 原生 PowerShell | 3.11 或 3.12 |
+| Windows + WSL2 | 可选 Ubuntu 环境 | 3.10–3.12 |
 
 Pantheon 的 GitHub CI 会在 Ubuntu 上测试 Python 3.10、3.11 和 3.12。Python 3.13 或更新版本可能可以运行，但目前不属于已测试范围。
 
-如果已经安装 Git、`curl`、受支持的 Python 和 `venv`，可以在 macOS、Ubuntu 或 WSL Ubuntu 中使用[一行安装脚本](../scripts/install.sh)：
+完成下方对应系统的基础组件准备后，一行安装并启动：
+
+**macOS / Ubuntu：**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
-cd ~/github-ai && .venv/bin/pantheon web
 ```
 
-第一行在新的 `~/github-ai` 目录中安装，第二行启动 Pantheon。脚本不会覆盖已有目录，也不会自动安装系统软件。Windows 用户先完成第三节的 WSL2 和 Ubuntu 准备，再在 Ubuntu 中执行；也可以在 PowerShell 中运行 `wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"`。Pantheon 仍在 WSL 中运行。之后跳到第六节配置 Provider。如果提示缺少依赖，请先按下方第三至第五节补齐。
+**Windows 11 原生 PowerShell：**
 
-如果使用云端 Provider，4 GB 内存和约 1 GB 可用磁盘通常足够运行 Pantheon 及其 Python 环境。本地 Ollama 需要更多内存和磁盘，具体取决于下载的模型。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.ps1 | iex"
+```
+
+安装后打开新的终端，运行 `pantheon web`，再进入第六节。Windows 无需安装 WSL，也无需执行虚拟环境的激活脚本。默认安装目录是 `%LOCALAPPDATA%\Pantheon\app`；macOS/Ubuntu 为 `~/github-ai`。安装器下载最新稳定 Release，在单独的永久环境中安装并验证依赖，之后切换代码和 `.venv` 入口；不会直接修改失败前的环境。终端启动器加入当前用户 PATH。
+
 
 ## 三、准备操作系统
 
@@ -110,9 +116,27 @@ cd ~/github-ai && .venv/bin/pantheon web
 
 只有 Python 显示 3.10-3.12，并且 Git 显示版本号时，才继续下一步。
 
-### Windows 11 + WSL2
+### Windows 11 原生 PowerShell
 
-Pantheon 当前在 Windows 上使用 Linux 命令。后面的安装命令不要在 PowerShell 中执行。
+打开普通 PowerShell，准备基础组件：
+
+```powershell
+winget install --id Git.Git -e --source winget
+winget install --id Python.Python.3.12 -e --scope user
+```
+
+完成安装提示后，关闭并重新打开 PowerShell，确认：
+
+```powershell
+git --version
+py -3.12 --version
+```
+
+然后执行第二节的 PowerShell 一行安装，打开新窗口后执行 `pantheon --version` 和 `pantheon web`，直接进入第六节。无需 `source .venv/bin/activate`。如果没有 WinGet，可从 [Git for Windows](https://git-scm.com/install/windows) 和 [Python Windows 下载](https://www.python.org/downloads/windows/) 安装相应组件；Python 安装时启用 launcher。
+
+### Windows + WSL2（可选）
+
+此路径仅用于主动选择 WSL 的用户。以下 Linux 命令在 Ubuntu 窗口执行；原生 Windows 用户使用上方 PowerShell 安装即可。
 
 1. 以管理员身份打开 **PowerShell**。
 2. 安装 WSL2 和 Ubuntu：
@@ -138,7 +162,7 @@ Pantheon 当前在 Windows 上使用 Linux 命令。后面的安装命令不要�
 
 ## 四、下载并安装 Pantheon
 
-macOS、Ubuntu 和 Windows 的 Ubuntu 窗口都执行相同命令。
+本节是 macOS、Ubuntu 和 WSL 的手动源码安装。使用一行安装的用户已完成依赖配置，直接进入第五节。
 
 1. 回到用户主目录并下载项目：
 
@@ -181,14 +205,14 @@ macOS、Ubuntu 和 Windows 的 Ubuntu 窗口都执行相同命令。
 预期结果：
 
 ```text
-pantheon 0.2.1
+pantheon 0.2.6
 ```
 
 显示更高版本也正常。不要使用 `sudo pip install`。
 
 ## 五、启动 Web UI
 
-确认终端仍显示 `(.venv)`，然后执行：
+一行安装用户打开新终端即可；手动源码安装用户保持 `(.venv)`，执行：
 
 ```bash
 pantheon web
@@ -213,11 +237,11 @@ Uvicorn running on http://127.0.0.1:8000
 5. 粘贴从该 Provider 官方 API 控制台创建的 API key。
 6. 选择一个模型。
    首次配置请保持 **Use this model for all chat agents** 已勾选。
-7. 点击 **Test API**。它会检查表单中当前填写的内容，并发送一次很小的真实请求，可能产生少量 Provider 费用。
-8. 测试成功后点击 **Save local config**。
-9. 点击 **Check setup**。它会检查已经保存到本地的配置；确认所有已启用 Agent 均已就绪。
+7. 选择 `.env` 或可用的 **System credential storage**，点击 **Save local config**。保存不会发出模型请求。
+8. 点击 **Test API**。这会发送一次短请求，可能产生少量服务商费用。确认保存的模型显示 **API verified**。
+9. **Check setup** 只检查本地配置；**configured · untested** 表示已配置但没有调用验证。验证结果 24 小时有效，绑定密钥、地址和模型。模型没有出现在新目录中时，展开 **Saved model details** 查看提醒。
 
-Pantheon 会把 key 保存在项目本地 `.env` 文件，把 Provider 和模型设置保存在 `config/pantheon.yaml`。Git 会忽略这两个文件。不要把 API key 粘贴到 GitHub Issue、截图或聊天消息中。
+Setup 底部显示实际配置和凭据路径。旧源码安装继续使用项目 `.env` 和 `config/pantheon.yaml`；新工作区默认使用系统用户数据目录。系统凭据选项使用受支持的 OS 密钥环，`pantheon credentials --migrate` 可显式迁移已保存的 API key 和平台 token。迁移先保存并核验，再移除文件中的原值。不要把密钥粘贴到 GitHub Issue、截图或聊天消息中。
 
 如果 Test API 失败，先不要保存，请查看下面与错误对应的排错步骤。
 
@@ -269,7 +293,7 @@ pantheon service stop
 pantheon service uninstall
 ```
 
-服务使用当前项目目录和虚拟环境。macOS 使用当前用户的 LaunchAgent，Linux 使用 user systemd。WSL 用户应继续手动启动，除非 WSL 已经启用 systemd。
+服务使用选定工作区和当前安装。macOS 使用 LaunchAgent，Linux 使用 user systemd，Windows 使用当前用户 Startup 快捷方式与 windowless runner，不需要管理员权限。Windows 的后台任务在登录后运行；WSL 需要启用 systemd 才使用后台服务。先停止手动运行的 Web，再安装服务，避免同一工作区重复启动。
 
 ## 十、可选：使用 Ollama，不配置云端 API key
 
@@ -290,20 +314,28 @@ Ollama 模型可能需要下载数 GB 文件，运行速度取决于模型大小
 
 ## 十一、更新 Pantheon
 
-先在终端按 `Control-C` 停止 Pantheon，然后执行：
+等待任务完成，停止手动运行的 Web，然后执行：
+
+```text
+pantheon update
+pantheon update --rollback
+```
+
+第二条仅在确实需要恢复上一安装时使用。更新器先下载并校验新环境，再离线备份本地数据并切换；属于当前安装的后台服务会暂停并重启。新服务启动或健康检查失败时会恢复旧代码与环境。存在未提交源码或运行中任务时会拒绝切换。配置和最新工作区数据保留；回退只切换程序版本，不会自动恢复旧数据格式。若跨越不兼容的数据格式版本，请使用离线备份恢复，并保留原始数据。
+
+旧版本没有 `update` 命令时，macOS/Ubuntu 使用：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | PANTHEON_UPDATE=1 bash
 ```
 
-安装器默认选择最新稳定 Release 标签。指定版本或回退时，在 `PANTHEON_UPDATE=1` 旁添加 `PANTHEON_VERSION=v0.2.3`。先停止服务并导出会话备份；存在未提交改动时会拒绝更新。安装器保留被 Git 忽略的配置和工作区数据，更新后重启服务。旧版本可能无法读取新格式，降级时可能需要恢复备份。开发分支源码安装仍可使用 `git pull --ff-only` 和 `python -m pip install -e .`。
+Windows 使用原生安装命令前设置 `$env:PANTHEON_UPDATE='1'`。开发分支源码安装可继续使用 `git pull --ff-only` 与 `python -m pip install -e .`；不应对含未提交修改的源码运行发布版更新器。
 
+Web 约每六小时检查 GitHub 正式 Release，有新版时显示升级提示。Settings → Info 提供手动检查、Release 链接和 `pantheon update` 提示。仅合并代码、没有发布 Release 时不会提示；页面不会在后台自动安装版本。
 
-更新后重新执行 `pantheon web`。Web 页面约每六小时检查一次 GitHub 最新正式 Release；有新版本时顶部会显示升级提示，不会在聊天中自动安装。**Settings → Info** 里也能点击 **Check now**，查看版本和更新入口。仅合并代码、未发布 Release 时不会提示新版本。
+`pantheon doctor` 显示实际工作区、状态、配置与凭据路径。`pantheon backup export /path/to/backup.zip` 导出离线工作区备份（先停止服务并等待 CLI 任务完成）；`pantheon backup restore /path/to/backup.zip` 恢复并保留回退副本。系统钥匙串中的密钥不包含在普通备份中，换电脑需重新配置。Info 页的 Export backup/Import backup 导出的是会话 JSON，不等同于完整工作区备份。
 
-换电脑前，在 **Settings → Info → Export backup** 导出会话。会话保存在工作区的 `.pantheon/conversations.json`；第一次打开新版时，会把当前浏览器原有记录迁移进去。在新电脑点击 **Import backup**，原有会话不会被覆盖。`.pantheon/conversations.json.bak` 保留前一次本地快照。
-
-Info 页面还会显示最近 30 天的 API 调用量和 Provider 返回的 token 数，本地数据在 `.pantheon/usage.sqlite`。升级前的调用不会补记；实际费用以 Provider 账单为准。
+Settings → Info 的 API usage 显示服务商报告的 token。Budgets 设置每任务、24 小时请求数和输出 token 限制；0 表示不限。填写当前模型单价后可限制本地费用估算；未定价调用显示未知，不冒充账单。CLI 使用 `pantheon budgets`，SDK 使用 `p.services.budget`。
 
 ## 十二、常见问题排查
 

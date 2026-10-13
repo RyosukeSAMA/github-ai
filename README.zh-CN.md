@@ -57,32 +57,37 @@ Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 W
 |---|---|---|
 | macOS 13 或更新版本 | Terminal + Homebrew + Python 3.11/3.12 | 推荐 |
 | Ubuntu 22.04/24.04 | Terminal + 系统 Python | 推荐，CI 已覆盖 |
-| Windows 11 | WSL2 + Ubuntu 22.04/24.04 | 已提供安装步骤；Ubuntu 24.04 已通过 CI 安装冒烟测试 |
-| Windows 原生 PowerShell | — | 当前不支持 |
+| Windows 11 | 原生 PowerShell + Python 3.11/3.12 | 原生安装、后台启动和 ConPTY 终端；CI 验收 |
+| Windows + WSL2 Ubuntu | Ubuntu 22.04/24.04 | 可选 Linux 环境 |
 
 此外还需要 Git、`curl`、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。
 
-### 一行安装（macOS、Ubuntu 或 WSL Ubuntu）
+### 一行安装
 
-如果已经安装 Git、`curl`、Python 3.10-3.12 和 `venv`，在终端或 Ubuntu 窗口运行：
+先准备 Git 和 Python 3.10–3.12。macOS/Ubuntu 还需要 `curl` 与 `venv`。脚本会检查缺少的组件并给出对应命令。
+
+**macOS / Ubuntu：**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash
 ```
 
-[安装脚本](scripts/install.sh)会在 `~/github-ai/.venv` 中安装 Pantheon，并打印启动命令。它不使用 `sudo`，也不会修改已有的 `~/github-ai` 文件夹。安装完成后启动 Web UI：
-
-```bash
-cd ~/github-ai && .venv/bin/pantheon web
-```
-
-Windows 用户先按下方第一步安装 WSL2 和 Ubuntu，并在 Ubuntu 中安装 Git、`curl`、Python 与 `venv`。之后也可以在 **PowerShell** 中用一行命令安装：
+**Windows 11（原生 PowerShell，无需 WSL）：**
 
 ```powershell
-wsl -d Ubuntu-24.04 -- bash -lc "curl -fsSL https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.sh | bash"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/scripts/install.ps1 | iex"
 ```
 
-这会把 Pantheon 装进 **WSL Ubuntu**，不是 Windows 原生应用。之后跳到第三步配置 Provider。如果安装脚本提示缺少依赖，请按下方系统步骤补齐后重试。
+Windows 缺少基础组件时，先运行以下命令，再打开新的 PowerShell 窗口：
+
+```powershell
+winget install --id Git.Git -e --source winget
+winget install --id Python.Python.3.12 -e --scope user
+```
+
+安装完成后，打开一个新的终端窗口，运行 `pantheon web`，再打开 <http://127.0.0.1:8000/>，按 Settings → Setup 的引导配置模型服务商。macOS/Ubuntu 默认安装到 `~/github-ai`，Windows 默认安装到 `%LOCALAPPDATA%\Pantheon\app`。CLI 启动器加入当前用户 PATH。
+
+安装脚本选择最新稳定 Release。更新使用 `pantheon update`，回退使用 `pantheon update --rollback`。先验证新环境再切换；有未提交源码或运行中任务时会停止更新；已有设置和工作区数据保留。详见[安装与更新说明](docs/setup.zh-CN.md)。
 
 如果希望逐项安装，请按下面的步骤操作。
 
@@ -127,7 +132,7 @@ git --version
 
 ### 第二步：下载并安装 Pantheon
 
-在终端中执行；Windows 用户在 Ubuntu 窗口中执行：
+以下手动源码安装步骤适用于 macOS、Ubuntu 和 WSL。原生 Windows 用户使用上方一行安装后，直接进入第三步配置服务商。
 
 ```bash
 cd ~

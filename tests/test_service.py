@@ -13,8 +13,9 @@ import pantheon.service as service
 def test_service_platform_maps_supported_systems() -> None:
     assert service.service_platform("Darwin") == "launchd"
     assert service.service_platform("Linux") == "systemd"
-    with pytest.raises(service.ServiceError, match="macOS and Linux"):
-        service.service_platform("Windows")
+    assert service.service_platform('Windows') == 'windows'
+    with pytest.raises(service.ServiceError, match="macOS, Linux and Windows"):
+        service.service_platform('Unknown')
 
 
 def test_install_launchd_writes_loopback_service(tmp_path, monkeypatch) -> None:
@@ -103,3 +104,31 @@ def test_install_refuses_network_binding_without_explicit_override(tmp_path) -> 
 
 def test_uninstall_missing_service_is_idempotent(tmp_path) -> None:
     assert service.uninstall_service(backend="launchd", home=tmp_path) is False
+
+
+def test_windows_install_creates_per_user_definition_and_shortcut(tmp_path, monkeypatch):
+    import json
+
+    from pantheon import windows_service
+    calls = []
+    monkeypatch.setattr(windows_service, 'install_shortcut', lambda *args: calls.append(('shortcut', args)))
+    monkeypatch.setattr(windows_service, 'start', lambda *args: calls.append(('start', args)))
+    paths = service.install_service(tmp_path, backend='windows', home=tmp_path / 'home', python_executable=Path(sys.executable))
+    payload = json.loads(paths.definition.read_text())
+    assert payload['workspace'] == str(tmp_path)
+    assert payload['host'] == '127.0.0.1'
+    assert paths.startup.name == 'Pantheon.lnk'
+    assert 'Startup' in paths.startup.parts
+    assert [call[0] for call in calls] == ['shortcut', 'start']
+
+
+def test_windows_process_metadata_never_stops_reused_pid(tmp_path, monkeypatch):
+    import json
+
+    from pantheon import windows_service
+    definition = tmp_path / 'service.json'
+    definition.with_suffix('.pid.json').write_text(json.dumps({'pid': 123, 'created': 111, 'nonce': 'old'}))
+    monkeypatch.setattr(windows_service, 'process_identity', lambda *args, **kwargs: 222)
+    assert not windows_service.running(definition)
+    windows_service.stop(definition)
+    assert not definition.with_suffix('.stop.json').exists()
