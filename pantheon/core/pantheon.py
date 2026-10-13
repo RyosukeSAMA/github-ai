@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
 
 from pantheon.core.base import Task
 from pantheon.core.hermes import Hermes
@@ -34,15 +34,14 @@ class Pantheon:
         env_path: str | None = None,
         verbose: bool = False,
     ) -> None:
-        # Load .env if present (silently)
         self.paths = DataPaths.for_workspace()
         env_path = env_path or str(self.paths.env)
-        if Path(env_path).exists():
-            load_dotenv(env_path)
+        self.paths = replace(self.paths, env=Path(env_path).resolve())
+        self.services = WorkspaceServices(self.paths)
 
         # Load YAML config (do this first; needed before logging init)
         config_path = config_path or self._find_config()
-        self.config = self._load_config(config_path)
+        self.config = self._load_config(config_path, self.services.env_value)
 
         # Logging
         log_cfg = self.config.get("logging", {})
@@ -78,7 +77,6 @@ class Pantheon:
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
         self.hermes.task_store = TaskStore(self.paths.state / "tasks.sqlite")
-        self.services = WorkspaceServices(self.paths)
         self.skill_store = self.services.skills
         self.services.attach(self)
         self.handle_memory = True
@@ -155,10 +153,10 @@ class Pantheon:
         )
 
     @staticmethod
-    def _load_config(path: str) -> dict[str, Any]:
+    def _load_config(path: str, env_lookup=None) -> dict[str, Any]:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        return _expand_env_vars(data)
+        return _expand_env_vars(data, env_lookup)
 
     def _build_llm_clients(self) -> dict[str, Any]:
         providers = self.config.get("llm_providers", {})
@@ -166,9 +164,7 @@ class Pantheon:
         for name, cfg in providers.items():
             if not cfg.get("enabled", True):
                 continue
-            api_key = cfg.get("api_key") or os.environ.get(
-                f"{name.upper()}_API_KEY", ""
-            )
+            api_key = cfg.get("api_key") or self.services.env_value(f"{name.upper()}_API_KEY")
             # The YAML may have ${OPENAI_API_KEY} which _expand_env_vars handles
             api_key = api_key or ""
             if not api_key and name != "ollama":
@@ -184,6 +180,7 @@ class Pantheon:
                 )
                 client.provider_name = cfg.get("provider_id") or name
                 client.usage_recorder = self.usage_store.record
+                client.budget = self.services.budget
                 clients[name] = client
             except Exception as e:
                 self.log.error("Failed to init provider '%s': %s", name, e)
@@ -221,7 +218,7 @@ class Pantheon:
         return out
 
 
-def _expand_env_vars(obj: Any) -> Any:
+def _expand_env_vars(obj: Any, env_lookup=None) -> Any:
     """Recursively expand ${VAR} patterns in a parsed YAML structure."""
     import re
 
@@ -229,13 +226,13 @@ def _expand_env_vars(obj: Any) -> Any:
 
     def expand(s: str) -> str:
         def repl(m: re.Match) -> str:
-            return os.environ.get(m.group(1), "")
+            return env_lookup(m.group(1)) if env_lookup else os.environ.get(m.group(1), "")
         return pattern.sub(repl, s)
 
     if isinstance(obj, dict):
-        return {k: _expand_env_vars(v) for k, v in obj.items()}
+        return {k: _expand_env_vars(v, env_lookup) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_expand_env_vars(v) for v in obj]
+        return [_expand_env_vars(v, env_lookup) for v in obj]
     if isinstance(obj, str):
         return expand(obj)
     return obj

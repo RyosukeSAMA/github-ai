@@ -32,6 +32,25 @@ def test_core_navigation_and_conversation_state(page: Page, live_server_url: str
     expect(page.locator("#workspace")).to_be_hidden()
 
 
+def test_getting_started_can_reopen_and_prepare_without_sending(page: Page, live_server_url: str) -> None:
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('#guide-reopen').click()
+    expect(page.locator('#onboarding-card')).to_be_visible()
+    page.locator('[data-guide-action="confirm_workspace"]').click()
+    expect(page.locator('#onboarding-steps li').first).to_have_class('done')
+    expect(page.locator('#setup-status-title')).to_contain_text('configured')
+    page.locator('#guide-first-task').click()
+    expect(page.locator('#settings-panel')).to_be_hidden()
+    expect(page.locator('#input')).to_have_value(re.compile('Explain which Pantheon agent'))
+    assert not any('/api/setup/test' in url or '/api/ask' in url for url in requests)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-guide-action="skip"]').click()
+    expect(page.locator('#onboarding-card')).to_be_hidden()
+
+
 def test_openai_setup_lists_gpt6_astra(
     page: Page,
     live_server_url: str,

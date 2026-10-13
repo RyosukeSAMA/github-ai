@@ -492,8 +492,20 @@
 
       <!-- Setup tab -->
       <div class="settings-pane active" data-pane="setup" id="settings-setup">
+        <button class="ghost-btn" type="button" id="guide-reopen">Open getting started guide</button>
+        <div class="onboarding-card" id="onboarding-card" hidden>
+          <strong>Get started with Pantheon</strong>
+          <p class="setup-muted">Confirm your workspace, save a provider, test access, then run your first task.</p>
+          <ol id="onboarding-steps"></ol>
+          <div class="setup-actions">
+            <button class="ghost-btn" type="button" data-guide-action="confirm_workspace">Use this workspace</button>
+            <button class="ghost-btn" type="button" id="guide-first-task">Try a first task</button>
+            <button class="ghost-btn" type="button" data-guide-action="skip">Close guide</button>
+          </div>
+          <p class="setup-muted">To work in another folder, restart with <code>pantheon --workspace /path/to/project web</code>. Test API sends one short request and may incur a small charge.</p>
+        </div>
         <p class="settings-hint">
-          Configure Pantheon for local use. API keys are saved to <code>.env</code>;
+          Configure Pantheon for local use. Choose system credential storage or <code>.env</code> for API keys;
           provider and model choices are saved to <code>config/pantheon.yaml</code>.
         </p>
 
@@ -551,6 +563,13 @@
               <button class="ghost-btn" type="button" id="setup-toggle-key">Show</button>
             </div>
             <p class="setup-muted" id="setup-key-status">No key status yet</p>
+            <label for="setup-credential-storage">Credential storage</label>
+            <select class="setting-select" id="setup-credential-storage">
+              <option value="env">Private .env file (compatible)</option>
+              <option value="system">System credential storage</option>
+            </select>
+            <p class="setup-muted" id="credential-storage-status"></p>
+            <button class="ghost-btn" type="button" id="credentials-migrate">Migrate saved API keys and channel tokens to system storage</button>
           </div>
 
           <label class="setting-check">
@@ -851,6 +870,24 @@
             <p class="info-note" id="info-usage-total">No usage recorded yet.</p>
             <div id="info-usage-models" class="usage-models"></div>
             <p class="info-note">Provider-reported tokens only. API charges vary by provider, model, caching and tier; check your provider bill for costs.</p>
+          </section>
+          <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">Budgets · this workspace</span><button class="ghost-btn" id="budgets-refresh" type="button">Refresh</button></div>
+            <p class="info-note" id="budgets-status">Loading limits...</p>
+            <form id="budgets-form" class="setup-form">
+              <label>Requests per task <input class="setting-input" type="number" min="0" step="1" data-budget="task_requests" value="0" required /></label>
+              <label>Requests in 24 hours <input class="setting-input" type="number" min="0" step="1" data-budget="daily_requests" value="0" required /></label>
+              <label>Output tokens per request <input class="setting-input" type="number" min="0" step="1" data-budget="output_tokens" value="0" required /></label>
+              <label>Estimated USD per task <input class="setting-input" type="number" min="0" step="any" data-budget="task_usd" value="0" required /></label>
+              <label>Estimated USD in 24 hours <input class="setting-input" type="number" min="0" step="any" data-budget="daily_usd" value="0" required /></label>
+              <details><summary>Model price estimates</summary>
+                <p class="info-note">USD per million tokens. Enter your own current rates: <code>{"provider/model-id":{"input":1,"output":4}}</code>. Cost limits require a price for every model used.</p>
+                <textarea class="setting-input" id="budget-prices" rows="4" spellcheck="false">{}</textarea>
+              </details>
+              <p class="info-note">0 disables a limit. Attempts include failures and planning calls. Cost estimates use your rates; unpriced requests have unknown cost. These are local controls, not provider invoices.</p>
+              <button class="primary-btn" type="submit">Save limits</button>
+            </form>
+            <p class="info-note" id="budgets-warning"></p>
           </section>
           <section class="info-card">
             <div class="info-card-head"><span class="setup-kicker">Task history · this workspace</span><button class="ghost-btn" id="info-tasks-refresh" type="button">Refresh</button></div>

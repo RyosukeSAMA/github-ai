@@ -28,6 +28,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pantheon import __version__
+from pantheon.core.budgets import BudgetExceededError
+from pantheon.core.credentials import CredentialError, atomic_text
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
     MCPError,
@@ -109,6 +111,7 @@ class SetupSaveRequest(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     apply_to_roles: bool = True
+    credential_storage: str = "env"
 
 
 class SetupTestRequest(BaseModel):
@@ -116,6 +119,10 @@ class SetupTestRequest(BaseModel):
     model: str
     base_url: str | None = None
     api_key: str | None = None
+
+
+class OnboardingRequest(BaseModel):
+    action: str
 
 
 class SetupModelsRequest(BaseModel):
@@ -490,6 +497,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
     data_paths = DataPaths.for_workspace(workspace_root)
     workspace_services = WorkspaceServices(data_paths)
+    readiness = workspace_services.readiness
+    initially_configured = Path(config_path).exists() if config_path else data_paths.config.exists()
     chronos_scheduler = workspace_services.scheduler
     memory_store = workspace_services.memory
     conversation_store = ConversationStore(data_paths.state / "conversations.json")
@@ -620,6 +629,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     )
                     client.provider_name = provider_id
                     client.usage_recorder = p.usage_store.record
+                    client.budget = workspace_services.budget
                 role.llm_client = client
             if override.get("model"):
                 role.model = override["model"]
@@ -931,9 +941,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             return yaml.safe_load(f) or {}
 
     def write_yaml_config(path: Path, data: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        atomic_text(path, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
     def read_model_cache() -> dict[str, Any]:
         path = setup_model_cache_path()
@@ -1015,30 +1023,14 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         return f"{key}={rendered}"
 
     def write_env_value(path: Path, key: str, value: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-        new_line = format_env_line(key, value)
-        replaced = False
-        next_lines: list[str] = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#") and "=" in stripped:
-                current_key = stripped.split("=", 1)[0].strip()
-                if current_key == key:
-                    next_lines.append(new_line)
-                    replaced = True
-                    continue
-            next_lines.append(line)
-        if not replaced:
-            if next_lines and next_lines[-1].strip():
-                next_lines.append("")
-            next_lines.append(new_line)
-        path.write_text("\n".join(next_lines).rstrip() + "\n", encoding="utf-8")
+        store = workspace_services.credentials
+        storage = "system" if key in store.refs() else "env"
+        store.save(key, value, storage=storage)
 
     def env_value(env_var: str) -> str:
         if not env_var:
             return ""
-        return parse_env_file(setup_env_path()).get(env_var) or os.environ.get(env_var, "")
+        return workspace_services.credentials.get(env_var)
 
     def write_runtime_env(key: str, value: str) -> None:
         write_env_value(setup_env_path(), key, value)
@@ -1529,6 +1521,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         providers = config.get("llm_providers", {}) or {}
         statuses: list[dict[str, Any]] = []
         for role_name, label, purpose, counts_toward_ready in SETUP_ROLE_ORDER:
+            health = {"state": "not_applicable", "checked_at": None}
+            catalog_listed = None
             cfg = role_config(config, role_name)
             adapter = str(cfg.get("provider") or ("none" if role_name == "chronos" else ""))
             model = str(cfg.get("model") or ("none" if role_name == "chronos" else ""))
@@ -1569,6 +1563,18 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     status = "disabled"
                     status_label = "disabled"
 
+                endpoint = str(llm_cfg.get("base_url") or preset.get("base_url") or "")
+                key = str(raw_api_key) if raw_api_key and "${" not in str(raw_api_key) else env_value(env_var)
+                key = normalized_provider_api_key(provider_key, key)
+                health = readiness.health(provider_key, model, endpoint, key)
+                catalog = cached_model_catalog(provider_key, endpoint, key)
+                if catalog and time.time() - int(catalog.get("fetched_at") or 0) < MODEL_CACHE_TTL_SECONDS:
+                    catalog_listed = any(entry.get("id") == model for entry in catalog.get("models", []))
+                if key_configured and enabled:
+                    status = health["state"]
+                    status_label = {"verified": "API verified", "failed": "API test failed",
+                                    "expired": "test expired", "untested": "configured · untested"}[status]
+
             statuses.append({
                 "role": role_name,
                 "label": label,
@@ -1584,6 +1590,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 "status": status,
                 "status_label": status_label,
                 "counts_toward_ready": counts_toward_ready,
+                "api_health": health,
+                "catalog_listed": catalog_listed,
             })
         return statuses
 
@@ -1613,6 +1621,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             else next(iter(provider_labels), preset["label"])
         )
         setup_ready = bool(role_count and ready_count == role_count)
+        verified_count = sum(item["api_health"]["state"] == "verified" for item in counted_roles)
         return {
             "message": message,
             "provider": provider_key,
@@ -1631,8 +1640,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "setup_ready": setup_ready,
             "ready_count": ready_count,
             "role_count": role_count,
-            "summary_title": f"{summary_provider} · {ready_count}/{role_count} ready",
-            "summary_state": "ready" if setup_ready else "needs attention",
+            "summary_title": f"{summary_provider} · {ready_count}/{role_count} configured · {verified_count} verified",
+            "summary_state": "verified" if verified_count == role_count and setup_ready else "configured" if setup_ready else "needs attention",
+            "verified_count": verified_count,
+            "credentials": workspace_services.credentials.status(),
+            "onboarding": onboarding_status(setup_ready, verified_count > 0),
             "role_statuses": role_statuses,
             "providers": [
                 provider_status_payload(
@@ -1644,6 +1656,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 for key in SETUP_PROVIDER_PRESETS
             ],
         }
+
+    def onboarding_status(configured: bool, verified: bool) -> dict:
+        dismissed = readiness.preference("guide_dismissed", initially_configured)
+        return {"show": not dismissed, "workspace": str(workspace_root),
+                "steps": {"workspace": bool(readiness.preference("workspace_confirmed", False)),
+                          "configured": configured, "verified": verified,
+                          "first_task": any(item["status"] == "completed" for item in task_store.list())}}
 
     def sse(event: str, data: dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
@@ -2219,7 +2238,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             problems.append(str(e))
         return {
             **setup_status_payload(
-                "Config looks ready." if not problems else "Config needs attention."
+                "Local configuration is valid. Use Test API to check provider access." if not problems else "Config needs attention."
             ),
             "ok": not problems,
             "problems": problems,
@@ -2257,6 +2276,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 api_key=api_key,
                 base_url=base_url,
             )
+            client.budget = workspace_services.budget
+            client.provider_name = provider_id
+            client.usage_recorder = usage_store.record
             return client.complete(
                 [{"role": "user", "content": "Reply with exactly: ok"}],
                 model=model,
@@ -2272,15 +2294,19 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 timeout=25,
             )
         except Exception as e:
+            tested = not isinstance(e, BudgetExceededError)
+            if tested:
+                readiness.record(provider_id, model, base_url, api_key, False)
             return {
                 **setup_status_payload("API test failed."),
                 "ok": False,
-                "tested": True,
+                "tested": tested,
                 "problem": sanitize_error(str(e), [api_key]),
                 "tested_provider": provider_id,
                 "tested_model": model,
             }
 
+        readiness.record(provider_id, model, base_url, api_key, True)
         return {
             **setup_status_payload("API connection works."),
             "ok": True,
@@ -2290,6 +2316,37 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "duration_ms": int((time.monotonic() - started) * 1000),
             "response_preview": sanitize_error(response_text[:120], [api_key]),
         }
+
+    @app.post("/api/onboarding")
+    async def update_onboarding(req: OnboardingRequest) -> dict:
+        if req.action == "confirm_workspace":
+            readiness.set_preference("workspace_confirmed", True)
+        elif req.action in {"skip", "reopen"}:
+            readiness.set_preference("guide_dismissed", req.action == "skip")
+        else:
+            raise HTTPException(400, "unknown guide action")
+        return setup_status_payload()
+
+    @app.post("/api/credentials/migrate")
+    async def migrate_credentials() -> dict:
+        try:
+            migrated = workspace_services.credentials.migrate()
+        except CredentialError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        reset_pantheon()
+        return {**setup_status_payload("Credentials migrated to system storage."), "migrated": migrated}
+
+    @app.get("/api/budgets")
+    async def budget_status() -> dict:
+        return workspace_services.budget.summary()
+
+    @app.post("/api/budgets")
+    async def save_budgets(policy: dict) -> dict:
+        try:
+            workspace_services.budget.save_policy(policy)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return workspace_services.budget.summary()
 
     @app.post("/api/setup/save")
     async def setup_save(req: SetupSaveRequest) -> dict[str, Any]:
@@ -2303,12 +2360,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         model = req.model.strip() if req.model else str(preset["model"])
         base_url = (req.base_url or str(preset["base_url"])).strip()
         api_key = normalized_provider_api_key(provider_id, req.api_key or "")
-        env_file = setup_env_path()
 
         if env_var:
             if api_key:
-                write_env_value(env_file, env_var, api_key)
-                os.environ[env_var] = api_key
+                try:
+                    workspace_services.credentials.save(env_var, api_key, storage=req.credential_storage)
+                except CredentialError as exc:
+                    raise HTTPException(400, str(exc)) from exc
             else:
                 existing_key = env_value(env_var)
                 if preset["requires_key"] and not existing_key:
@@ -2316,8 +2374,6 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                         status_code=400,
                         detail=f"{env_var} is required. Paste the key once, then save.",
                     )
-                if existing_key:
-                    os.environ[env_var] = existing_key
 
         config_file = setup_config_path()
         config = read_yaml_config(config_file)

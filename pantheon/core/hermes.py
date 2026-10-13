@@ -43,6 +43,8 @@ class Hermes:
         self.mcp_tool_executor: Any = None
 
     def dispatch(self, task: Task, on_event=None) -> dict[str, Any]:
+        from pantheon.core.budgets import TASK_ID
+        budget_token = TASK_ID.set(task.task_id)
         store = self.task_store
         self.active_task_id = task.task_id
         try:
@@ -50,6 +52,7 @@ class Hermes:
                 store.start(task.task_id, task.content, task.mode)
         except Exception:
             self.active_task_id = None
+            TASK_ID.reset(budget_token)
             raise
         try:
             result = self._dispatch(task, on_event=on_event)
@@ -67,6 +70,7 @@ class Hermes:
             raise
         finally:
             self.active_task_id = None
+            TASK_ID.reset(budget_token)
 
     def _dispatch(
         self,

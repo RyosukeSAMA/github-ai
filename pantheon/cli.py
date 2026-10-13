@@ -316,6 +316,33 @@ def _workspace_services():
     return WorkspaceServices(DataPaths.for_workspace())
 
 
+@app.command("budgets")
+def budgets(policy: Path | None = typer.Option(None, '--policy', help='JSON file with workspace limits and optional price estimates.')) -> None:
+    """View usage limits, or save a workspace budget policy."""
+    import json
+    store = _workspace_services().budget
+    try:
+        if policy:
+            store.save_policy(json.loads(policy.read_text(encoding='utf-8')))
+        console.print_json(data=store.summary())
+    except (ValueError, OSError) as error:
+        console.print(str(error), style='red', markup=False)
+        raise typer.Exit(1) from error
+
+
+@app.command("credentials")
+def credentials(migrate: bool = typer.Option(False, "--migrate", help="Move saved API keys and channel tokens to verified OS credential storage.")) -> None:
+    """Check system credential availability, or explicitly migrate dotenv credentials."""
+    from pantheon.core.credentials import CredentialError
+    store = _workspace_services().credentials
+    try:
+        migrated = store.migrate() if migrate else []
+        console.print_json(data={**store.status(), 'migrated': migrated})
+    except CredentialError as error:
+        console.print(str(error), style='red', markup=False)
+        raise typer.Exit(1) from error
+
+
 @app.command("jobs")
 def jobs(pause: str | None = typer.Option(None, "--pause"),
          resume: str | None = typer.Option(None, "--resume"),

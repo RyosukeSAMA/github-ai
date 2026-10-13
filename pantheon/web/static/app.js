@@ -838,6 +838,11 @@
     if (target === 'setup') {
       void loadSetupStatus({ quiet: true, preserveForm: true });
     }
+    if (target === 'info') {
+      void loadBudgets({preserveForm: true});
+      void loadUsage();
+      void loadTasks();
+    }
   }
 
   settingsTabs.forEach((tab) => {
@@ -1074,7 +1079,7 @@
     const roleCount = setup.role_count ?? 0;
     if (infoSetupTitle) infoSetupTitle.textContent = setup.summary_title || providerPill.textContent || 'Loading...';
     if (infoSetupPill) {
-      infoSetupPill.textContent = setup.setup_ready ? 'ready' : roleCount ? `${readyCount}/${roleCount} ready` : 'checking';
+      infoSetupPill.textContent = setup.summary_state || (roleCount ? `${readyCount}/${roleCount} configured` : 'checking');
       infoSetupPill.classList.remove('ok', 'warn', 'error');
       if (setup.setup_ready) infoSetupPill.classList.add('ok');
       else if (roleCount) infoSetupPill.classList.add('warn');
@@ -1284,6 +1289,35 @@
     }
   }
 
+  function renderOnboarding(guide) {
+    const card = $('#onboarding-card');
+    if (!card) return;
+    card.hidden = !guide?.show;
+    if (!guide) return;
+    const steps = guide.steps || {};
+    $('#onboarding-steps').innerHTML = [
+      ['workspace', `Workspace: ${guide.workspace}`], ['configured', 'Save provider and model below'],
+      ['verified', 'Test the saved API configuration'], ['first_task', 'Complete a first task'],
+    ].map(([key, label]) => `<li class="${steps[key] ? 'done' : ''}">${steps[key] ? '✓' : '○'} ${escapeHtml(label)}</li>`).join('');
+  }
+
+  async function guideAction(action) {
+    try {
+      const response = await fetch('/api/onboarding', {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action})});
+      if (!response.ok) throw new Error('Could not update getting started guide');
+      applySetupStatus(await response.json(), {preserveForm: true, announce: false});
+    } catch (error) { setComposerStatus(error.message, 'error', true); }
+  }
+  $('#guide-reopen')?.addEventListener('click', () => guideAction('reopen'));
+  $$('[data-guide-action]').forEach(button => button.addEventListener('click', () => guideAction(button.dataset.guideAction)));
+  $('#guide-first-task')?.addEventListener('click', () => {
+    inputEl.value = 'Explain which Pantheon agent to use for coding, research, and creative tasks.';
+    closeSettings();
+    inputEl.focus();
+    inputEl.dispatchEvent(new Event('input'));
+  });
+
   function renderSetupRoleStatuses(statuses = []) {
     if (!setupRoleList) return;
     if (!Array.isArray(statuses) || !statuses.length) {
@@ -1317,9 +1351,9 @@
         const model = item.model || 'not set';
         const provider = setupProviders.get(item.provider);
         const listed = provider?.models?.find((entry) => entry.id === model);
-        const notListed = item.role !== 'chronos'
+        const notListed = item.catalog_listed === false || (item.role !== 'chronos'
           && ['cache', 'live'].includes(provider?.catalog_source) && !provider.catalog_stale
-          && listed?.available !== true;
+          && listed?.available !== true);
         if (notListed) reviewCount += 1;
         return `
           <div class="setup-saved-model" data-role="${escapeHtml(item.role || '')}">
@@ -1381,6 +1415,16 @@
       setupStatusTitle.textContent = status.summary_title || `${label} · ${status.model || 'model not set'}`;
     }
     renderSetupRoleStatuses(status.role_statuses || []);
+    renderOnboarding(status.onboarding);
+    const credentials = status.credentials || {};
+    const storageStatus = $('#credential-storage-status');
+    if (storageStatus) storageStatus.textContent = credentials.problem || (credentials.system_available
+      ? 'OS credential storage available. Migration verifies each value before removing it from .env.'
+      : 'OS credential storage unavailable. Use .env, or install and unlock a supported system keyring.');
+    const systemOption = $('#setup-credential-storage option[value="system"]');
+    if (systemOption) systemOption.disabled = !credentials.system_available;
+    const migrateButton = $('#credentials-migrate');
+    if (migrateButton) migrateButton.disabled = !credentials.system_available;
     if (setupKeyStatus && !preserveForm) {
       if (status.requires_key) {
         setupKeyStatus.textContent = status.key_configured
@@ -1399,8 +1443,9 @@
       setupEnvPath.title = status.env_path || '';
     }
     if (status.setup_ready) {
-      setSetupPill('ready', 'ok');
-      if (setupStatusEl) setupStatusEl.title = status.message || 'All chat agents have usable provider configuration.';
+      const verified = status.verified_count === status.role_count;
+      setSetupPill(verified ? 'API verified' : 'configured', verified ? 'ok' : 'warn');
+      if (setupStatusEl) setupStatusEl.title = status.message || 'Configuration is saved. API access requires an explicit test.';
     } else {
       setSetupPill(`${status.ready_count || 0}/${status.role_count || 0} ready`, 'warn');
       if (setupStatusEl) setupStatusEl.title = status.message || 'Some chat agents need API configuration.';
@@ -1520,6 +1565,36 @@
   }
   infoUsageRefresh?.addEventListener('click', loadUsage);
 
+  async function loadBudgets({preserveForm = false} = {}) {
+    try {
+      const response = await fetch('/api/budgets');
+      if (!response.ok) throw new Error('Could not load budget limits');
+      renderBudgets(await response.json(), preserveForm);
+    } catch (error) { $('#budgets-status').textContent = error.message; }
+  }
+  function renderBudgets(data, preserveForm = false) {
+    const usage = data.last_24_hours || {};
+    $('#budgets-status').textContent = `${usage.requests || 0} attempts in 24 hours · estimated $${Number(usage.estimated_usd || 0).toFixed(4)} · ${usage.unpriced || 0} unpriced · ${usage.uncertain || 0} awaiting usage`;
+    $('#budgets-warning').textContent = (data.warnings || []).join(' ');
+    if (!preserveForm) {
+      $$('[data-budget]').forEach(input => { input.value = data.policy?.[input.dataset.budget] || 0; });
+      $('#budget-prices').value = JSON.stringify(data.policy?.prices || {}, null, 2);
+    }
+  }
+  $('#budgets-refresh')?.addEventListener('click', () => loadBudgets({preserveForm: true}));
+  $('#budgets-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      const policy = Object.fromEntries($$('[data-budget]').map(input => [input.dataset.budget, Number(input.value)]));
+      policy.prices = JSON.parse($('#budget-prices').value);
+      const response = await fetch('/api/budgets', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(policy)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Could not save limits');
+      renderBudgets(data);
+      setComposerStatus('Workspace limits saved', 'ok');
+    } catch (error) { $('#budgets-warning').textContent = error.message; }
+  });
+
   async function loadTasks() {
     const list = $('#info-tasks-list');
     const status = $('#info-tasks-status');
@@ -1604,7 +1679,7 @@
       if (!resp.ok) throw data;
       applySetupStatus(data, { preserveForm: true, announce: false });
       if (data.ok) {
-        renderSetupCheckResult('Setup complete', [], 'ok');
+        renderSetupCheckResult('Local configuration checked', ['Use Test API to check provider access.'], 'ok');
         setComposerStatus('Local config looks ready', 'ok');
       } else {
         const problems = Array.isArray(data.problems) ? data.problems : [];
@@ -1637,6 +1712,7 @@
       base_url: (setupBaseUrlInput?.value || '').trim(),
       api_key: (setupApiKeyInput?.value || '').trim(),
       apply_to_roles: setupApplyRoles ? setupApplyRoles.checked : true,
+      credential_storage: $('#setup-credential-storage')?.value || 'env',
     };
   }
 
@@ -1653,6 +1729,7 @@
       });
       const data = await resp.json();
       if (!resp.ok) throw data;
+      applySetupStatus(data, { preserveForm: true, announce: false });
       if (data.ok) {
         renderSetupCheckResult('API connected', [], 'ok');
         setSetupPill('api ok', 'ok');
@@ -1674,6 +1751,18 @@
       setSetupBusy(false);
     }
   }
+
+  $('#credentials-migrate')?.addEventListener('click', async () => {
+    setSetupBusy(true);
+    try {
+      const response = await fetch('/api/credentials/migrate', {method: 'POST'});
+      const data = await response.json();
+      if (!response.ok) throw data;
+      applySetupStatus(data, {preserveForm: true, announce: false});
+      renderSetupCheckResult('Credentials migrated', [`${data.migrated?.length || 0} values verified in system storage.`], 'ok');
+    } catch (error) { renderSetupCheckResult('Migration failed', [setupErrorMessage(error)], 'error'); }
+    finally { setSetupBusy(false); }
+  });
 
   async function refreshSetupModels() {
     if (!setupProviderSelect) return;
@@ -3206,8 +3295,10 @@
       loadConversations(),
       loadUpdateStatus(),
       loadUsage(),
+      loadBudgets(),
       loadTasks(),
     ]);
+    if (latestSetupStatus?.onboarding?.show) openSettingsPane('setup');
   }
 
   if (loginForm) loginForm.addEventListener('submit', submitLogin);
@@ -6490,6 +6581,9 @@
             syncWorkspaceArtifacts();
             break;
           case 'done':
+            void loadBudgets({preserveForm: true});
+            void loadTasks();
+            if (latestSetupStatus?.onboarding?.show) void loadSetupStatus({quiet: true, preserveForm: true});
             providerDot.classList.remove('connecting');
             providerDot.classList.add('online');
             finishRunningWorkspaceSteps('done');

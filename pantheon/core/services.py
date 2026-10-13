@@ -4,17 +4,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from dotenv import dotenv_values
-
+from pantheon.core.budgets import BudgetStore
+from pantheon.core.credentials import CredentialStore
 from pantheon.core.extensions import MCPError, MCPManager, PluginStore, SkillStore
 from pantheon.core.memory import MemoryStore, detect_memory_candidate, normalize_memory_role
 from pantheon.core.paths import DataPaths
+from pantheon.core.readiness import ReadinessStore
 from pantheon.core.scheduler import ChronosScheduler
 
 
 class WorkspaceServices:
     def __init__(self, paths: DataPaths) -> None:
         self.paths = paths
+        self.credentials = CredentialStore(paths.env)
+        self.budget = BudgetStore(paths.state / 'budgets.sqlite')
+        self.readiness = ReadinessStore(paths.state / 'readiness.sqlite')
         self.memory = MemoryStore(paths.state / 'memory.sqlite')
         self.skills = SkillStore(paths.state / 'skills', legacy_path=paths.state / 'skills.json')
         self.plugins = PluginStore(paths.state / 'plugins.json')
@@ -23,9 +27,7 @@ class WorkspaceServices:
         self.approval_handler: Callable[[dict[str, Any]], bool] | None = None
 
     def env_value(self, name: str) -> str:
-        import os
-        values = dotenv_values(self.paths.env) if self.paths.env.exists() else {}
-        return str(values.get(name) or os.environ.get(name, ''))
+        return self.credentials.get(name)
 
     def memory_context(self, content: str, role: str):
         return self.memory.context_block(content, role=role)
