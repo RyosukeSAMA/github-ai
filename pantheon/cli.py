@@ -334,6 +334,21 @@ def update(version: str = typer.Option('latest', '--version'),
     raise typer.Exit(result.returncode)
 
 
+@app.command('workflow')
+def workflow(parallel: int | None = typer.Option(None, '--parallel'),
+             recovery: int | None = typer.Option(None, '--recovery')) -> None:
+    """View or set simultaneous independent steps and bounded failure recovery."""
+    services = _workspace_services()
+    policy = services.workflow_policy()
+    if parallel is not None or recovery is not None:
+        try:
+            policy = services.save_workflow_policy(parallel if parallel is not None else policy['parallel_workers'],
+                                                   recovery if recovery is not None else policy['replan_attempts'])
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+    console.print_json(data=policy)
+
+
 @app.command("budgets")
 def budgets(policy: Path | None = typer.Option(None, '--policy', help='JSON file with workspace limits and optional price estimates.')) -> None:
     """View usage limits, or save a workspace budget policy."""

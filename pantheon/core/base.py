@@ -138,6 +138,7 @@ class Role(abc.ABC):
     default_provider: str = ""
     default_temperature: float = 0.3
     tools: list[str] = []
+    parallel_safe = False
 
     def __init__(
         self,

@@ -146,6 +146,11 @@ class Pantheon:
         hermes.active_task_id = None
         hermes.router = copy.copy(self.router)
         hermes.roles = {name: copy.copy(role) for name, role in self.roles.items()}
+        policy_reader = getattr(self.services, 'workflow_policy', None)
+        if callable(policy_reader):
+            policy = policy_reader()
+            hermes.parallel_workers = policy['parallel_workers']
+            hermes.replan_attempts = policy['replan_attempts']
         for role in hermes.roles.values():
             role.config = dict(getattr(role, 'config', {}) or {})
         return hermes

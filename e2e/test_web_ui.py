@@ -75,6 +75,27 @@ def test_task_checkpoint_resume_uses_stream_and_retains_current_overrides(page: 
     assert 'overrides' not in requests[0]
 
 
+def test_parallel_results_finish_out_of_order_in_their_own_blocks(page: Page, live_server_url: str) -> None:
+    events = [('step_start', {'index': 0, 'total': 2, 'role': 'athena', 'task': 'Research'}),
+              ('step_start', {'index': 1, 'total': 2, 'role': 'apollo', 'task': 'Draft'}),
+              ('step_chunk', {'index': 1, 'role': 'apollo', 'text': 'Apollo independent draft'}),
+              ('step_done', {'index': 1, 'role': 'apollo', 'content': 'Apollo independent draft', 'success': True}),
+              ('step_chunk', {'index': 0, 'role': 'athena', 'text': 'Athena independent research'}),
+              ('step_done', {'index': 0, 'role': 'athena', 'content': 'Athena independent research', 'success': True}),
+              ('done', {'status': 'completed', 'success': True})]
+    body = ''.join(f'event: {event}\ndata: {json.dumps(data)}\n\n' for event, data in events)
+    page.route('**/api/ask/stream', lambda route: route.fulfill(content_type='text/event-stream', body=body))
+    page.goto(live_server_url)
+    page.locator('#input').fill('Research and draft independent sections')
+    page.locator('#send-btn').click()
+    athena = page.locator('#chat [data-role="athena"] [data-step-body]')
+    apollo = page.locator('#chat [data-role="apollo"] [data-step-body]')
+    expect(athena).to_contain_text('Athena independent research')
+    expect(athena).not_to_contain_text('Apollo independent draft')
+    expect(apollo).to_contain_text('Apollo independent draft')
+    expect(apollo).not_to_contain_text('Athena independent research')
+
+
 def test_openai_setup_lists_gpt6_astra(
     page: Page,
     live_server_url: str,

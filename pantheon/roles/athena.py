@@ -28,6 +28,7 @@ You do NOT: write code (ask Hephaestus), generate images (ask Apollo), or schedu
 
 
 class Athena(Role):
+    parallel_safe = True
     name = "athena"
     description = "Researches and gathers information; fact-checks; summarizes"
     default_model = "gpt-5.5"

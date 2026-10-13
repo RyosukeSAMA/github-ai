@@ -73,6 +73,28 @@ class WorkspaceServices:
         hermes.plugin_context_provider = self.plugins.context_block
         hermes.mcp_context_provider = self.mcp.agent_context
         hermes.mcp_tool_executor = self.execute_tool
+        hermes.parallel_workers = self.readiness.preference('parallel_workers', 3)
+        hermes.replan_attempts = self.readiness.preference('replan_attempts', 1)
+        hermes.parallel_policy = self.parallel_safe
         chronos = pantheon.get_role('chronos')
         if chronos is not None:
             chronos.config['scheduler'] = self.scheduler
+
+    def parallel_safe(self, role_name: str) -> bool:
+        if role_name == 'chronos':
+            return False
+        _context, tools = self.mcp.agent_context('', role_name)
+        return all(tool.get('risk') == 'read' and tool.get('approval') != 'ask' for tool in tools)
+
+    def workflow_policy(self) -> dict:
+        return {'parallel_workers': self.readiness.preference('parallel_workers', 3),
+                'replan_attempts': self.readiness.preference('replan_attempts', 1)}
+
+    def save_workflow_policy(self, parallel_workers: int, replan_attempts: int):
+        if type(parallel_workers) is not int or not 1 <= parallel_workers <= 4:
+            raise ValueError('Choose 1–4 simultaneous independent steps')
+        if type(replan_attempts) is not int or not 0 <= replan_attempts <= 2:
+            raise ValueError('Choose 0–2 bounded recovery attempts')
+        self.readiness.set_preference('parallel_workers', parallel_workers)
+        self.readiness.set_preference('replan_attempts', replan_attempts)
+        return self.workflow_policy()

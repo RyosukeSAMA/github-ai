@@ -29,6 +29,7 @@ You do NOT: do web research (ask Athena), generate images (ask Apollo), or sched
 
 
 class Hephaestus(Role):
+    parallel_safe = True
     name = "hephaestus"
     description = "Writes and refactors code (Python, JS/TS, Go, Rust, Bash)"
     default_model = "claude-sonnet-4-6"

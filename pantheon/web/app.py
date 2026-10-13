@@ -130,6 +130,11 @@ class ResumeRequest(BaseModel):
     acknowledge_effects: bool = False
 
 
+class WorkflowRequest(BaseModel):
+    parallel_workers: int = 3
+    replan_attempts: int = 1
+
+
 class SetupModelsRequest(BaseModel):
     provider: str
     base_url: str | None = None
@@ -2359,6 +2364,19 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     @app.get("/api/budgets")
     async def budget_status() -> dict:
         return workspace_services.budget.summary()
+
+    @app.get('/api/workflow')
+    async def workflow_status():
+        return workspace_services.workflow_policy()
+
+    @app.post('/api/workflow')
+    async def save_workflow(req: WorkflowRequest):
+        try:
+            value = workspace_services.save_workflow_policy(req.parallel_workers, req.replan_attempts)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        reset_pantheon()
+        return value
 
     @app.post("/api/budgets")
     async def save_budgets(policy: dict) -> dict:

@@ -74,15 +74,16 @@ class TaskStore:
 
     def finish(self, task_id: str, status: str, content: str = '', *, result: dict | None = None):
         from dataclasses import asdict, is_dataclass
-        payload = {'task_id': task_id, 'status': status, **(result or {'content': content})}
-        archive = json.dumps(payload, ensure_ascii=False,
-                             default=lambda value: asdict(value) if is_dataclass(value) else str(value))
-        atomic_text(self.archive_path(task_id), archive)
         with self.connect() as db:
             row = db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
             if row is None:
                 return
             data = json.loads(row['data'])
+            payload = {'task_id': task_id, 'status': status,
+                       **(result or {'content': content, 'checkpoint': data.get('checkpoint'), 'task': data.get('task')})}
+            archive = json.dumps(payload, ensure_ascii=False,
+                                 default=lambda value: asdict(value) if is_dataclass(value) else str(value))
+            atomic_text(self.archive_path(task_id), archive)
             data.update(result=content[:200000], result_truncated=len(content) > 200000,
                         result_characters=len(content), archive_available=True)
             db.execute('UPDATE tasks SET updated=?, status=?, data=? WHERE id=?',

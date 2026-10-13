@@ -1565,6 +1565,26 @@
   }
   infoUsageRefresh?.addEventListener('click', loadUsage);
 
+  async function loadWorkflow() {
+    try {
+      const response = await fetch('/api/workflow');
+      if (!response.ok) throw new Error('Could not load workflow settings');
+      const data = await response.json();
+      $('#workflow-parallel').value = data.parallel_workers;
+      $('#workflow-recovery').value = data.replan_attempts;
+    } catch (error) { $('#workflow-status').textContent = error.message; }
+  }
+  $('#workflow-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      const response = await fetch('/api/workflow', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({parallel_workers: Number($('#workflow-parallel').value), replan_attempts: Number($('#workflow-recovery').value)})});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Could not save workflow settings');
+      $('#workflow-status').textContent = 'Saved for the next task.';
+    } catch (error) { $('#workflow-status').textContent = error.message; }
+  });
+
   async function loadBudgets({preserveForm = false} = {}) {
     try {
       const response = await fetch('/api/budgets');
@@ -3322,6 +3342,7 @@
       loadUpdateStatus(),
       loadUsage(),
       loadBudgets(),
+      loadWorkflow(),
       loadTasks(),
     ]);
     if (latestSetupStatus?.onboarding?.show) openSettingsPane('setup');
@@ -6348,6 +6369,23 @@
 
     let currentMsg = null;
     let currentStepStreamed = false;
+    const stepMessages = new Map();
+    const stepWorkspace = new Map();
+    const streamedSteps = new Set();
+    const activeSteps = new Map();
+    function updateActiveGods() {
+      const running = new Set(activeSteps.values());
+      $$('.god-row').forEach(el => el.classList.toggle('active', running.has(el.dataset.role)));
+      if (activeSteps.size > 1) setWorkspaceState(`${activeSteps.size} agents running`, 'running');
+    }
+    function stepElements(data, fresh = false) {
+      const index = Number(data.index || 0);
+      if (fresh || !stepMessages.has(index)) {
+        stepMessages.set(index, createStepBlock(data.role || 'hermes', data.skills || []));
+        stepWorkspace.set(index, addWorkspaceStep(data.role || 'hermes', data.task || data.description || '', data.skills || []));
+      }
+      return {index, message: stepMessages.get(index), workspace: stepWorkspace.get(index)};
+    }
 
     try {
       const resp = await fetch('/api/ask/stream', {
@@ -6441,8 +6479,15 @@
           case 'context_compacted':
             pushWorkspaceLine(data.incomplete ? 'Prior results compacted; some notes use excerpts. Full outputs remain in this chat.' : 'Prior results summarized for continuation. Full outputs remain in this chat.');
             break;
+          case 'replan_start':
+            setWorkspaceState(`Recovering · attempt ${data.attempt}/${data.maximum}`, 'running');
+            pushWorkspaceLine(`Hermes is repairing failed steps ${data.steps?.join(', ') || ''}; completed results are retained.`);
+            break;
+          case 'replan_ready':
+            pushWorkspaceLine(`Recovery plan ready for ${(data.repairs || []).length} failed steps.`);
+            break;
           case 'progress': {
-            const liveStep = currentWorkspaceStep || planningWorkspaceStep;
+            const liveStep = stepWorkspace.get(Number(data.index)) || currentWorkspaceStep || planningWorkspaceStep;
             updateWorkspaceStepProgress(liveStep, data);
             const index = Number(data.index);
             const total = Number(data.total);
@@ -6473,20 +6518,18 @@
             break;
           case 'step_start': {
             const r = data.role;
-            highlightGod(r);
-            if (currentMsg) finalizeStep(currentMsg, null);  // close previous
-            currentMsg = createStepBlock(r, data.skills || []);
-            currentStepStreamed = false;
-            currentWorkspaceStep = addWorkspaceStep(
-              r,
-              data.task || data.description || '',
-              data.skills || [],
-            );
+            const elements = stepElements(data, true);
+            streamedSteps.delete(elements.index);
+            currentMsg = elements.message;
+            currentWorkspaceStep = elements.workspace;
+            activeSteps.set(elements.index, r);
+            updateActiveGods();
             const index = Number(data.index);
             const total = Number(data.total);
             if (Number.isFinite(index) && total > 0) {
               setWorkspaceState(`Step ${index + 1}/${total}`, 'running');
             }
+            updateActiveGods();
             pushWorkspaceLine(`${metaFor(r).label} started: ${data.task || data.description || 'thinking'}`);
             break;
           }
@@ -6499,9 +6542,10 @@
             break;
           }
           case 'step_chunk': {
-            if (currentMsg) appendToStep(currentMsg, data.text || '');
+            const elements = stepElements(data);
+            appendToStep(elements.message, data.text || '');
             if (data.text) {
-              currentStepStreamed = true;
+              streamedSteps.add(elements.index);
               appendWorkspaceStream(data.text);
             }
             break;
@@ -6551,13 +6595,17 @@
             break;
           }
           case 'step_done': {
-            if (currentMsg) finalizeStep(currentMsg, data.content);
-            if (currentMsg) updateMessageStatus(currentMsg, 'done', data.duration_ms || 0);
-            if (!currentStepStreamed && data.content) appendWorkspaceStream(data.content);
+            const elements = stepElements(data);
+            finalizeStep(elements.message, data.content);
+            updateMessageStatus(elements.message, 'done', data.duration_ms || 0);
+            if (!streamedSteps.has(elements.index) && data.content) appendWorkspaceStream(data.content);
             if (data.content) previewHtmlFromText(data.content, 'generated HTML');
-            if (currentMsg) decorateMessageHtmlPreviewBtn(currentMsg);
-            updateWorkspaceStepElement(currentWorkspaceStep, 'done', data.duration_ms || 0);
-            currentWorkspaceStep = null;
+            decorateMessageHtmlPreviewBtn(elements.message);
+            updateWorkspaceStepElement(elements.workspace, 'done', data.duration_ms || 0);
+            activeSteps.delete(elements.index);
+            updateActiveGods();
+            if (currentMsg === elements.message) currentMsg = null;
+            if (currentWorkspaceStep === elements.workspace) currentWorkspaceStep = null;
             if (extractHtmlFromText(data.content || '')) addWorkspaceStepActionByRole(data.role, 'Preview', 'preview');
             pushWorkspaceLine(`${metaFor(data.role).label} finished`);
             syncWorkspaceArtifacts();
@@ -6565,14 +6613,18 @@
             break;
           }
           case 'step_error': {
-            if (currentMsg) {
-              finalizeStep(currentMsg, '❌ ' + (data.error || 'unknown'));
-              updateMessageStatus(currentMsg, 'error');
-              const s = currentMsg.querySelector('.step-status');
+            const elements = stepElements(data);
+            {
+              finalizeStep(elements.message, data.content || '❌ ' + (data.error || 'unknown'));
+              updateMessageStatus(elements.message, 'error');
+              const s = elements.message.querySelector('.step-status');
               if (s) { s.style.color = 'var(--accent-err)'; s.textContent = 'error'; }
             }
-            updateWorkspaceStepElement(currentWorkspaceStep, 'error', data.duration_ms || 0);
-            currentWorkspaceStep = null;
+            updateWorkspaceStepElement(elements.workspace, 'error', data.duration_ms || 0);
+            activeSteps.delete(elements.index);
+            updateActiveGods();
+            if (currentMsg === elements.message) currentMsg = null;
+            if (currentWorkspaceStep === elements.workspace) currentWorkspaceStep = null;
             pushWorkspaceLine(`${metaFor(data.role).label} failed: ${data.error || 'unknown error'}`);
             setWorkspaceState('Error', 'error');
             break;

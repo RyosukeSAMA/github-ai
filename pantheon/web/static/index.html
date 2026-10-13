@@ -873,6 +873,16 @@
             <p class="info-note">Provider-reported tokens only. API charges vary by provider, model, caching and tier; check your provider bill for costs.</p>
           </section>
           <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">Workflow</span></div>
+            <form class="setup-form" id="workflow-form">
+              <label>Simultaneous independent steps <input class="setting-input" id="workflow-parallel" type="number" min="1" max="4" value="3" required /></label>
+              <label>Failure recovery attempts <input class="setting-input" id="workflow-recovery" type="number" min="0" max="2" value="1" required /></label>
+              <p class="info-note">Dependencies remain ordered. Write, unknown-risk and approval steps run exclusively. Recovery repairs failed instructions within the original scope; completed steps and unfinished external actions are never automatically replayed. Additional model calls use the same task budget. 0 disables recovery.</p>
+              <button class="primary-btn" type="submit">Save workflow</button>
+              <p class="info-note" id="workflow-status"></p>
+            </form>
+          </section>
+          <section class="info-card">
             <div class="info-card-head"><span class="setup-kicker">Budgets · this workspace</span><button class="ghost-btn" id="budgets-refresh" type="button">Refresh</button></div>
             <p class="info-note" id="budgets-status">Loading limits...</p>
             <form id="budgets-form" class="setup-form">

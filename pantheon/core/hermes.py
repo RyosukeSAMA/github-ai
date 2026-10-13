@@ -44,6 +44,9 @@ class Hermes:
         self.plugin_context_provider: Any = None
         self.mcp_context_provider: Any = None
         self.mcp_tool_executor: Any = None
+        self.parallel_workers = 1
+        self.parallel_policy: Any = None
+        self.replan_attempts = 0
 
     def dispatch(self, task: Task, on_event=None, *, resume_checkpoint: dict | None = None) -> dict[str, Any]:
         from pantheon.core.budgets import TASK_ID
@@ -327,263 +330,221 @@ class Hermes:
             "skill_matches": skills,
         }
 
-    def _run_multi(
-        self,
-        task: Task,
-        plan: Plan,
-        on_event: Callable[[str, dict[str, Any]], None] | None = None,
-        *, restored: dict | None = None,
-    ) -> dict[str, Any]:
-        steps_output: list[TaskResult] = []
-        context: list[dict[str, Any]] = []
+    def _run_multi(self, task: Task, plan: Plan, on_event=None, *, restored: dict | None = None) -> dict[str, Any]:
+        import copy
+        from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+        from contextvars import copy_context
+
+        plan = copy.deepcopy(plan)
+        total = len(plan.steps)
+        if not 1 <= total <= 8:
+            raise ValueError('A workflow must have 1–8 steps')
+        outputs: list[TaskResult | None] = [None] * total
         communications: list[dict[str, Any]] = []
-        total_steps = len(plan.steps)
+        communication_lock = threading.Lock()
         if self.task_store and self.active_task_id:
             self.task_store.update_checkpoint(self.active_task_id, plan=asdict(plan), phase='executing')
-        self._emit(
-            on_event,
-            "plan_ready",
-            {
-                "plan": plan.reasoning,
-                "mode": "multi",
-                "steps": [
-                    {
-                        "index": index,
-                        "total": total_steps,
-                        "role": step.role,
-                        "task": step.task,
-                        "description": step.description,
-                        "skills": [{"id": step.skill}] if step.skill else [],
-                        "kind": step.kind,
-                        "depends_on": list(step.depends_on),
-                        "deliverable": step.deliverable,
-                        "acceptance_criteria": list(step.acceptance_criteria),
-                    }
-                    for index, step in enumerate(plan.steps)
-                ],
-            },
-        )
+        self._emit(on_event, 'plan_ready', {'plan': plan.reasoning, 'mode': 'multi', 'steps': [
+            {'index': index, 'total': total, **asdict(step), 'skills': [{'id': step.skill}] if step.skill else []}
+            for index, step in enumerate(plan.steps)]})
 
-        for i, step in enumerate(plan.steps, 1):
+        def record(index: int, result: TaskResult, *, reused=False):
+            outputs[index] = result
+            if self.task_store and self.active_task_id:
+                self.task_store.save_step(self.active_task_id, index + 1, asdict(result))
+            step = plan.steps[index]
+            self._emit(on_event, 'step_done' if result.success else 'step_error',
+                       {'index': index, 'total': total, 'role': step.role, 'content': result.content,
+                        'success': result.success, 'error': result.error, 'duration_ms': result.duration_ms,
+                        'reused': reused})
+            if result.success and not reused:
+                message(self._completion_message(step_index=index + 1, step=step, result=result,
+                        incoming_messages=result.metadata.get('incoming_messages', [])).to_dict())
+
+        def message(payload):
+            with communication_lock:
+                communications.append(payload)
+            self._emit(on_event, 'agent_message', payload)
+
+        def context_entry(index, result):
+            step = plan.steps[index]
+            return {'step': step.task, 'role': step.role, 'result': result.content, 'success': result.success,
+                    'error': result.error, 'kind': step.kind, 'deliverable': step.deliverable,
+                    'acceptance_criteria': list(step.acceptance_criteria),
+                    'incoming_messages': result.metadata.get('incoming_messages', [])}
+
+        def execute(index: int):
             self._checkpoint()
-            CURRENT_STEP.set(i)
-            saved = (restored or {}).get(str(i))
+            token = CURRENT_STEP.set(index + 1)
+            step = plan.steps[index]
+            try:
+                role = copy.copy(self.roles[step.role])
+                role.config = dict(getattr(role, 'config', {}) or {})
+                # Only declared dependencies and their ancestors are available to a step.
+                ancestors = set()
+                def collect(dependencies):
+                    for dependency in dependencies:
+                        if dependency not in ancestors:
+                            ancestors.add(dependency)
+                            collect(plan.steps[dependency - 1].depends_on)
+                collect(step.depends_on)
+                context = list(task.context) + [context_entry(dependency - 1, outputs[dependency - 1]) for dependency in sorted(ancestors)]
+                compact = getattr(self.router, 'compact_context', None)
+                if callable(compact):
+                    compacted = compact(context, checkpoint=self._checkpoint)
+                    if compacted is not context:
+                        context = compacted
+                        self._emit(on_event, 'context_compacted', {'steps': len(context),
+                                    'incomplete': any(item.get('context_incomplete') for item in context)})
+                incoming = self._incoming_agent_messages(step_index=index + 1, step=step, plan=plan, steps_output=outputs)
+                for item in incoming:
+                    message(item.to_dict())
+                sub_task = Task(content=self._multi_step_content(original_task=task.content, assigned_task=step.task,
+                    step_index=index + 1, total_steps=total, step_kind=step.kind, deliverable=step.deliverable,
+                    acceptance_criteria=step.acceptance_criteria, incoming_messages=[item.to_dict() for item in incoming]),
+                    mode='role:' + step.role, skill=step.skill or task.skill, context=context)
+                role_task, memories, skills = self._task_with_memory(sub_task, step.role)
+                self._emit(on_event, 'step_start', {'index': index, 'total': total, **asdict(step), 'skills': skills})
+                if self.task_store and self.active_task_id:
+                    self.task_store.save_step(self.active_task_id, index + 1,
+                                              asdict(TaskResult(step.role, '', success=False, error='inflight')))
+                try:
+                    result = self._run_role(role, role_task, context=context, role_name=step.role, on_event=on_event)
+                except ExecutionStoppedError:
+                    raise
+                except Exception as exc:
+                    result = TaskResult(step.role, str(exc), success=False, error=str(exc))
+                result.metadata.update(step_index=index + 1, task=step.task, description=step.description,
+                    kind=step.kind, depends_on=list(step.depends_on), deliverable=step.deliverable,
+                    acceptance_criteria=list(step.acceptance_criteria))
+                if memories:
+                    result.metadata['memory_matches'] = memories
+                if skills:
+                    result.metadata['skill_matches'] = skills
+                if incoming:
+                    result.metadata['incoming_messages'] = [item.to_dict() for item in incoming]
+                return result
+            finally:
+                CURRENT_STEP.reset(token)
+
+        pending = set(range(total))
+        for index in sorted(pending.copy()):
+            saved = (restored or {}).get(str(index + 1))
             if saved and saved.get('success'):
-                result = TaskResult(**saved)
-                steps_output.append(result)
-                context.append({'step': step.task, 'role': step.role, 'result': result.content,
-                                'success': True, 'kind': step.kind, 'deliverable': step.deliverable})
-                self._emit(on_event, 'step_done', {'index': i - 1, 'total': total_steps, 'role': step.role,
-                                                 'content': result.content, 'success': True, 'reused': True})
-                continue
+                record(index, TaskResult(**saved), reused=True)
+                pending.remove(index)
+        workers = max(1, min(int(self.parallel_workers), 4))
+        active = {}
+        exclusive = False
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='pantheon-step') as pool:
+            while pending or active:
+                self._checkpoint()
+                for index in sorted(pending.copy()):
+                    step = plan.steps[index]
+                    invalid = any(type(dependency) is not int or dependency < 1 or dependency > index for dependency in step.depends_on)
+                    if invalid or step.role not in self.roles:
+                        record(index, TaskResult(step.role, 'Invalid role or dependency.', success=False, error='invalid_plan'))
+                        pending.remove(index)
+                        continue
+                    if any(outputs[dependency - 1] is None for dependency in step.depends_on):
+                        continue
+                    if any(not outputs[dependency - 1].success for dependency in step.depends_on):
+                        record(index, TaskResult(step.role, 'Skipped: a required dependency failed.', success=False, error='dependency_failed'))
+                        pending.remove(index)
+                        continue
+                    safe = bool(getattr(self.roles[step.role], 'parallel_safe', False))
+                    if callable(self.parallel_policy):
+                        safe = safe and bool(self.parallel_policy(step.role))
+                    if exclusive or len(active) >= workers or (not safe and active):
+                        continue
+                    context = copy_context()  # Share task budget and stop context, not mutable role state.
+                    future = pool.submit(context.run, execute, index)
+                    active[future] = index
+                    exclusive = not safe
+                    pending.remove(index)
+                    if exclusive:
+                        break
+                if not active:
+                    if pending:
+                        raise ValueError('Workflow dependencies cannot make progress')
+                    break
+                ready, _ = wait(active, timeout=.1, return_when=FIRST_COMPLETED)
+                for future in sorted(ready, key=lambda future: active[future]):
+                    index = active.pop(future)
+                    result = future.result()
+                    record(index, result)
+                if not active:
+                    exclusive = False
+        attempts = []
+        reviser = getattr(self.router, 'revise_steps', None)
+        for attempt in range(max(0, min(int(self.replan_attempts), 2))):
+            if not callable(reviser):
+                break
+            effects = {}
             if self.task_store and self.active_task_id:
-                self.task_store.save_step(self.active_task_id, i, asdict(TaskResult(step.role, '', success=False, error='inflight')))
-            blocked = [dependency for dependency in step.depends_on
-                       if dependency < 1 or dependency >= i
-                       or not steps_output[dependency - 1].success]
-            if blocked:
-                result = TaskResult(role=step.role, content=f"Skipped: dependencies {blocked} failed.",
-                                    success=False, error="dependency_failed")
-                steps_output.append(result)
-                self._emit(on_event, "step_error", {
-                    "index": i - 1, "total": total_steps, "role": step.role,
-                    "content": result.content, "success": False, "error": result.error,
-                })
-                continue
-            role = self.roles.get(step.role)
-            if role is None:
-                step_payload = {
-                    "index": i - 1,
-                    "total": total_steps,
-                    "role": step.role,
-                    "task": step.task,
-                    "description": step.description,
-                    "skills": [],
-                }
-                self._emit(on_event, "step_start", step_payload)
-                result = TaskResult(
-                    role=step.role,
-                    content=f"[Step {i}] Skipped: role '{step.role}' not found.",
-                    success=False,
-                    error="role_not_found",
-                )
-                steps_output.append(result)
-                self._emit(
-                    on_event,
-                    "step_error",
-                    {
-                        **step_payload,
-                        "content": result.content,
-                        "duration_ms": 0,
-                        "success": False,
-                        "error": result.error,
-                    },
-                )
-                continue
-
-            incoming_messages = self._incoming_agent_messages(
-                step_index=i,
-                step=step,
-                plan=plan,
-                steps_output=steps_output,
-            )
-            for message in incoming_messages:
-                payload = message.to_dict()
-                communications.append(payload)
-                self._emit(on_event, "agent_message", payload)
-
-            # Keep the concise plan step, but always give the role the complete
-            # request. Planner steps are labels, not enough context to execute.
-            sub_task = Task(
-                content=self._multi_step_content(
-                    original_task=task.content,
-                    assigned_task=step.task,
-                    step_index=i,
-                    total_steps=total_steps,
-                    step_kind=step.kind,
-                    deliverable=step.deliverable,
-                    acceptance_criteria=step.acceptance_criteria,
-                    incoming_messages=[item.to_dict() for item in incoming_messages],
-                ),
-                mode="role:" + step.role,
-                skill=step.skill or task.skill,
-                context=list(context),
-            )
-            role_task, memories, skills = self._task_with_memory(sub_task, step.role)
-            step_payload = {
-                "index": i - 1,
-                "total": total_steps,
-                "role": step.role,
-                "task": step.task,
-                "description": step.description,
-                "skills": skills,
-                "kind": step.kind,
-                "depends_on": list(step.depends_on),
-                "deliverable": step.deliverable,
-                "acceptance_criteria": list(step.acceptance_criteria),
-            }
-            self._emit(on_event, "step_start", step_payload)
-            result = self._run_role(
-                role,
-                role_task,
-                context=context,
-                role_name=step.role,
-                on_event=on_event,
-            )
-            result.metadata["step_index"] = i
-            result.metadata["task"] = step.task
-            result.metadata["description"] = step.description
-            result.metadata["kind"] = step.kind
-            result.metadata["depends_on"] = list(step.depends_on)
-            result.metadata["deliverable"] = step.deliverable
-            result.metadata["acceptance_criteria"] = list(step.acceptance_criteria)
-            if memories:
-                result.metadata["memory_matches"] = memories
-            if skills:
-                result.metadata["skill_matches"] = skills
-            if incoming_messages:
-                result.metadata["incoming_messages"] = [
-                    item.to_dict() for item in incoming_messages
-                ]
-            steps_output.append(result)
-            if self.task_store and self.active_task_id:
-                self.task_store.save_step(self.active_task_id, i, asdict(result))
-            self._emit(
-                on_event,
-                "step_done" if result.success else "step_error",
-                {
-                    **step_payload,
-                    "content": result.content,
-                    "duration_ms": result.duration_ms,
-                    "success": result.success,
-                    "error": result.error,
-                },
-            )
-
-            context.append(
-                {
-                    "step": step.task,
-                    "role": step.role,
-                    "result": result.content,
-                    "success": result.success,
-                    "error": result.error,
-                    "skills": [item.get("id") for item in skills],
-                    "kind": step.kind,
-                    "deliverable": step.deliverable,
-                    "acceptance_criteria": list(step.acceptance_criteria),
-                    "incoming_messages": [
-                        item.to_dict() for item in incoming_messages
-                    ],
-                }
-            )
-
-            compact = getattr(self.router, "compact_context", None)
-            if callable(compact):
-                compacted = compact(context, checkpoint=self._checkpoint)
-                if compacted is not context:
-                    context = compacted
-                    self._emit(on_event, "context_compacted", {
-                        "steps": len(context),
-                        "incomplete": any(item.get("context_incomplete") for item in context),
-                    })
-
-            if result.success:
-                acknowledgement = self._completion_message(
-                    step_index=i,
-                    step=step,
-                    result=result,
-                    incoming_messages=incoming_messages,
-                )
-                payload = acknowledgement.to_dict()
-                communications.append(payload)
-                self._emit(on_event, "agent_message", payload)
-
-        # Summarize via Hermes
+                effects = self.task_store.get(self.active_task_id)['data'].get('checkpoint', {}).get('effects', {})
+            eligible = []
+            for index, result in enumerate(outputs):
+                error = str(result.error or result.content).lower()
+                safe = bool(getattr(self.roles.get(plan.steps[index].role), 'parallel_safe', False))
+                if callable(self.parallel_policy):
+                    safe = safe and self.parallel_policy(plan.steps[index].role)
+                elif callable(self.mcp_tool_executor):
+                    safe = False
+                blocked_error = any(word in error for word in ('limit reached', 'no price', 'api key', '401', '403', 'quota', 'billing', 'denied', 'approval'))
+                if not result.success and result.error not in {'dependency_failed', 'invalid_plan'} and not effects.get(str(index + 1)) and safe and not blocked_error:
+                    eligible.append(index)
+            if not eligible:
+                break
+            self._checkpoint()
+            self._emit(on_event, 'replan_start', {'attempt': attempt + 1, 'maximum': self.replan_attempts, 'steps': [index + 1 for index in eligible]})
+            try:
+                repairs = reviser(task.content, plan, outputs, eligible)
+            except Exception:
+                break  # Original failure and checkpoints remain reviewable.
+            if not repairs:
+                break
+            self._checkpoint()
+            repairs = {item['index']: item for item in repairs if item.get('index') in eligible}
+            if not repairs:
+                break
+            self._emit(on_event, 'replan_ready', {'attempt': attempt + 1, 'repairs': list(repairs.values())})
+            for index in range(total):
+                result = outputs[index]
+                if result.success or (index not in repairs and result.error != 'dependency_failed'):
+                    continue
+                step = plan.steps[index]
+                if any(not outputs[dependency - 1].success for dependency in step.depends_on):
+                    continue
+                if effects.get(str(index + 1)):
+                    continue
+                attempts.append({'attempt': attempt + 1, 'index': index, 'task': step.task, 'result': asdict(result)})
+                if index in repairs:
+                    step.task = repairs[index]['task']
+                if self.task_store and self.active_task_id:
+                    self.task_store.update_checkpoint(self.active_task_id, plan=asdict(plan), attempts=attempts)
+                record(index, execute(index))
         if self.task_store and self.active_task_id:
             self.task_store.update_checkpoint(self.active_task_id, phase='synthesizing')
-        self._emit(
-            on_event,
-            "summary_start",
-            {
-                "role": "hermes",
-                "task": "Synthesize the completed agent results",
-                "description": "Preparing the final answer",
-                "total": total_steps,
-            },
-        )
+        context = [context_entry(index, result) for index, result in enumerate(outputs)]
+        compact = getattr(self.router, 'compact_context', None)
+        if callable(compact):
+            context = compact(context, checkpoint=self._checkpoint)
+        self._emit(on_event, 'summary_start', {'role': 'hermes', 'task': 'Synthesize completed results',
+                                              'description': 'Preparing the final answer', 'total': total})
         self._checkpoint()
-        successful = [item for item in context if item.get("success", True)]
-        summary = self.router.summarize(task.content, successful) if successful else "No steps completed successfully."
-        all_succeeded = all(item.success for item in steps_output)
-        if not all_succeeded:
-            summary = "Partial failure: some steps failed or were skipped.\n\n" + summary
-        self._emit(
-            on_event,
-            "summary_done",
-            {
-                "role": "hermes",
-                "content": summary,
-                "success": all_succeeded,
-            },
-        )
-
-        return {
-            "mode": "multi",
-            "plan": plan.reasoning,
-            "content": summary,
-            "success": all_succeeded,
-            "status": "completed" if all_succeeded else "partial_failure",
-            "steps": steps_output,
-            "communications": communications,
-            "memory_matches": self._merge_memory_matches(*[
-                getattr(step, "metadata", {}).get("memory_matches", [])
-                for step in steps_output
-            ]),
-            "skill_matches": self._merge_skill_matches(*[
-                getattr(step, "metadata", {}).get("skill_matches", [])
-                for step in steps_output
-            ]),
-        }
+        successful = [item for item in context if item.get('success')]
+        summary = self.router.summarize(task.content, successful) if successful else 'No steps completed successfully.'
+        success = all(result.success for result in outputs)
+        if not success:
+            summary = 'Partial failure: some steps failed or were skipped.\n\n' + summary
+        self._emit(on_event, 'summary_done', {'role': 'hermes', 'content': summary, 'success': success})
+        return {'mode': 'multi', 'plan': plan.reasoning, 'content': summary, 'success': success,
+                'status': 'completed' if success else 'partial_failure', 'steps': outputs,
+                'communications': communications,
+                'recovery_attempts': attempts,
+                'memory_matches': self._merge_memory_matches(*[result.metadata.get('memory_matches', []) for result in outputs]),
+                'skill_matches': self._merge_skill_matches(*[result.metadata.get('skill_matches', []) for result in outputs])}
 
     @staticmethod
     def _multi_step_content(
@@ -693,9 +654,10 @@ Workflow rules:
         step_index: int,
         step: PlanStep,
         result: TaskResult,
-        incoming_messages: list[AgentMessage],
+        incoming_messages: list[AgentMessage | dict],
     ) -> AgentMessage:
-        recipient = incoming_messages[-1].from_role if incoming_messages else "hermes"
+        last = incoming_messages[-1] if incoming_messages else None
+        recipient = last.get('from_role', 'hermes') if isinstance(last, dict) else last.from_role if last else 'hermes'
         summary = result.content or step.deliverable or step.task or "Step completed."
         return AgentMessage(
             message_type="result",
