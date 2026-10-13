@@ -108,3 +108,20 @@ def test_restore_rolls_back_all_writes_after_copy_failure(tmp_path, monkeypatch)
     assert data.read_text() == 'new'
     with RuntimeLease(paths.state / 'runtime.lock', {}):
         pass
+
+
+def test_backup_disables_callbacks_and_never_replays_saved_messages(tmp_path):
+    from pantheon.core.services import WorkspaceServices
+    services = WorkspaceServices(DataPaths.for_workspace(tmp_path))
+    services.channels.save('telegram', {'enabled': True, 'users': ['11'], 'channels': ['22']},
+                           {'bot_token': '123:test-token', 'secret_token': 'callback-secret'})
+    body = json.dumps({'update_id': 1, 'message': {'text': 'a task', 'message_id': 8, 'from': {'id': 11}, 'chat': {'id': 22}}}).encode()
+    services.channels.receive('telegram', {'x-telegram-bot-api-secret-token': 'callback-secret'}, body)
+    archive = tmp_path / 'saved.zip'
+    export_backup(services.paths, archive)
+    assert services.channels.config('telegram')['enabled']  # Export sanitizes only its own snapshot.
+    assert services.channels.history()[0]['state'] == 'queued'
+    restore_backup(services.paths, archive)
+    assert not services.channels.config('telegram')['enabled']
+    assert services.channels.history()[0]['state'] == 'interrupted'
+    assert not services.channels.process_next(lambda *args: pytest.fail('A restored event must not execute'))

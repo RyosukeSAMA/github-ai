@@ -2,16 +2,8 @@ name: WSL install smoke
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/workflows/wsl-install.yml"
-      - "scripts/**"
-      - "pantheon/**"
-      - "pyproject.toml"
-      - "README.md"
-      - "README.zh-CN.md"
-      - "docs/setup.md"
-      - "docs/setup.zh-CN.md"
+  # Optional legacy environment. Native Windows and Linux are validated on every PR
+  # in ci.yml; WSL distribution downloads can stall before Pantheon is executed.
 
 permissions:
   contents: read

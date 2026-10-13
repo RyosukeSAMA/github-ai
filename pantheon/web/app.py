@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from pantheon import __version__
 from pantheon.core.budgets import BudgetExceededError
+from pantheon.core.channels import CHANNELS, ChannelAuthError, ChannelQueueFullError
 from pantheon.core.credentials import CredentialError, atomic_text
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
@@ -37,6 +38,7 @@ from pantheon.core.extensions import (
     SkillStore,
     mcp_available,
 )
+from pantheon.core.media import MAX_INPUT_BYTES
 from pantheon.core.memory import (
     DEFAULT_MEMORY_KINDS,
     DEFAULT_MEMORY_ROLES,
@@ -87,6 +89,7 @@ class AskRequest(BaseModel):
     overrides: dict[str, dict[str, str]] | None = None  # {role_name: {provider, model}}
     resume_task_id: str | None = None
     acknowledge_effects: bool = False
+    attachments: list[str] = []
 
 
 class PromptEnhanceRequest(BaseModel):
@@ -523,6 +526,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     chronos_runner: dict[str, asyncio.Task | None] = {"task": None}
     chronos_job_tasks: set[asyncio.Task[None]] = set()
     model_catalog_runner: dict[str, asyncio.Task | None] = {"task": None}
+    channel_runner: dict[str, asyncio.Task | None] = {'task': None}
+    channel_cancel = threading.Event()
     model_catalog_attempts: dict[str, int] = {}
     model_catalog_errors: dict[str, str] = {}
 
@@ -534,13 +539,18 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     async def lifespan(_app: FastAPI):
         runtime.acquire()
         try:
+            workspace_services.channels.recover_interrupted()
+            channel_cancel.clear()
+            channel_runner['task'] = asyncio.create_task(channel_loop())
             if chronos_runner["task"] is None or chronos_runner["task"].done():
                 chronos_runner["task"] = asyncio.create_task(chronos_loop())
             if model_catalog_runner["task"] is None or model_catalog_runner["task"].done():
                 model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
             yield
         finally:
+            channel_cancel.set()
             runner_tasks = [
+                channel_runner.get('task'),
                 chronos_runner.get("task"),
                 model_catalog_runner.get("task"),
             ]
@@ -557,6 +567,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             chronos_job_tasks.clear()
             chronos_runner["task"] = None
             model_catalog_runner["task"] = None
+            channel_runner['task'] = None
             runtime.release()
 
     app = FastAPI(title="Pantheon Web UI", version=__version__, lifespan=lifespan)
@@ -579,6 +590,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             if hasattr(_pantheon["instance"], "services"):
                 _pantheon["instance"].services = workspace_services
                 _pantheon["instance"].handle_memory = False
+                workspace_services.media.connection_provider = lambda: getattr(_pantheon['instance'], 'config', {})
+                _pantheon['instance'].hermes.attachment_processor = workspace_services.media.understand
+                _pantheon['instance'].hermes.media_context_provider = workspace_services.media.agent_context
+                _pantheon['instance'].hermes.image_generator = workspace_services.media.generate_image
             chronos_role = _pantheon["instance"].get_role("chronos")
             if chronos_role is not None:
                 chronos_role.config["scheduler"] = chronos_scheduler
@@ -787,6 +802,12 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         summary: dict[str, dict[str, int]] = {}
         for section, items in INTEGRATION_CATALOG.items():
             rendered_items = [dict(item) for item in items]
+            if section == 'channels':
+                rendered_items = [item for item in rendered_items if item['id'] != 'team-chat']
+                rendered_items.extend({**workspace_services.channels.status(name),
+                                       'status': 'ready' if workspace_services.channels.config(name)['enabled'] else 'not_connected',
+                                       'summary': 'Verified incoming tasks with allowlists and optional replies.',
+                                       'capabilities': ['text tasks', 'callback verification', 'deduplication', 'bot replies']} for name in CHANNELS)
             sections[section] = rendered_items
             summary[section] = {
                 "total": len(rendered_items),
@@ -801,7 +822,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 "mcp_servers": len(mcp_manager.list()),
                 "mcp_ready": sum(
                     1 for item in mcp_manager.list()
-                    if item.get("enabled", True) and item.get("last_test", {}).get("ok")
+                    if item.get("enabled", True) and (item.get("last_test") or {}).get("ok")
                 ),
                 "plugins": len(plugin_store.list()),
                 "plugins_enabled": sum(1 for item in plugin_store.list() if item.get("enabled", True)),
@@ -829,12 +850,36 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         mode: str,
         skill: str | None = None,
         overrides: dict[str, dict[str, str]] | None = None,
+        attachments: list[str] | None = None,
     ) -> dict[str, Any]:
-        result = request_pantheon(overrides).ask(content, mode=mode, skill=skill)
+        p = request_pantheon(overrides)
+        result = p.ask(content, mode=mode, skill=skill, **({'attachments': attachments} if attachments else {}))
         result["memory_matches"] = result.get("memory_matches", [])
         result["skill_matches"] = result.get("skill_matches", [])
         maybe_auto_capture_memory(content, result, mode)
         return result
+
+    async def channel_loop():
+        def execute(content, mode):
+            p = request_pantheon()
+            p.hermes.mcp_tool_executor = workspace_services.execute_tool
+            def on_event(event, data):
+                pass
+            on_event.cancel_event = channel_cancel
+            workspace_services.process_input(content)
+            result = p.ask(content, mode=mode, on_event=on_event)
+            workspace_services.capture_result(content, result, mode)
+            return result
+        while True:
+            try:
+                handled = await asyncio.to_thread(workspace_services.channels.process_next, execute)
+                if not handled:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOGGER.warning('Channel worker paused after a local storage/configuration error')
+                await asyncio.sleep(5)
 
     # ----- Static files -----
     if STATIC_DIR.exists():
@@ -1693,7 +1738,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         if (request.url.hostname or "").lower() not in allowed_hosts:
             return JSONResponse({"detail": "Host is not allowed"}, status_code=400)
         origin = request.headers.get("origin")
-        if origin and request.url.path != "/api/channels/webhook":
+        callback_paths = {f'/api/channels/{name}/callback' for name in CHANNELS} | {'/api/channels/webhook'}
+        if origin and request.url.path not in callback_paths:
             parsed = urlsplit(origin)
             if parsed.scheme not in {"http", "https"} or parsed.netloc != request.headers.get("host"):
                 return JSONResponse({"detail": "Cross-origin access is not allowed"}, status_code=403)
@@ -1711,7 +1757,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "/api/health",
             "/api/channels/webhook",
         }
-        if path in public_paths or path.startswith("/static/"):
+        if path in public_paths | callback_paths or path.startswith("/static/"):
             return await call_next(request)
         if request_is_authenticated(request):
             return await call_next(request)
@@ -2182,7 +2228,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
 
     @app.get("/api/channels")
     async def channels_list() -> dict[str, Any]:
-        return {"items": [webhook_payload()], "path": str(setup_env_path())}
+        return {'items': [webhook_payload(), *(workspace_services.channels.status(name) for name in CHANNELS)],
+                'events': workspace_services.channels.history(), 'path': str(setup_env_path())}
 
     @app.post("/api/channels/webhook/config")
     async def webhook_config_save(req: WebhookConfigRequest) -> dict[str, Any]:
@@ -2196,6 +2243,31 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         if token:
             write_runtime_env("PANTHEON_WEBHOOK_TOKEN", token)
         return webhook_payload(token, reveal_token=True)
+
+    @app.post('/api/channels/{platform}/config')
+    async def channel_config(platform: str, value: dict):
+        try:
+            return workspace_services.channels.save(platform, value.get('config') or {}, value.get('secrets') or {}, storage=str(value.get('storage') or 'env'))
+        except (ValueError, CredentialError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post('/api/channels/{platform}/callback')
+    async def channel_callback(platform: str, request: Request):
+        if platform not in CHANNELS:
+            raise HTTPException(404, 'Unknown platform')
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > 65536:
+                raise HTTPException(413, 'Callback exceeds 64 KiB')
+        try:
+            return workspace_services.channels.receive(platform, request.headers, bytes(data))
+        except ChannelAuthError as exc:
+            raise HTTPException(401, str(exc)) from exc
+        except ChannelQueueFullError as exc:
+            raise HTTPException(429, str(exc)) from exc
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(400, 'Invalid chat callback payload') from exc
 
     @app.post("/api/channels/webhook")
     async def webhook_receive(request: Request) -> JSONResponse:
@@ -2364,6 +2436,59 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     @app.get("/api/budgets")
     async def budget_status() -> dict:
         return workspace_services.budget.summary()
+
+    @app.get('/api/media')
+    async def media_status():
+        get_pantheon()
+        return workspace_services.media.status()
+
+    @app.post('/api/media/settings')
+    async def save_media_settings(value: dict):
+        try:
+            return workspace_services.media.save_settings(value)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post('/api/media/upload')
+    async def upload_media(request: Request, filename: str):
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > MAX_INPUT_BYTES:
+                raise HTTPException(413, 'File exceeds 24 MiB')
+        try:
+            return workspace_services.media.upload(filename, bytes(data))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.get('/api/media/{media_id}/file')
+    async def media_file(media_id: str, download: bool = False):
+        try:
+            meta, path = workspace_services.media.get(media_id)
+            return FileResponse(path, media_type=meta['type'], filename=meta['name'] if download else None,
+                                headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @app.post('/api/media/generate')
+    async def generate_media(value: dict):
+        get_pantheon()
+        try:
+            return await asyncio.to_thread(workspace_services.media.generate_image, str(value.get('prompt') or ''), size=str(value.get('size') or '1024x1024'))
+        except (ValueError, BudgetExceededError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(502, 'Image provider request failed. Check the API key, model access and provider status.') from exc
+
+    @app.post('/api/media/transcribe')
+    async def transcribe_media(value: dict):
+        get_pantheon()
+        try:
+            return await asyncio.to_thread(workspace_services.media.transcribe, str(value.get('id') or ''))
+        except (ValueError, BudgetExceededError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(502, 'Audio provider request failed. Check the API key, model access and provider status.') from exc
 
     @app.get('/api/workflow')
     async def workflow_status():
@@ -2640,7 +2765,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
 
         try:
             result = await asyncio.to_thread(
-                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides
+                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides, attachments=req.attachments
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"ask failed: {e}") from e
@@ -2741,7 +2866,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 """Run Hermes dispatch with streaming instrumentation."""
                 try:
                     from pantheon.core.base import Task
-                    task = Task(content=req.task, mode=mode, skill=req.skill)
+                    workspace_services.media.validate_attachments(req.attachments)
+                    task = Task(content=req.task, mode=mode, skill=req.skill, attachments=req.attachments)
                     emit("start", {
                         "task_id": task.task_id,
                         "task": req.task,

@@ -354,6 +354,12 @@
       codeTokens.push(`<code>${escapeHtml(code)}</code>`);
       return token;
     });
+    const imageTokens = [];
+    s = s.replace(/!\[([^\]]*)\]\((\/api\/media\/[a-f0-9]{32}\/file)\)/g, (_, label, href) => {
+      const token = `@@PANTHEON_INLINE_IMAGE_${imageTokens.length}@@`;
+      imageTokens.push(`<img class="media-chat-image" src="${href}" alt="${escapeHtml(label || 'Generated image')}" loading="lazy" />`);
+      return token;
+    });
     s = escapeHtml(s);
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, href) => {
       const safeHref = safeMarkdownHref(href.replace(/&amp;/g, '&'));
@@ -367,6 +373,7 @@
     codeTokens.forEach((html, index) => {
       s = s.replaceAll(`@@PANTHEON_INLINE_CODE_${index}@@`, html);
     });
+    imageTokens.forEach((html, index) => { s = s.replaceAll(`@@PANTHEON_INLINE_IMAGE_${index}@@`, html); });
     return s;
   }
 
@@ -1585,6 +1592,75 @@
     } catch (error) { $('#workflow-status').textContent = error.message; }
   });
 
+  async function mediaRequest(url, options = {}) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Media request failed');
+    return data;
+  }
+  const mediaPost = (url, data) => mediaRequest(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+  async function uploadMedia(file) {
+    if (file.size > 24 * 1024 * 1024) throw new Error('File exceeds 24 MiB');
+    return mediaRequest(`/api/media/upload?filename=${encodeURIComponent(file.name)}`, {method: 'POST', body: file});
+  }
+  async function loadMedia() {
+    try {
+      const data = await mediaRequest('/api/media');
+      $('#media-provider').value = data.settings.vision_provider;
+      $('#media-vision-model').value = data.settings.vision_model;
+      $('#media-image-model').value = data.settings.image_model;
+      $('#media-audio-model').value = data.settings.audio_model;
+      $('#media-status').textContent = `OpenAI: ${data.configured.openai ? 'configured' : 'key needed'} · Anthropic: ${data.configured.anthropic ? 'configured' : 'key needed'}. ${data.note}`;
+    } catch (error) { $('#media-status').textContent = error.message; }
+  }
+  $('#media-settings-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      await mediaPost('/api/media/settings', {vision_provider: $('#media-provider').value, vision_model: $('#media-vision-model').value, image_model: $('#media-image-model').value, audio_model: $('#media-audio-model').value});
+      await loadMedia();
+      $('#media-action-status').textContent = 'Media models saved';
+    } catch (error) { $('#media-action-status').textContent = error.message; }
+  });
+  async function runMediaAction(form, action) {
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    $('#media-action-status').textContent = 'Working…';
+    try { await action(); $('#media-action-status').textContent = 'Completed · saved in this workspace'; }
+    catch (error) { $('#media-action-status').textContent = error.message; }
+    finally { button.disabled = false; void loadBudgets({preserveForm: true}); }
+  }
+  $('#media-image-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    void runMediaAction(event.currentTarget, async () => {
+      const data = await mediaPost('/api/media/generate', {prompt: $('#media-image-prompt').value, size: $('#media-image-size').value});
+      const url = `/api/media/${encodeURIComponent(data.id)}/file`;
+      const result = $('#media-image-result');
+      result.replaceChildren();
+      const img = document.createElement('img'); img.src = url; img.alt = 'Generated image'; img.style.width = '100%';
+      const link = document.createElement('a'); link.href = url + '?download=true'; link.textContent = 'Download image';
+      result.append(img, link);
+    });
+  });
+  $('#media-audio-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    void runMediaAction(event.currentTarget, async () => {
+      const file = $('#media-audio-file').files[0];
+      if (!file) throw new Error('Choose an audio file');
+      const uploaded = await uploadMedia(file);
+      const data = await mediaPost('/api/media/transcribe', {id: uploaded.id});
+      $('#media-transcript').value = data.text; $('#media-transcript').hidden = false;
+      $('#media-use-transcript').hidden = false;
+      $('#media-transcript-download').href = `/api/media/${encodeURIComponent(data.artifact.id)}/file?download=true`;
+      $('#media-transcript-download').hidden = false;
+    });
+  });
+  $('#media-use-transcript')?.addEventListener('click', () => {
+    inputEl.value = $('#media-transcript').value;
+    inputEl.dispatchEvent(new Event('input', {bubbles: true}));
+    inputEl.focus();
+    setComposerStatus('Transcript prepared · review and send when ready', 'ok');
+  });
+
   async function loadBudgets({preserveForm = false} = {}) {
     try {
       const response = await fetch('/api/budgets');
@@ -1599,6 +1675,7 @@
     if (!preserveForm) {
       $$('[data-budget]').forEach(input => { input.value = data.policy?.[input.dataset.budget] || 0; });
       $('#budget-prices').value = JSON.stringify(data.policy?.prices || {}, null, 2);
+      $('#budget-operation-prices').value = JSON.stringify(data.policy?.operation_prices || {}, null, 2);
     }
   }
   $('#budgets-refresh')?.addEventListener('click', () => loadBudgets({preserveForm: true}));
@@ -1607,6 +1684,7 @@
     try {
       const policy = Object.fromEntries($$('[data-budget]').map(input => [input.dataset.budget, Number(input.value)]));
       policy.prices = JSON.parse($('#budget-prices').value);
+      policy.operation_prices = JSON.parse($('#budget-operation-prices').value);
       const response = await fetch('/api/budgets', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(policy)});
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Could not save limits');
@@ -2849,6 +2927,44 @@
     `;
   }
 
+  function renderChatChannel(item) {
+    const credentials = item.id === 'telegram' ? ['bot_token', 'secret_token'] : item.id === 'slack' ? ['bot_token', 'signing_secret'] : [];
+    const hints = {telegram: 'Text messages from allowlisted users/chats. Register this callback with setWebhook and the same secret token.', slack: 'Subscribe to app_mention in your Slack app. Bot scope: app_mentions:read, chat:write. Set this Events API callback URL.', discord: 'Register a /pantheon command with a required string option named task. Set this Interactions Endpoint URL. Replies are visible to the caller.'};
+    return `<article class="integration-item integration-live">
+      <div class="integration-item-head"><strong>${escapeHtml(item.name)}</strong><span class="setup-pill integration-pill ${item.enabled ? 'ok' : 'warn'}">${escapeHtml(item.state)}</span></div>
+      <p>${escapeHtml(hints[item.id])}</p><code>${escapeHtml(item.endpoint)}</code>
+      <details><summary>Configure ${escapeHtml(item.name)}</summary>
+      <form data-chat-channel="${escapeHtml(item.id)}">
+        <label class="integration-check"><input type="checkbox" data-channel-enabled ${item.enabled ? 'checked' : ''} /> Enable this platform</label>
+        <label class="integration-check"><input type="checkbox" data-channel-reply ${item.auto_reply ? 'checked' : ''} /> Reply to allowed incoming tasks</label>
+        <label>Allowed user IDs · comma separated<input class="setting-input" data-channel-users value="${escapeHtml((item.users || []).join(', '))}" /></label>
+        <label>Allowed chat/channel IDs · comma separated<input class="setting-input" data-channel-destinations value="${escapeHtml((item.channels || []).join(', '))}" /></label>
+        ${item.id !== 'telegram' ? `<label>${item.id === 'slack' ? 'Slack team' : 'Discord application'} ID<input class="setting-input" data-channel-account value="${escapeHtml(item.account_id || '')}" /></label>` : ''}
+        ${item.id === 'discord' ? `<label>Application public key<input class="setting-input" data-channel-public-key value="${escapeHtml(item.public_key || '')}" /></label>` : ''}
+        ${credentials.map(name => `<label>${escapeHtml(name.replaceAll('_', ' '))}<input class="setting-input" type="password" data-channel-secret="${escapeHtml(name)}" autocomplete="new-password" placeholder="${item.credentials?.[name] ? 'Configured · leave blank to keep' : 'Required to enable'}" /></label>`).join('')}
+        <label>Credential storage<select class="setting-input" data-channel-storage><option value="env">Local .env file</option><option value="system">System credential storage</option></select></label>
+        <button class="ws-copy-btn" type="submit">Save ${escapeHtml(item.name)}</button>
+        <p class="info-note" data-channel-status></p>
+      </form></details>
+      <p class="info-note">${item.last_event ? `Last verified callback: ${escapeHtml(item.last_event.state)}` : 'No verified callback received yet.'} Empty allowlists block activation.</p>
+    </article>`;
+  }
+  async function saveChatChannel(form) {
+    const platform = form.dataset.chatChannel;
+    const splitIds = value => value.split(',').map(item => item.trim()).filter(Boolean);
+    const secrets = Object.fromEntries(Array.from(form.querySelectorAll('[data-channel-secret]')).map(input => [input.dataset.channelSecret, input.value]));
+    const config = {enabled: form.querySelector('[data-channel-enabled]').checked, auto_reply: form.querySelector('[data-channel-reply]').checked,
+                    users: splitIds(form.querySelector('[data-channel-users]').value), channels: splitIds(form.querySelector('[data-channel-destinations]').value),
+                    account_id: form.querySelector('[data-channel-account]')?.value.trim() || '', public_key: form.querySelector('[data-channel-public-key]')?.value.trim() || ''};
+    const button = form.querySelector('button[type="submit"]'); button.disabled = true;
+    try {
+      await integrationFetch(`/api/channels/${encodeURIComponent(platform)}/config`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({config, secrets, storage: form.querySelector('[data-channel-storage]').value})});
+      await loadIntegrationData('channels');
+      setComposerStatus(`${platform} configuration saved`, 'ok');
+    } catch (error) { form.querySelector('[data-channel-status]').textContent = setupErrorMessage(error); }
+    finally { button.disabled = false; }
+  }
+
   function renderChannelsSection() {
     const channel = integrationData.channels?.items?.[0] || { enabled: false, token_configured: false };
     integrationList.innerHTML = `
@@ -2867,6 +2983,9 @@
         <pre class="integration-code">POST ${escapeHtml(channel.endpoint || '/api/channels/webhook')}\nAuthorization: Bearer &lt;token&gt;\nContent-Type: application/json\n\n{"task":"Ask Athena to compare SQLite and Postgres","mode":"auto"}</pre>
         <p class="settings-hint">For a remote IM platform, Pantheon must be reachable through a public HTTPS callback. Localhost alone cannot receive messages from that platform.</p>
       </article>
+      ${(integrationData.channels?.items || []).filter(item => ['telegram', 'slack', 'discord'].includes(item.id)).map(renderChatChannel).join('')}
+      <p class="info-note">Callbacks run while Pantheon Web or its background service is running. Results are archived in task history. A duplicate callback is acknowledged without executing again. Replies that time out are not automatically repeated.</p>
+      ${(integrationData.channels?.events || []).map(item => `<p class="info-note">${escapeHtml(item.channel)} · ${escapeHtml(item.state)}${item.task_id ? ` · task ${escapeHtml(item.task_id)}` : ''}</p>`).join('')}
     `;
   }
 
@@ -3209,7 +3328,7 @@
       }),
     });
     data.revealed_token = data.token || '';
-    integrationData.channels = { items: [data] };
+    integrationData.channels = {...integrationData.channels, items: [data, ...(integrationData.channels?.items || []).filter(item => item.id !== 'webhook')]};
     renderIntegrationItems();
     setComposerStatus(data.enabled ? 'Webhook enabled; copy the token now' : 'Webhook disabled', 'ok');
   }
@@ -3266,6 +3385,8 @@
       await saveMcpServer(mcpForm);
       return;
     }
+    const chatForm = event.target.closest('[data-chat-channel]');
+    if (chatForm) { event.preventDefault(); await saveChatChannel(chatForm); return; }
     const webhookForm = event.target.closest('[data-webhook-form]');
     if (webhookForm) {
       event.preventDefault();
@@ -3343,6 +3464,7 @@
       loadUsage(),
       loadBudgets(),
       loadWorkflow(),
+      loadMedia(),
       loadTasks(),
     ]);
     if (latestSetupStatus?.onboarding?.show) openSettingsPane('setup');
@@ -4042,7 +4164,8 @@
       size: item.size,
       kind: item.kind,
       truncated: Boolean(item.truncated),
-      included: item.included != null ? Boolean(item.included) : Boolean(item.content),
+      included: item.included != null ? Boolean(item.included) : Boolean(item.content || item.mediaId),
+      mediaId: item.mediaId || undefined,
       note: item.note || '',
     };
   }
@@ -4090,7 +4213,13 @@
       note: '',
     };
     if (!isTextAttachment(file)) {
-      item.note = 'metadata only';
+      if (/\.(png|jpe?g|webp|pdf)$/i.test(file.name)) {
+        try {
+          const uploaded = await uploadMedia(file);
+          item.mediaId = uploaded.id;
+          item.note = 'ready · vision model reads on Send';
+        } catch (error) { item.note = error.message; }
+      } else { item.note = 'unsupported · transcribe audio in Settings → Media'; }
       return item;
     }
     try {
@@ -4149,6 +4278,8 @@
         lines.push('````text');
         lines.push(item.content);
         lines.push('````');
+      } else if (item.mediaId) {
+        lines.push('Content: uploaded for the configured vision model to inspect.');
       } else {
         lines.push('Content: metadata only; the file was not readable as plain text in the browser.');
       }
@@ -6399,6 +6530,7 @@
           overrides: !opts.resumeTaskId && Object.keys(roleOverrides).length ? roleOverrides : undefined,
           resume_task_id: opts.resumeTaskId || undefined,
           acknowledge_effects: Boolean(opts.acknowledgeEffects),
+          attachments: attachments.filter(item => item.mediaId).map(item => item.mediaId),
         }),
         signal: abortCtrl.signal,
       });
@@ -7111,7 +7243,7 @@
         command: '/channels',
         title: 'Channels',
         hint: 'Open chat and webhook entry points',
-        keywords: 'dingtalk wecom feishu webhook message',
+        keywords: 'telegram slack discord webhook message',
         run: () => {
           openIntegrationsSection('channels');
           setComposerStatus('Channels opened', 'ok');

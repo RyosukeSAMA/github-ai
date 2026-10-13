@@ -482,6 +482,7 @@
         <button class="settings-tab" data-tab="integrations">
           <span>Integrations</span>
         </button>
+        <button class="settings-tab" data-tab="media"><span>Media</span></button>
         <button class="settings-tab" data-tab="display">
           <span>Display</span>
         </button>
@@ -791,6 +792,41 @@
       </div>
 
       <!-- Display tab -->
+      <div class="settings-pane" data-pane="media" id="settings-media">
+        <section class="info-card">
+          <span class="setup-kicker">Images, PDFs and audio</span>
+          <p class="info-note" id="media-status">Loading media configuration...</p>
+          <form class="setup-form" id="media-settings-form">
+            <label>Image/PDF provider <select class="setting-input" id="media-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></label>
+            <label>Image/PDF model <input class="setting-input" id="media-vision-model" required /></label>
+            <label>Image generation model · OpenAI <input class="setting-input" id="media-image-model" required /></label>
+            <label>Audio transcription model · OpenAI <input class="setting-input" id="media-audio-model" required /></label>
+            <p class="info-note">Configure the provider key in Setup. Upload PNG/JPEG/WebP/PDF in the chat composer; the selected vision model reads them when you send. Maximum 8 MiB each, 20 MiB combined, six files. Files and results stay in this workspace. Sending them to a provider may incur charges.</p>
+            <button class="primary-btn" type="submit">Save media models</button>
+          </form>
+        </section>
+        <section class="info-card">
+          <span class="setup-kicker">Generate an image</span>
+          <form class="setup-form" id="media-image-form">
+            <label>Describe your image <textarea class="setting-input" id="media-image-prompt" rows="4" maxlength="12000" required></textarea></label>
+            <label>Size <select class="setting-input" id="media-image-size"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option></select></label>
+            <button class="primary-btn" type="submit">Generate · paid request</button>
+          </form>
+          <div id="media-image-result"></div>
+        </section>
+        <section class="info-card">
+          <span class="setup-kicker">Transcribe audio</span>
+          <form class="setup-form" id="media-audio-form">
+            <label>Audio · maximum 24 MiB <input class="setting-input" id="media-audio-file" type="file" accept=".wav,.mp3,.m4a,.mp4,.webm" required /></label>
+            <button class="primary-btn" type="submit">Transcribe · paid request</button>
+          </form>
+          <textarea class="setting-input" id="media-transcript" rows="6" readonly hidden></textarea>
+          <button class="ghost-btn" id="media-use-transcript" type="button" hidden>Use transcript in composer</button>
+          <a id="media-transcript-download" hidden>Download transcript</a>
+          <p class="info-note" id="media-action-status" role="status"></p>
+        </section>
+      </div>
+
       <div class="settings-pane" data-pane="display" id="settings-display">
         <p class="settings-hint">
           Display preferences are saved locally in your browser.
@@ -894,6 +930,8 @@
               <details><summary>Model price estimates</summary>
                 <p class="info-note">USD per million tokens. Enter your own current rates: <code>{"provider/model-id":{"input":1,"output":4}}</code>. Cost limits require a price for every model used.</p>
                 <textarea class="setting-input" id="budget-prices" rows="4" spellcheck="false">{}</textarea>
+                <p class="info-note">Media requests have image/audio/file costs. Set a conservative USD estimate per request: <code>{"openai/media-model-id":0.1}</code>. A USD cap blocks media models without an estimate.</p>
+                <textarea class="setting-input" id="budget-operation-prices" rows="3" spellcheck="false">{}</textarea>
               </details>
               <p class="info-note">0 disables a limit. Attempts include failures and planning calls. Cost estimates use your rates; unpriced requests have unknown cost. These are local controls, not provider invoices.</p>
               <button class="primary-btn" type="submit">Save limits</button>

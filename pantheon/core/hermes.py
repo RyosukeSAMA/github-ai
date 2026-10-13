@@ -9,7 +9,7 @@ import time
 import uuid
 from collections.abc import Callable
 from contextvars import ContextVar
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult
@@ -47,6 +47,9 @@ class Hermes:
         self.parallel_workers = 1
         self.parallel_policy: Any = None
         self.replan_attempts = 0
+        self.attachment_processor: Any = None
+        self.media_context_provider: Any = None
+        self.image_generator: Any = None
 
     def dispatch(self, task: Task, on_event=None, *, resume_checkpoint: dict | None = None) -> dict[str, Any]:
         from pantheon.core.budgets import TASK_ID
@@ -56,13 +59,24 @@ class Hermes:
         try:
             if store is not None:
                 store.start(task.task_id, task.content, task.mode)
-                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill},
+                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill, 'attachments': task.attachments},
                                         steps=(resume_checkpoint or {}).get('steps', {}), phase='planning')
         except Exception:
             self.active_task_id = None
             TASK_ID.reset(budget_token)
             raise
         try:
+            if task.attachments:
+                self._checkpoint()
+                media_context = (resume_checkpoint or {}).get('media_context')
+                if not media_context:
+                    if self.attachment_processor is None:
+                        raise ValueError('No image/PDF processor is configured')
+                    self._emit(on_event, 'plan_start', {'role': 'hermes', 'description': 'Understanding uploaded images and PDFs'})
+                    media_context = self.attachment_processor(task)
+                if store:
+                    store.update_checkpoint(task.task_id, media_context=media_context)
+                task = replace(task, content=task.content + media_context)
             if resume_checkpoint and resume_checkpoint.get('plan'):
                 self._emit(on_event, 'plan_start', {'role': 'hermes', 'description': 'Resuming saved plan and retaining completed results'})
                 value = dict(resume_checkpoint['plan'])
@@ -776,6 +790,7 @@ Workflow rules:
             (self.skill_context_provider, "skill"),
             (self.plugin_context_provider, "plugin"),
             (self.mcp_context_provider, "mcp"),
+            (self.media_context_provider, 'media'),
         )
         for provider, provider_kind in providers:
             if not callable(provider):
@@ -820,6 +835,25 @@ Workflow rules:
             self.task_store.record_effect(self.active_task_id, CURRENT_STEP.get(), {'kind': 'schedule', 'state': 'attempted'})
         result = role.run(task, context=context)
         self._checkpoint()
+        if result.success and role_name == 'apollo' and callable(self.image_generator):
+            import re
+            match = re.search(r'<media_call>\s*(.*?)\s*</media_call>', result.content or '', re.DOTALL)
+            if match:
+                try:
+                    call = json.loads(match.group(1))
+                    if not isinstance(call, dict) or set(call) - {'prompt', 'size'} or not isinstance(call.get('prompt'), str):
+                        raise ValueError('Invalid image generation request')
+                    if self.task_store and self.active_task_id:
+                        self.task_store.record_effect(self.active_task_id, CURRENT_STEP.get(), {'kind': 'image_generation', 'state': 'attempted'})
+                    self._emit(on_event, 'media_start', {'role': 'apollo', 'kind': 'image_generation'})
+                    artifact = self.image_generator(call['prompt'], size=call.get('size', '1024x1024'))
+                    result.content = f'![Generated image](/api/media/{artifact["id"]}/file)\n\n[Download image](/api/media/{artifact["id"]}/file?download=true)'
+                    result.metadata['media'] = [artifact]
+                    self._emit(on_event, 'media_done', {'role': 'apollo', 'artifact': artifact})
+                except Exception as exc:
+                    result = TaskResult('apollo', 'Image generation failed. Check Settings → Media, provider access and budget limits.', success=False, error=str(exc))
+                self._checkpoint()
+                return result
         executor = self.mcp_tool_executor
         if not callable(executor):
             return result

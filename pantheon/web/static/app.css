@@ -5236,3 +5236,5 @@ body.font-lg .msg-content pre code { font-size: 15px; }
 .conversation-row .chat-row { flex: 1; min-width: 0; }
 .conversation-delete { background: transparent; border: 0; color: var(--text-muted, #999); cursor: pointer; padding: 6px; font-size: 20px; }
 .conversation-save-notice { padding: 10px; color: #c78536; font-size: 12px; line-height: 1.5; }
+
+.media-chat-image { display: block; max-width: 100%; max-height: 680px; border-radius: var(--radius); margin: 12px 0; object-fit: contain; }

@@ -16,7 +16,7 @@ from pantheon.core.usage import usage_from_response
 TASK_ID: ContextVar[str] = ContextVar('pantheon_budget_task', default='')
 RESERVATION: ContextVar[tuple | None] = ContextVar('pantheon_budget_reservation', default=None)
 DEFAULT_POLICY = {'task_requests': 0, 'daily_requests': 0, 'output_tokens': 0,
-                  'task_usd': 0.0, 'daily_usd': 0.0, 'prices': {}}
+                  'task_usd': 0.0, 'daily_usd': 0.0, 'prices': {}, 'operation_prices': {}}
 
 
 class BudgetExceededError(RuntimeError):
@@ -71,11 +71,16 @@ class BudgetStore:
                 raise ValueError('Each price needs input and output rates')
             if any(type(rate) not in (float, int) or not math.isfinite(rate) or rate < 0 for rate in rates.values()):
                 raise ValueError('Token prices must be non-negative and finite')
+        if not isinstance(policy['operation_prices'], dict) or any(
+            not isinstance(key, str) or type(rate) not in (float, int) or not math.isfinite(rate) or rate < 0
+            for key, rate in policy['operation_prices'].items()
+        ):
+            raise ValueError('operation_prices must map provider/model to a non-negative USD estimate per media request')
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO policy VALUES (1, ?)', (json.dumps(policy),))
         return policy
 
-    def reserve(self, provider: str, model: str, messages, system: str, max_output: int) -> tuple[str, int]:
+    def reserve(self, provider: str, model: str, messages, system: str, max_output: int, *, media=False) -> tuple[str, int]:
         task = TASK_ID.get() or 'request:' + uuid.uuid4().hex
         now = time.time()
         # A rolling 24-hour window also remains predictable across local timezone changes.
@@ -84,12 +89,13 @@ class BudgetStore:
             policy = self._policy(db)
             if policy['output_tokens']:
                 max_output = min(max_output, policy['output_tokens'])
-            price = policy['prices'].get(f'{provider}/{model}')
+            flat = policy['operation_prices'].get(f'{provider}/{model}') if media else None
+            price = {'flat': flat} if flat is not None else (None if media else policy['prices'].get(f'{provider}/{model}'))
             if price is None and (policy['daily_usd'] or policy['task_usd']):
                 raise BudgetExceededError(f'No price configured for {provider}/{model}. Set a price estimate or use request limits.')
             # UTF-8 bytes are a conservative text-token bound, including serialized message overhead.
-            input_bound = len((system + json.dumps(messages, ensure_ascii=False)).encode()) + 128
-            estimate = (input_bound * price['input'] + max_output * price['output']) / 1000000 if price else None
+            input_bound = len((system + json.dumps(messages, ensure_ascii=False)).encode()) + 128 if not media else 0
+            estimate = flat if media else ((input_bound * price['input'] + max_output * price['output']) / 1000000 if price else None)
             for field, clause, parameter in [('daily', 'created > ?', now - 86400), ('task', 'task = ?', task)]:
                 row = db.execute(f'SELECT COUNT(*) AS calls, COALESCE(SUM(estimate), 0) AS cost FROM reservations WHERE {clause}', (parameter,)).fetchone()
                 if policy[f'{field}_requests'] and row['calls'] >= policy[f'{field}_requests']:
@@ -108,7 +114,9 @@ class BudgetStore:
             if not row:
                 return
             price = json.loads(row['rates']) if row['rates'] else None
-            if price and counts['input_tokens'] is not None and counts['output_tokens'] is not None:
+            if price and 'flat' in price:
+                db.execute('UPDATE reservations SET state=? WHERE id=?', ('estimated', identity))
+            elif price and counts['input_tokens'] is not None and counts['output_tokens'] is not None:
                 estimate = (counts['input_tokens'] * price['input'] + counts['output_tokens'] * price['output']) / 1000000
                 db.execute('UPDATE reservations SET estimate=?, state=? WHERE id=?', (estimate, 'reported', identity))
             else:

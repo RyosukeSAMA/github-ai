@@ -349,6 +349,59 @@ def workflow(parallel: int | None = typer.Option(None, '--parallel'),
     console.print_json(data=policy)
 
 
+@app.command('channels')
+def channels(platform: str | None = typer.Option(None, '--platform'),
+             config: Path | None = typer.Option(None, '--config', help='JSON with config, secrets and storage fields.')):
+    """Configure Telegram, Slack or Discord; callbacks are served by pantheon web/service."""
+    from pantheon.core.channels import CHANNELS
+    services = _workspace_services()
+    try:
+        if config:
+            if not platform:
+                raise ValueError('Choose --platform telegram, slack or discord')
+            value = json.loads(config.read_text(encoding='utf-8'))
+            services.channels.save(platform, value.get('config') or {}, value.get('secrets') or {}, storage=value.get('storage') or 'env')
+        console.print_json(data={'items': [services.channels.status(name) for name in CHANNELS], 'events': services.channels.history()})
+    except (ValueError, OSError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command('media')
+def media(settings: Path | None = typer.Option(None, '--settings', help='JSON file with media model IDs.')):
+    """View multimodal configuration or save model choices."""
+    p = Pantheon()
+    try:
+        result = p.services.media.save_settings(json.loads(settings.read_text())) if settings else p.services.media.status()
+        console.print_json(data=result)
+    except (ValueError, OSError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command('image')
+def image(prompt: str = typer.Argument(...), size: str = typer.Option('1024x1024', '--size')):
+    """Generate one image using configured OpenAI credentials (paid request)."""
+    p = Pantheon()
+    try:
+        artifact = p.services.media.generate_image(prompt, size=size)
+        meta, path = p.services.media.get(artifact['id'])
+        console.print_json(data={**meta, 'path': str(path)})
+    except Exception as exc:
+        console.print(str(exc), markup=False, style='red')
+        raise typer.Exit(1) from exc
+
+
+@app.command('transcribe')
+def transcribe(file: Path = typer.Argument(..., exists=True, dir_okay=False)):
+    """Transcribe an audio file using OpenAI (paid request), without sending it as a chat."""
+    p = Pantheon()
+    try:
+        artifact = p.services.media.upload_path(file)
+        console.print_json(data=p.services.media.transcribe(artifact['id']))
+    except Exception as exc:
+        console.print(str(exc), markup=False, style='red')
+        raise typer.Exit(1) from exc
+
+
 @app.command("budgets")
 def budgets(policy: Path | None = typer.Option(None, '--policy', help='JSON file with workspace limits and optional price estimates.')) -> None:
     """View usage limits, or save a workspace budget policy."""
@@ -520,8 +573,10 @@ def ask(
     ),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON instead of formatted text."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
+    file: list[Path] | None = typer.Option(None, '--file', help='Attach an image or PDF; repeat for multiple files.', exists=True, dir_okay=False),
 ) -> None:
     """Ask the Pantheon to do something."""
+    file = file if isinstance(file, (list, tuple)) else None
     _configure_cli_logging(verbose)
     try:
         p = Pantheon(config_path=config, verbose=verbose)
@@ -556,7 +611,7 @@ def ask(
     started_at = time.perf_counter()
     try:
         if raw:
-            result = p.ask(task, mode=mode, skill=skill)
+            result = p.ask(task, mode=mode, skill=skill, **({'attachments': file} if file else {}))
         else:
             with console.status(
                 f"[{BRAND_COLOR}]Hermes is opening the council…[/]",
@@ -567,6 +622,7 @@ def ask(
                     mode=mode,
                     skill=skill,
                     on_event=_run_event_handler(run_status),
+                    **({'attachments': file} if file else {}),
                 )
     except Exception as e:
         console.print(

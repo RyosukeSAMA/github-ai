@@ -5,8 +5,10 @@ from collections.abc import Callable
 from typing import Any
 
 from pantheon.core.budgets import BudgetStore
+from pantheon.core.channels import ChannelStore
 from pantheon.core.credentials import CredentialStore
 from pantheon.core.extensions import MCPError, MCPManager, PluginStore, SkillStore
+from pantheon.core.media import MediaService
 from pantheon.core.memory import MemoryStore, detect_memory_candidate, normalize_memory_role
 from pantheon.core.paths import DataPaths
 from pantheon.core.readiness import ReadinessStore
@@ -21,6 +23,8 @@ class WorkspaceServices:
         self.budget = BudgetStore(paths.state / 'budgets.sqlite')
         self.tasks = TaskStore(paths.state / 'tasks.sqlite')
         self.readiness = ReadinessStore(paths.state / 'readiness.sqlite')
+        self.media = MediaService(self)
+        self.channels = ChannelStore(self)
         self.memory = MemoryStore(paths.state / 'memory.sqlite')
         self.skills = SkillStore(paths.state / 'skills', legacy_path=paths.state / 'skills.json')
         self.plugins = PluginStore(paths.state / 'plugins.json')
@@ -66,6 +70,10 @@ class WorkspaceServices:
 
     def attach(self, pantheon: Any) -> None:
         hermes = pantheon.hermes
+        self.media.connection_provider = lambda: pantheon.config
+        hermes.attachment_processor = self.media.understand
+        hermes.media_context_provider = self.media.agent_context
+        hermes.image_generator = self.media.generate_image
         hermes.memory_context_provider = self.memory_context
         hermes.skill_context_provider = self.skills.context_block
         hermes.skill_catalog_provider = self.skills.catalog_for_roles
@@ -81,7 +89,7 @@ class WorkspaceServices:
             chronos.config['scheduler'] = self.scheduler
 
     def parallel_safe(self, role_name: str) -> bool:
-        if role_name == 'chronos':
+        if role_name == 'chronos' or role_name == 'apollo' and self.media.status()['configured']['openai']:
             return False
         _context, tools = self.mcp.agent_context('', role_name)
         return all(tool.get('risk') == 'read' and tool.get('approval') != 'ask' for tool in tools)

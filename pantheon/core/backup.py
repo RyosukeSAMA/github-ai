@@ -30,6 +30,21 @@ def _lease(paths: DataPaths) -> RuntimeLease:
     return RuntimeLease(paths.state / 'runtime.lock', {'operation': 'backup'})
 
 
+def _sanitize_channel_snapshot(path: Path, name: str):
+    """Restoring a backup must not replay queued messages or reactivate callbacks."""
+    if name not in {'channels.sqlite', 'readiness.sqlite'}:
+        return
+    with sqlite3.connect(path) as db:
+        if name == 'channels.sqlite':
+            db.execute('UPDATE events SET state="interrupted" WHERE state IN ("queued", "running")')
+            db.execute('UPDATE events SET data=json_remove(data, "$.route.token")')
+        else:
+            for name, raw in db.execute('SELECT name, value FROM preferences WHERE name LIKE "channel:%"').fetchall():
+                data = json.loads(raw)
+                data['enabled'] = False
+                db.execute('UPDATE preferences SET value=? WHERE name=?', (json.dumps(data), name))
+
+
 def _require_idle(paths: DataPaths) -> None:
     database = paths.state / 'tasks.sqlite'
     if database.exists() and any(task['status'] == 'running' for task in TaskStore(database).list()):
@@ -71,6 +86,7 @@ def _export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool
                     with tempfile.TemporaryDirectory() as directory:
                         snapshot = Path(directory) / 'snapshot.sqlite'
                         _copy_database(source, snapshot)
+                        _sanitize_channel_snapshot(snapshot, source.name)
                         archive.write(snapshot, name)
                 else:
                     archive.write(source, name)
@@ -148,6 +164,7 @@ def _restore_backup(paths: DataPaths, source: Path) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             changed.append((target, previous))
             if target.suffix == '.sqlite':
+                _sanitize_channel_snapshot(saved, target.name)
                 _copy_database(saved, target)
             else:
                 shutil.copy2(saved, target)

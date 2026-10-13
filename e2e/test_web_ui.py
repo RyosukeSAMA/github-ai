@@ -416,3 +416,53 @@ def test_model_catalog_updates_on_focus_without_overwriting_setup_draft(page: Pa
     expect(page.locator('#setup-model')).to_have_value('gpt-6.1-sol')
     expect(page.locator('#setup-api-key')).to_have_value('unsaved-test-key')
     expect(page.locator('#setup-base-url')).to_have_value('https://draft.example/v1')
+
+
+def test_media_upload_and_transcript_prepare_without_sending(page: Page, live_server_url: str):
+    requests = []
+    media_id = 'a' * 32
+    page.route('**/api/media/upload?*', lambda route: route.fulfill(json={'id': media_id, 'name': 'sample.pdf', 'type': 'application/pdf', 'size': 16}))
+    page.route('**/api/media/transcribe', lambda route: route.fulfill(json={'text': 'Review this transcript', 'artifact': {'id': 'b' * 32}}))
+    def ask(route):
+        requests.append(route.request.post_data_json)
+        route.fulfill(content_type='text/event-stream', body='event: done\ndata: {"success":true,"content":"Read the PDF"}\n\n')
+    page.route('**/api/ask/stream', ask)
+    page.goto(live_server_url)
+    page.locator('#attachment-input').set_input_files({'name': 'sample.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.7\nfixture'})
+    expect(page.locator('#composer-attachments')).to_contain_text('vision model reads on Send')
+    assert not requests
+    page.locator('#input').fill('Summarize the PDF')
+    page.locator('#send-btn').click()
+    expect(page.locator('#send-btn')).not_to_be_disabled()
+    assert requests[0]['attachments'] == [media_id]
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="media"]').click()
+    expect(page.locator('#media-settings-form')).to_be_visible()
+    page.locator('#media-audio-file').set_input_files({'name': 'voice.wav', 'mimeType': 'audio/wav', 'buffer': b'RIFF0000WAVE'})
+    page.locator('#media-audio-form button').click()
+    expect(page.locator('#media-transcript')).to_have_value('Review this transcript')
+    page.locator('#media-use-transcript').click()
+    expect(page.locator('#input')).to_have_value('Review this transcript')
+    assert len(requests) == 1
+
+
+def test_chat_platform_configuration_and_empty_allowlists(page: Page, live_server_url: str):
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="integrations"]').click()
+    page.locator('[data-integration-section="channels"]').click()
+    telegram = page.locator('[data-chat-channel="telegram"]')
+    telegram.locator('xpath=..').locator('summary').click()
+    telegram.locator('[data-channel-enabled]').check()
+    telegram.locator('button[type="submit"]').click()
+    expect(telegram.locator('[data-channel-status]')).to_contain_text('allowlists')
+    telegram.locator('[data-channel-users]').fill('11')
+    telegram.locator('[data-channel-destinations]').fill('22')
+    telegram.locator('[data-channel-secret="bot_token"]').fill('123:test-token')
+    telegram.locator('[data-channel-secret="secret_token"]').fill('callback-test')
+    telegram.locator('button[type="submit"]').click()
+    expect(page.locator('#integration-list')).to_contain_text('configured')
+    assert page.request.get(live_server_url + '/api/channels').json()['items'][1]['users'] == ['11']
+    assert 'test-token' not in page.locator('#integration-list').inner_text()
+    assert page.locator('[data-chat-channel="slack"]').count() == 1
+    assert page.locator('[data-chat-channel="discord"]').count() == 1
