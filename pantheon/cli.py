@@ -404,11 +404,36 @@ def mcp(inspect: str | None = typer.Option(None, "--inspect")) -> None:
 
 @app.command("tasks")
 def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID."),
-          show: str | None = typer.Option(None, "--show", help="View a stored task result by ID.")) -> None:
+          show: str | None = typer.Option(None, "--show", help="View a stored task result by ID."),
+          resume: str | None = typer.Option(None, '--resume', help='Resume failed steps from a checkpoint, using current model config.'),
+          acknowledge_effects: bool = typer.Option(False, '--acknowledge-effects', help='Retry after reviewing unfinished external tool/scheduling actions.'),
+          archive: str | None = typer.Option(None, '--archive', help='Print the full result archive for a task ID.')) -> None:
     """List shared task history or stop an executing task."""
     from pantheon.core.paths import DataPaths
     from pantheon.core.tasks import TaskStore
     store = TaskStore(DataPaths.for_workspace().state / "tasks.sqlite")
+    if sum(bool(value) for value in (stop, show, resume, archive)) > 1:
+        raise typer.BadParameter('Choose only one task action')
+    if archive:
+        path = store.archive_path(archive)
+        if not store.get(archive) or not path.is_file():
+            raise typer.BadParameter('No full archive is available for this older task')
+        console.print_json(path.read_text(encoding='utf-8'))
+        return
+    if resume:
+        p = Pantheon()
+        if sys.stdin.isatty():
+            def approve_tool(payload):
+                console.print(Panel(Text(json.dumps(payload, ensure_ascii=False, indent=2)), title='Tool approval'))
+                return typer.confirm('Allow this tool call once?', default=False)
+            p.services.approval_handler = approve_tool
+        try:
+            result = p.resume(resume, acknowledge_effects=acknowledge_effects)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        console.print(result.get('content', ''), markup=False)
+        console.print(f"Task: {result['task_id']} · {result.get('status', 'completed')}")
+        return
     if show:
         task = store.get(show)
         if task is None:

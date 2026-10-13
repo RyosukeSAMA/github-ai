@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -16,7 +18,6 @@ from pantheon.core.hermes import Hermes
 from pantheon.core.paths import DataPaths
 from pantheon.core.router import Router
 from pantheon.core.services import WorkspaceServices
-from pantheon.core.tasks import TaskStore
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.roles import register_default_roles
@@ -76,7 +77,7 @@ class Pantheon:
 
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
-        self.hermes.task_store = TaskStore(self.paths.state / "tasks.sqlite")
+        self.hermes.task_store = self.services.tasks
         self.skill_store = self.services.skills
         self.services.attach(self)
         self.handle_memory = True
@@ -106,7 +107,7 @@ class Pantheon:
         """
         task = Task(content=content, mode=mode, skill=skill)
         memory_events = self.services.process_input(content) if self.handle_memory else {'saved': [], 'suggestions': []}
-        result = self.hermes.dispatch(task, on_event=on_event)
+        result = self._execution_hermes(on_event).dispatch(task, on_event=on_event)
         if self.handle_memory:
             self.services.capture_result(content, result, mode)
         result['memory_events'] = memory_events
@@ -115,6 +116,39 @@ class Pantheon:
     def list_roles(self) -> list[str]:
         """Return names of all enabled roles."""
         return list(self.roles.keys())
+
+    def resume(self, task_id: str, *, acknowledge_effects: bool = False, on_event=None) -> dict:
+        """Reuse completed checkpoints; retry failed steps with current model configuration."""
+        store = self.hermes.task_store
+        store.list()
+        record = store.get(task_id)
+        if not record or record['status'] not in {'failed', 'partial_failure', 'stopped', 'interrupted'}:
+            raise ValueError('Only failed, stopped or interrupted tasks can be resumed.')
+        checkpoint = record['data'].get('checkpoint')
+        if not checkpoint:
+            raise ValueError('This older task has no checkpoint. Start a new task from its saved request.')
+        steps = checkpoint.get('steps', {})
+        uncertain = any(not steps.get(index, {}).get('success') for index in checkpoint.get('effects', {}))
+        if uncertain and not acknowledge_effects:
+            raise ValueError('An unfinished step attempted an external tool or scheduling action. Review its result before acknowledging a retry.')
+        saved_task = checkpoint['task']
+        task = Task(content=saved_task['content'], mode=saved_task['mode'], skill=saved_task.get('skill'))
+        store.claim_resume(task_id, task.task_id)
+        result = self._execution_hermes(on_event).dispatch(task, on_event=on_event, resume_checkpoint=checkpoint)
+        result['resumed_from'] = task_id
+        if self.handle_memory:
+            self.services.capture_result(task.content, result, task.mode)
+        return result
+
+    def _execution_hermes(self, on_event=None):
+        hermes = copy.copy(self.hermes)
+        hermes.cancel_event = getattr(on_event, 'cancel_event', None) or threading.Event()
+        hermes.active_task_id = None
+        hermes.router = copy.copy(self.router)
+        hermes.roles = {name: copy.copy(role) for name, role in self.roles.items()}
+        for role in hermes.roles.values():
+            role.config = dict(getattr(role, 'config', {}) or {})
+        return hermes
 
     def get_role(self, name: str) -> Any:
         """Get a role by name."""

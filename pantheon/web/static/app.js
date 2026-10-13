@@ -1633,6 +1633,32 @@
           });
           row.appendChild(button);
         } else {
+          if (task.data?.recoverable) {
+            const resumeButton = document.createElement('button');
+            resumeButton.className = 'ghost-btn';
+            resumeButton.type = 'button';
+            resumeButton.textContent = 'Resume failed steps';
+            resumeButton.title = 'Completed steps are retained. Current saved model configuration and normal tool approvals apply.';
+            resumeButton.addEventListener('click', () => {
+              if (isStreaming) return;
+              let acknowledged = false;
+              if (task.data?.resume_requires_review) {
+                acknowledged = window.confirm('An unfinished step attempted an external tool or scheduling action. Check its actual outcome first: retrying may repeat the action. Retry this step?');
+                if (!acknowledged) return;
+              }
+              closeSettings();
+              void sendAsk(task.data?.task || 'Resume saved task', {resumeTaskId: task.id, acknowledgeEffects: acknowledged});
+            });
+            row.appendChild(resumeButton);
+          }
+          if (task.data?.archive_available) {
+            const link = document.createElement('a');
+            link.className = 'ghost-btn';
+            link.textContent = 'Full archive';
+            link.href = `/api/tasks/${encodeURIComponent(task.id)}/archive`;
+            link.download = 'pantheon-task.json';
+            row.appendChild(link);
+          }
           const button = document.createElement('button');
           button.className = 'ghost-btn';
           button.type = 'button';
@@ -6332,7 +6358,9 @@
           user_task: task,
           mode: currentMode,
           skill: opts.skill || undefined,
-          overrides: Object.keys(roleOverrides).length ? roleOverrides : undefined,
+          overrides: !opts.resumeTaskId && Object.keys(roleOverrides).length ? roleOverrides : undefined,
+          resume_task_id: opts.resumeTaskId || undefined,
+          acknowledge_effects: Boolean(opts.acknowledgeEffects),
         }),
         signal: abortCtrl.signal,
       });
@@ -6580,16 +6608,17 @@
             pushWorkspaceLine('Hermes finished final synthesis');
             syncWorkspaceArtifacts();
             break;
-          case 'done':
+          case 'done': {
             void loadBudgets({preserveForm: true});
             void loadTasks();
             if (latestSetupStatus?.onboarding?.show) void loadSetupStatus({quiet: true, preserveForm: true});
             providerDot.classList.remove('connecting');
             providerDot.classList.add('online');
-            finishRunningWorkspaceSteps('done');
-            setWorkspaceState(workspacePreviewHtml ? 'Preview ready' : 'Ready', 'ready');
-            stopWorkspaceTaskTimer('done');
-            pushWorkspaceLine('Task complete');
+            const failed = data.success === false || (data.status && data.status !== 'completed');
+            finishRunningWorkspaceSteps(failed ? 'error' : 'done');
+            setWorkspaceState(failed ? 'Needs attention' : workspacePreviewHtml ? 'Preview ready' : 'Ready', failed ? 'error' : 'ready');
+            stopWorkspaceTaskTimer(failed ? 'error' : 'done');
+            pushWorkspaceLine(failed ? 'Some steps failed. Review the result or resume from Task history.' : 'Task complete');
             if (data.memory_saved_count) {
               pushWorkspaceLine(`Memory saved from user message: ${data.memory_saved_count}`);
             }
@@ -6602,6 +6631,7 @@
             loadChronosJobs({ silent: true });
             loadMemory();
             break;
+          }
           case 'error':
             addErrorMessage(data.message || 'Unknown error');
             pushWorkspaceLine(`Request failed: ${data.message || 'Unknown error'}`);

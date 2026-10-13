@@ -11,6 +11,7 @@ from pantheon.core.memory import MemoryStore, detect_memory_candidate, normalize
 from pantheon.core.paths import DataPaths
 from pantheon.core.readiness import ReadinessStore
 from pantheon.core.scheduler import ChronosScheduler
+from pantheon.core.tasks import TaskStore
 
 
 class WorkspaceServices:
@@ -18,6 +19,7 @@ class WorkspaceServices:
         self.paths = paths
         self.credentials = CredentialStore(paths.env)
         self.budget = BudgetStore(paths.state / 'budgets.sqlite')
+        self.tasks = TaskStore(paths.state / 'tasks.sqlite')
         self.readiness = ReadinessStore(paths.state / 'readiness.sqlite')
         self.memory = MemoryStore(paths.state / 'memory.sqlite')
         self.skills = SkillStore(paths.state / 'skills', legacy_path=paths.state / 'skills.json')

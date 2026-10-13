@@ -31,6 +31,10 @@ class ReadinessStore:
 
     @staticmethod
     def identity(provider: str, model: str, endpoint: str, key: str) -> str:
+        endpoint = endpoint or {'openai': 'https://api.openai.com/v1', 'anthropic': 'https://api.anthropic.com',
+                                'deepseek': 'https://api.deepseek.com', 'ollama': 'http://localhost:11434'}.get(provider, '')
+        if provider == 'ollama' and endpoint.rstrip('/').endswith('/v1'):
+            endpoint = endpoint.rstrip('/')[:-3]
         payload = [provider, model, endpoint.rstrip('/'), hashlib.sha256(key.encode()).hexdigest()]
         return hashlib.sha256(json.dumps(payload).encode()).hexdigest()
 

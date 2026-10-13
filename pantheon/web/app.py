@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -47,7 +47,6 @@ from pantheon.core.paths import DataPaths
 from pantheon.core.runtime import RuntimeLease
 from pantheon.core.scheduler import ScheduleParseError, parse_schedule_request
 from pantheon.core.services import WorkspaceServices
-from pantheon.core.tasks import TaskStore
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.llm.openai_client import is_responses_api_model
@@ -86,6 +85,8 @@ class AskRequest(BaseModel):
     role: str | None = None     # convenience: --role foo → mode = "role:foo"
     skill: str | None = None    # optional explicit installed skill id
     overrides: dict[str, dict[str, str]] | None = None  # {role_name: {provider, model}}
+    resume_task_id: str | None = None
+    acknowledge_effects: bool = False
 
 
 class PromptEnhanceRequest(BaseModel):
@@ -123,6 +124,10 @@ class SetupTestRequest(BaseModel):
 
 class OnboardingRequest(BaseModel):
     action: str
+
+
+class ResumeRequest(BaseModel):
+    acknowledge_effects: bool = False
 
 
 class SetupModelsRequest(BaseModel):
@@ -503,7 +508,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     memory_store = workspace_services.memory
     conversation_store = ConversationStore(data_paths.state / "conversations.json")
     usage_store = UsageStore(data_paths.state / "usage.sqlite")
-    task_store = TaskStore(data_paths.state / "tasks.sqlite")
+    task_store = workspace_services.tasks
     update_checker = UpdateChecker(__version__)
     skill_store = workspace_services.skills
     plugin_store = workspace_services.plugins
@@ -1938,6 +1943,21 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             raise HTTPException(status_code=404, detail="Task not found")
         return result
 
+    @app.get('/api/tasks/{task_id}/archive')
+    async def task_archive(task_id: str):
+        path = task_store.archive_path(task_id)
+        if task_store.get(task_id) is None or not path.is_file():
+            raise HTTPException(404, 'Complete archive is unavailable for this older task')
+        return FileResponse(path, media_type='application/json', filename='pantheon-task-' + path.name)
+
+    @app.post('/api/tasks/{task_id}/resume')
+    async def resume_task(task_id: str, req: ResumeRequest):
+        try:
+            result = await asyncio.to_thread(request_pantheon().resume, task_id, acknowledge_effects=req.acknowledge_effects)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {'task_id': result['task_id'], 'status': result.get('status'), 'content': result.get('content'), 'resumed_from': task_id}
+
     @app.get("/api/runtime")
     async def runtime_info() -> dict[str, Any]:
         return {"workspace": str(workspace_root), "data_directory": str(data_paths.state),
@@ -2736,6 +2756,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             streamed["step"] = True
                             emit("phase", {
                                 "stage": "executing",
+                                "task_id": payload.get("task_id"),
                                 "role": payload.get("role", ""),
                                 "detail": payload.get("task") or payload.get("description") or "Working",
                                 "index": payload.get("index", 0),
@@ -2770,7 +2791,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             emit(event, payload)
 
                     stream_event.cancel_event = p.hermes.cancel_event
-                    result = hermes.dispatch(task, on_event=stream_event)
+                    result = (p.resume(req.resume_task_id, acknowledge_effects=req.acknowledge_effects, on_event=stream_event)
+                              if req.resume_task_id else hermes.dispatch(task, on_event=stream_event))
                     memory_matches = result.get("memory_matches", [])
                     maybe_auto_capture_memory(req.task, result, mode)
 

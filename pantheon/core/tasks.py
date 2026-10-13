@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -10,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from pantheon.core.credentials import atomic_text
 from pantheon.core.runtime import maintenance_lease
 
 
@@ -47,6 +49,7 @@ class TaskStore:
     def connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.path, timeout=10)
+        os.chmod(self.path, 0o600)
         db.row_factory = sqlite3.Row
         try:
             with db:
@@ -62,18 +65,26 @@ class TaskStore:
         try:
             with self.connect() as db:
                 db.execute('INSERT INTO tasks VALUES (?, ?, ?, ?, 0, ?)',
-                           (task_id, now, now, 'running', json.dumps({'task': task[:2000], 'mode': mode, 'owner_pid': os.getpid()})))
+                           (task_id, now, now, 'running', json.dumps({'task': task, 'mode': mode, 'owner_pid': os.getpid()})))
         finally:
             lease.release()
 
-    def finish(self, task_id: str, status: str, content: str = ''):
+    def archive_path(self, task_id: str) -> Path:
+        return self.path.parent / 'results' / (hashlib.sha256(task_id.encode()).hexdigest() + '.json')
+
+    def finish(self, task_id: str, status: str, content: str = '', *, result: dict | None = None):
+        from dataclasses import asdict, is_dataclass
+        payload = {'task_id': task_id, 'status': status, **(result or {'content': content})}
+        archive = json.dumps(payload, ensure_ascii=False,
+                             default=lambda value: asdict(value) if is_dataclass(value) else str(value))
+        atomic_text(self.archive_path(task_id), archive)
         with self.connect() as db:
             row = db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
             if row is None:
                 return
             data = json.loads(row['data'])
             data.update(result=content[:200000], result_truncated=len(content) > 200000,
-                        result_characters=len(content))
+                        result_characters=len(content), archive_available=True)
             db.execute('UPDATE tasks SET updated=?, status=?, data=? WHERE id=?',
                        (time.time(), status, json.dumps(data), task_id))
 
@@ -81,6 +92,58 @@ class TaskStore:
         with self.connect() as db:
             row = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
             return {**dict(row), 'data': json.loads(row['data'])} if row else None
+
+    def update_checkpoint(self, task_id: str, **values):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if not row:
+                return
+            data = json.loads(row['data'])
+            checkpoint = data.setdefault('checkpoint', {})
+            checkpoint.update(values)
+            db.execute('UPDATE tasks SET data=?, updated=? WHERE id=?', (json.dumps(data), time.time(), task_id))
+
+    def save_step(self, task_id: str, index: int, result: dict):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if not row:
+                return
+            data = json.loads(row['data'])
+            data.setdefault('checkpoint', {}).setdefault('steps', {})[str(index)] = result
+            db.execute('UPDATE tasks SET data=?, updated=? WHERE id=?', (json.dumps(data), time.time(), task_id))
+
+    def record_effect(self, task_id: str, index: int, effect: dict):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if not row:
+                return
+            data = json.loads(row['data'])
+            data.setdefault('checkpoint', {}).setdefault('effects', {}).setdefault(str(index), []).append(effect)
+            db.execute('UPDATE tasks SET data=?, updated=? WHERE id=?', (json.dumps(data), time.time(), task_id))
+
+    def claim_resume(self, task_id: str, child_id: str) -> dict:
+        self.list()  # Recover dead-process status before claiming.
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT status, data FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if not row or row['status'] not in {'failed', 'partial_failure', 'stopped', 'interrupted'}:
+                raise ValueError('Only failed, stopped or interrupted tasks can be resumed.')
+            data = json.loads(row['data'])
+            if not data.get('checkpoint'):
+                raise ValueError('This older task has no checkpoint. Start a new task from its saved request.')
+            previous = data.get('resumed_by')
+            if previous:
+                child = db.execute('SELECT status FROM tasks WHERE id=?', (previous,)).fetchone()
+                if child:
+                    raise ValueError(f'This task already continued as {previous}. View or resume that task instead.')
+                if time.time() - data.get('resume_claimed', 0) < 60:
+                    raise ValueError('A resume of this task is already running.')
+            data.update(resumed_by=child_id, resume_claimed=time.time())
+            db.execute('UPDATE tasks SET data=? WHERE id=?', (json.dumps(data), task_id))
+            return data
 
     def cancelled(self, task_id: str) -> bool:
         with self.connect() as db:
@@ -105,5 +168,13 @@ class TaskStore:
             for row in rows:
                 data = json.loads(row['data'])
                 data.pop('result', None)  # History remains small; original results stay on disk.
+                checkpoint = data.pop('checkpoint', {})
+                data['recoverable'] = bool(checkpoint) and row['status'] in {'failed', 'partial_failure', 'stopped', 'interrupted'}
+                if data.get('resumed_by') and db.execute('SELECT id FROM tasks WHERE id=?', (data['resumed_by'],)).fetchone():
+                    data['recoverable'] = False
+                finished = checkpoint.get('steps', {})
+                data['resume_requires_review'] = any(not finished.get(index, {}).get('success')
+                                                    for index in checkpoint.get('effects', {}))
+                data['task'] = data.get('task', '')[:2000]
                 history.append({**dict(row), 'data': data})
             return history

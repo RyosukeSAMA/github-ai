@@ -8,11 +8,14 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
+from dataclasses import asdict
 from typing import Any
 
 from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult
 from pantheon.core.router import Router
 
+CURRENT_STEP: ContextVar[int] = ContextVar('pantheon_step', default=1)
 
 class ExecutionStoppedError(RuntimeError):
     """The user cancelled execution or its time budget was exhausted."""
@@ -42,7 +45,7 @@ class Hermes:
         self.mcp_context_provider: Any = None
         self.mcp_tool_executor: Any = None
 
-    def dispatch(self, task: Task, on_event=None) -> dict[str, Any]:
+    def dispatch(self, task: Task, on_event=None, *, resume_checkpoint: dict | None = None) -> dict[str, Any]:
         from pantheon.core.budgets import TASK_ID
         budget_token = TASK_ID.set(task.task_id)
         store = self.task_store
@@ -50,14 +53,26 @@ class Hermes:
         try:
             if store is not None:
                 store.start(task.task_id, task.content, task.mode)
+                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill},
+                                        steps=(resume_checkpoint or {}).get('steps', {}), phase='planning')
         except Exception:
             self.active_task_id = None
             TASK_ID.reset(budget_token)
             raise
         try:
-            result = self._dispatch(task, on_event=on_event)
+            if resume_checkpoint and resume_checkpoint.get('plan'):
+                self._emit(on_event, 'plan_start', {'role': 'hermes', 'description': 'Resuming saved plan and retaining completed results'})
+                value = dict(resume_checkpoint['plan'])
+                value['steps'] = [PlanStep(**step) for step in value.get('steps', [])]
+                plan = Plan(**value)
+                if plan.is_single_role:
+                    result = self._run_single(plan.single_role, task, plan.reasoning, plan.single_skill, on_event)
+                else:
+                    result = self._run_multi(task, plan, on_event, restored=resume_checkpoint.get('steps', {}))
+            else:
+                result = self._dispatch(task, on_event=on_event)
             if store is not None:
-                store.finish(task.task_id, result.get("status", "completed"), result.get("content", ""))
+                store.finish(task.task_id, result.get("status", "completed"), result.get("content", ""), result=result)
             result['task_id'] = task.task_id
             return result
         except ExecutionStoppedError as exc:
@@ -238,6 +253,7 @@ class Hermes:
         role = self.roles.get(role_name)
         if role is None:
             return {
+                'status': 'failed', 'success': False,
                 "mode": "single",
                 "plan": plan_reasoning,
                 "content": f"Error: role '{role_name}' is not registered.",
@@ -246,6 +262,10 @@ class Hermes:
             }
 
         selected_skill = task.skill or plan_skill
+        if self.task_store and self.active_task_id:
+            self.task_store.update_checkpoint(self.active_task_id, plan=asdict(Plan.single(role_name, plan_reasoning, selected_skill)), phase='executing')
+            self.task_store.save_step(self.active_task_id, 1, asdict(TaskResult(role_name, '', success=False, error='inflight')))
+        CURRENT_STEP.set(1)
         execution_task = Task(
             content=task.content,
             mode=task.mode,
@@ -282,6 +302,8 @@ class Hermes:
             result.metadata["memory_matches"] = memories
         if skills:
             result.metadata["skill_matches"] = skills
+        if self.task_store and self.active_task_id:
+            self.task_store.save_step(self.active_task_id, 1, asdict(result))
         result_payload = {
             **step_payload,
             "content": result.content,
@@ -310,11 +332,14 @@ class Hermes:
         task: Task,
         plan: Plan,
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
+        *, restored: dict | None = None,
     ) -> dict[str, Any]:
         steps_output: list[TaskResult] = []
         context: list[dict[str, Any]] = []
         communications: list[dict[str, Any]] = []
         total_steps = len(plan.steps)
+        if self.task_store and self.active_task_id:
+            self.task_store.update_checkpoint(self.active_task_id, plan=asdict(plan), phase='executing')
         self._emit(
             on_event,
             "plan_ready",
@@ -341,6 +366,18 @@ class Hermes:
 
         for i, step in enumerate(plan.steps, 1):
             self._checkpoint()
+            CURRENT_STEP.set(i)
+            saved = (restored or {}).get(str(i))
+            if saved and saved.get('success'):
+                result = TaskResult(**saved)
+                steps_output.append(result)
+                context.append({'step': step.task, 'role': step.role, 'result': result.content,
+                                'success': True, 'kind': step.kind, 'deliverable': step.deliverable})
+                self._emit(on_event, 'step_done', {'index': i - 1, 'total': total_steps, 'role': step.role,
+                                                 'content': result.content, 'success': True, 'reused': True})
+                continue
+            if self.task_store and self.active_task_id:
+                self.task_store.save_step(self.active_task_id, i, asdict(TaskResult(step.role, '', success=False, error='inflight')))
             blocked = [dependency for dependency in step.depends_on
                        if dependency < 1 or dependency >= i
                        or not steps_output[dependency - 1].success]
@@ -449,6 +486,8 @@ class Hermes:
                     item.to_dict() for item in incoming_messages
                 ]
             steps_output.append(result)
+            if self.task_store and self.active_task_id:
+                self.task_store.save_step(self.active_task_id, i, asdict(result))
             self._emit(
                 on_event,
                 "step_done" if result.success else "step_error",
@@ -500,6 +539,8 @@ class Hermes:
                 self._emit(on_event, "agent_message", payload)
 
         # Summarize via Hermes
+        if self.task_store and self.active_task_id:
+            self.task_store.update_checkpoint(self.active_task_id, phase='synthesizing')
         self._emit(
             on_event,
             "summary_start",
@@ -813,6 +854,8 @@ Workflow rules:
     ) -> TaskResult:
         """Run a role and handle the explicit MCP tool-call envelope."""
         self._checkpoint()
+        if role_name == 'chronos' and self.task_store and self.active_task_id:
+            self.task_store.record_effect(self.active_task_id, CURRENT_STEP.get(), {'kind': 'schedule', 'state': 'attempted'})
         result = role.run(task, context=context)
         self._checkpoint()
         executor = self.mcp_tool_executor
@@ -826,6 +869,9 @@ Workflow rules:
             call["call_id"] = uuid.uuid4().hex[:12]
             call["role"] = role_name or result.role
             calls.append(call)
+            if self.task_store and self.active_task_id:
+                self.task_store.record_effect(self.active_task_id, CURRENT_STEP.get(),
+                                              {'kind': 'mcp', 'server_id': call.get('server_id'), 'tool': call.get('tool'), 'state': 'attempted'})
             started = time.monotonic()
             event_payload = {
                 "call_id": call["call_id"],
@@ -961,7 +1007,8 @@ Workflow rules:
         if not callable(callback):
             return
         try:
-            callback(event, {**data, "task_id": self.active_task_id} if event == "plan_start" else data)
+            callback(event, {**data, "task_id": self.active_task_id}
+                     if event in {'plan_start', 'plan_ready', 'step_start', 'step_done', 'step_error', 'summary_start', 'summary_done'} else data)
         except Exception:
             return
 

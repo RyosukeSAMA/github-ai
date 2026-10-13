@@ -51,6 +51,30 @@ def test_getting_started_can_reopen_and_prepare_without_sending(page: Page, live
     expect(page.locator('#onboarding-card')).to_be_hidden()
 
 
+def test_task_checkpoint_resume_uses_stream_and_retains_current_overrides(page: Page, live_server_url: str) -> None:
+    requests = []
+    task = {'id': 'checkpoint-task', 'status': 'partial_failure', 'data': {'task': 'Complete the saved plan',
+            'mode': 'multi', 'recoverable': True, 'archive_available': True}, 'updated': 1}
+    page.route('**/api/tasks', lambda route: route.fulfill(json={'tasks': [task]}))
+    def resume(route):
+        requests.append(route.request.post_data_json)
+        events = [('phase', {'stage': 'executing', 'task_id': 'resume-task', 'role': 'athena'}),
+                  ('step_start', {'index': 0, 'role': 'athena', 'total': 1}),
+                  ('step_done', {'index': 0, 'role': 'athena', 'content': 'Retained research', 'reused': True, 'success': True}),
+                  ('done', {'status': 'completed', 'success': True})]
+        body = ''.join(f'event: {event}\ndata: {json.dumps(data)}\n\n' for event, data in events)
+        route.fulfill(content_type='text/event-stream', body=body)
+    page.route('**/api/ask/stream', resume)
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="info"]').click()
+    expect(page.locator('#info-tasks-list')).to_contain_text('Resume failed steps')
+    page.get_by_role('button', name='Resume failed steps').click()
+    expect(page.locator('#chat')).to_contain_text('Retained research')
+    assert requests[0]['resume_task_id'] == 'checkpoint-task'
+    assert 'overrides' not in requests[0]
+
+
 def test_openai_setup_lists_gpt6_astra(
     page: Page,
     live_server_url: str,
