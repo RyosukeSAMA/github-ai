@@ -18,6 +18,7 @@ def test_service_platform_maps_supported_systems() -> None:
         service.service_platform('Unknown')
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='POSIX launchd definition uses POSIX user IDs')
 def test_install_launchd_writes_loopback_service(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -63,6 +64,7 @@ def test_install_launchd_writes_loopback_service(tmp_path, monkeypatch) -> None:
     assert any(command[0][0:2] == ["launchctl", "bootstrap"] for command in commands)
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='systemd unit expectations use POSIX paths')
 def test_install_systemd_writes_user_unit_without_start(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

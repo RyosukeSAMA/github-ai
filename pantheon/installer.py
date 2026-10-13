@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -162,7 +163,12 @@ def link_environment(candidate: Path, environment: Path):
     destination = candidate / '.venv'
     if os.name == 'nt':
         # Directory junctions work for normal Windows users without Developer Mode.
-        command(['cmd.exe', '/d', '/s', '/c', f'mklink /J "{destination}" "{environment}"'])
+        def quote(value):
+            return "'" + str(value).replace("'", "''") + "'"
+        script = ("$ErrorActionPreference='Stop'; New-Item -ItemType Junction "
+                  f"-Path {quote(destination)} -Target {quote(environment)} | Out-Null")
+        encoded = base64.b64encode(script.encode('utf-16-le')).decode()
+        command(['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded])
     else:
         destination.symlink_to(environment, target_is_directory=True)
 
