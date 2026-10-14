@@ -205,7 +205,7 @@ py -3.12 --version
 预期结果：
 
 ```text
-pantheon 0.3.0
+pantheon 0.3.1
 ```
 
 显示更高版本也正常。不要使用 `sudo pip install`。
@@ -228,18 +228,18 @@ Uvicorn running on http://127.0.0.1:8000
 
 `127.0.0.1` 表示只有当前电脑可以访问 Pantheon。第一次安装时不要把 Host 改成 `0.0.0.0`。
 
-## 六、在浏览器中配置一个 Provider
+## 六、配置连接并分配角色模型
 
-1. 打开 **Settings**。
-2. 打开 **Setup**。
-3. 选择你拥有 API key 的 Provider：DeepSeek、OpenAI 或 Anthropic。只有本机已经运行 Ollama 时才选择 Ollama。
-4. 保留 Pantheon 显示的官方 Base URL。
-5. 粘贴从该 Provider 官方 API 控制台创建的 API key。
-6. 选择一个模型。
-   首次配置请保持 **Use this model for all chat agents** 已勾选。
-7. 选择 `.env` 或可用的 **System credential storage**，点击 **Save local config**。保存不会发出模型请求。
-8. 点击 **Test API**。这会发送一次短请求，可能产生少量服务商费用。确认保存的模型显示 **API verified**。
-9. **Check setup** 只检查本地配置；**configured · untested** 表示已配置但没有调用验证。验证结果 24 小时有效，绑定密钥、地址和模型。模型没有出现在新目录中时，展开 **Saved model details** 查看提醒。
+1. 打开 **Settings → Setup**，选择 DeepSeek、OpenAI、Anthropic，或本机已运行的 Ollama。
+2. 填写该供应商的 API key，保留官方 Base URL，选择用于连接测试的模型。
+3. 点击 **Test API**，确认出现 **API connected**。测试会发送一次短请求，可能产生少量费用，验证结果绑定这组密钥、地址和模型。
+4. 选择私有 `.env` 或可用的 **System credential storage**，点击 **Save provider connection**。这一步不会改变任何角色模型，也不会再次调用 API。
+5. 打开 **Models → New chat defaults**。在 **Use one model for all AI roles** 中选择同一供应商和模型，点击 **Apply to all AI roles → Save new chat defaults**。
+6. 创建 **New Chat**，四个 AI 角色就可共用这一家连接，Chronos 不需要模型。
+
+多家混用是可选功能，不要求拥有三家密钥。分别在 Setup 添加连接，再在 Models 逐个角色选择供应商和模型即可。**Current chat only** 自动保存当前聊天的选择；**New chat defaults** 需要显式保存，只影响以后创建的聊天，旧聊天保留自己的模型。角色技能不与供应商绑定。费用主要取决于模型价格、token 数和调用次数，可以在 Info 查看用量和设置预算。
+
+每个角色有 **Test this role**，用来验证所选模型。测试一个模型不代表该供应商所有模型都可用。验证结果有效期为 24 小时，模型列表提醒与验证结果分别显示。**Check setup** 仅检查本地配置。
 
 Setup 底部显示实际配置和凭据路径。旧源码安装继续使用项目 `.env` 和 `config/pantheon.yaml`；新工作区默认使用系统用户数据目录。系统凭据选项使用受支持的 OS 密钥环，`pantheon credentials --migrate` 可显式迁移已保存的 API key 和平台 token。迁移先保存并核验，再移除文件中的原值。不要把密钥粘贴到 GitHub Issue、截图或聊天消息中。
 
@@ -308,7 +308,7 @@ pantheon service uninstall
 3. 启动 Pantheon，打开 **Settings → Setup**。
 4. 选择 **Ollama**，保留 `http://localhost:11434` 作为 Base URL。
 5. 选择或输入 `ollama list` 显示的模型 ID。
-6. 保持 **Use this model for all chat agents** 已勾选。依次点击 **Test API**、**Save local config**、**Check setup**。最后一次检查应显示所有已启用 Agent 均已就绪。
+6. 点击 **Test API → Save provider connection**。在 **Models → New chat defaults** 选择 Ollama 和已下载的模型，点击 **Apply to all AI roles → Save new chat defaults**，然后新建聊天。
 
 Ollama 模型可能需要下载数 GB 文件，运行速度取决于模型大小和电脑硬件。
 

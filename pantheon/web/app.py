@@ -30,6 +30,12 @@ from pydantic import BaseModel
 from pantheon import __version__
 from pantheon.core.budgets import BudgetExceededError
 from pantheon.core.channels import CHANNELS, ChannelAuthError, ChannelQueueFullError
+from pantheon.core.connections import (
+    connection_config,
+    normalized_config,
+    provider_identity,
+    resolve_connection,
+)
 from pantheon.core.credentials import CredentialError, atomic_text
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
@@ -46,7 +52,7 @@ from pantheon.core.memory import (
 )
 from pantheon.core.pantheon import Pantheon
 from pantheon.core.paths import DataPaths
-from pantheon.core.runtime import RuntimeLease
+from pantheon.core.runtime import RuntimeLease, file_mutex
 from pantheon.core.scheduler import ScheduleParseError, parse_schedule_request
 from pantheon.core.services import WorkspaceServices
 from pantheon.core.usage import UsageStore
@@ -116,6 +122,22 @@ class SetupSaveRequest(BaseModel):
     api_key: str | None = None
     apply_to_roles: bool = True
     credential_storage: str = "env"
+
+
+class ConnectionSaveRequest(BaseModel):
+    provider: str
+    model: str = ""
+    base_url: str | None = None
+    api_key: str | None = None
+    credential_storage: str = "env"
+
+
+class DefaultModelsRequest(BaseModel):
+    models: dict[str, dict[str, str]]
+
+
+class RoleStatusRequest(BaseModel):
+    overrides: dict[str, dict[str, str]] = {}
 
 
 class SetupTestRequest(BaseModel):
@@ -625,8 +647,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             p.hermes.router = p.router
         for role_name, override in (overrides or {}).items():
             role = p.get_role(role_name)
-            if role is None:
+            if role is None and role_name != 'hermes':
                 raise ValueError(f"Unknown role: {role_name}")
+            if role_name == 'chronos':
+                continue
             provider_id = str(override.get("provider") or "").strip().lower()
             if provider_id:
                 if provider_id not in SETUP_PROVIDER_PRESETS:
@@ -642,22 +666,29 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                         configured_provider = "deepseek"
                 matches = configured_provider == provider_id
                 client = getattr(base, "llm_clients", {}).get(adapter) if matches else None
+                if provider_identity(provider_id, providers) == provider_id:
+                    client = getattr(base, 'llm_clients', {}).get(provider_id) or client
                 if client is None:
-                    if not matches:
-                        provider_config = {}
+                    endpoint, key = resolve_connection(read_yaml_config(setup_config_path()), provider_id, env_value)
+                    if not key and preset['requires_key']:
+                        raise ValueError(f"Add the {preset['label']} API key in Connections before using this role.")
                     client = get_llm_client(
                         provider=str(preset["adapter"]),
-                        api_key=provider_config.get("api_key") or env_value(
-                            str(preset.get("env_var") or "")
-                        ),
-                        base_url=provider_config.get("base_url") or preset.get("base_url"),
+                        api_key=key,
+                        base_url=endpoint,
                     )
                     client.provider_name = provider_id
                     client.usage_recorder = p.usage_store.record
                     client.budget = workspace_services.budget
-                role.llm_client = client
+                if role_name == 'hermes':
+                    p.router.llm_client = client
+                else:
+                    role.llm_client = client
             if override.get("model"):
-                role.model = override["model"]
+                if role_name == 'hermes':
+                    p.router.hermes_model = override['model']
+                else:
+                    role.model = override["model"]
         return p
 
     def reset_pantheon() -> None:
@@ -1410,7 +1441,12 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "catalog_error": error,
             "models_last_attempt_at": model_catalog_attempts.get(identity),
             "models_refresh_interval_seconds": MODEL_CACHE_TTL_SECONDS,
+            "masked_key": mask_secret(api_key),
+            "test_model": str(connection_config(config, provider_id).get('test_model') or preset['model']),
+            "connection_saved": bool(connection_config(config, provider_id)),
+            "credential_storage": 'system' if preset['env_var'] in workspace_services.credentials.refs() else 'env',
         })
+        payload['api_health'] = readiness.health(provider_id, payload['test_model'], base_url, api_key)
         return payload
 
     def provider_key_from_adapter(provider: str, providers: dict[str, Any]) -> str:
@@ -1433,6 +1469,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         return provider
 
     def provider_from_config(config: dict[str, Any]) -> str:
+        config = normalized_config(config)
         hermes_cfg = config.get("pantheon", {}).get("hermes", {}) or {}
         provider = hermes_cfg.get("provider", "")
         providers = config.get("llm_providers", {}) or {}
@@ -1450,22 +1487,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         }
 
     def provider_catalog_connection(provider_id: str, config: dict[str, Any]) -> tuple[str, str]:
-        preset = SETUP_PROVIDER_PRESETS[provider_id]
-        providers = config.get("llm_providers", {}) or {}
-        raw_config = next((value for adapter, value in providers.items()
-                           if isinstance(value, dict)
-                           and provider_key_from_adapter(str(adapter), providers) == provider_id), {})
-        base_url = str(raw_config.get("base_url") or preset["base_url"]).strip()
-        raw_api_key = str(raw_config.get("api_key") or "")
-        env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
-        # An explicit literal key belongs to this endpoint; do not override it
-        # with another account's environment key.
-        api_key = raw_api_key if raw_api_key and "${" not in raw_api_key else env_value(env_var)
-        return base_url, normalized_provider_api_key(provider_id, api_key)
+        return resolve_connection(config, provider_id, env_value)
 
     def configured_model_catalogs() -> list[dict[str, str]]:
         config = read_yaml_config(setup_config_path())
-        providers = config.get("llm_providers", {}) or {}
+        providers = normalized_config(config).get("llm_providers", {}) or {}
         configured_ids = {provider_key_from_adapter(str(adapter), providers)
                           for adapter, value in providers.items() if isinstance(value, dict)}
         catalogs: list[dict[str, str]] = []
@@ -1573,6 +1599,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         return (pantheon_cfg.get("roles", {}) or {}).get(role_name, {}) or {}
 
     def role_setup_statuses(config: dict[str, Any]) -> list[dict[str, Any]]:
+        config = normalized_config(config)
         providers = config.get("llm_providers", {}) or {}
         statuses: list[dict[str, Any]] = []
         for role_name, label, purpose, counts_toward_ready in SETUP_ROLE_ORDER:
@@ -1657,7 +1684,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         provider_key = provider_from_config(config)
         preset = SETUP_PROVIDER_PRESETS[provider_key]
         adapter = preset["adapter"]
-        llm_cfg = (config.get("llm_providers", {}) or {}).get(adapter, {}) or {}
+        endpoint, _connection_key = provider_catalog_connection(provider_key, config)
         hermes_cfg = config.get("pantheon", {}).get("hermes", {}) or {}
         env_var = preset["env_var"]
         key_value = env_value(env_var)
@@ -1683,7 +1710,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "provider_label": preset["label"],
             "adapter": adapter,
             "model": hermes_cfg.get("model") or preset["model"],
-            "base_url": llm_cfg.get("base_url") or preset["base_url"],
+            "base_url": endpoint,
             "env_var": env_var,
             "key_configured": bool(key_value) or not preset["requires_key"],
             "masked_key": mask_secret(key_value),
@@ -1859,10 +1886,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             raise HTTPException(status_code=400, detail="unsupported provider")
 
         preset = SETUP_PROVIDER_PRESETS[provider_id]
-        base_url = (req.base_url or str(preset["base_url"])).strip()
+        saved_url, saved_key = provider_catalog_connection(provider_id, read_yaml_config(setup_config_path()))
+        base_url = (req.base_url or saved_url).strip()
         api_key = normalized_provider_api_key(
             provider_id,
-            (req.api_key or "").strip() or env_value(str(preset["env_var"])),
+            (req.api_key or "").strip() or saved_key,
         )
         current_model = (req.current_model or "").strip()
         if not current_model:
@@ -2351,10 +2379,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         adapter = str(preset["adapter"])
         env_var = str(preset["env_var"])
         model = req.model.strip() if req.model else str(preset["model"])
-        base_url = (req.base_url or str(preset["base_url"])).strip()
+        saved_url, saved_key = provider_catalog_connection(provider_id, read_yaml_config(setup_config_path()))
+        base_url = (req.base_url or saved_url).strip()
         api_key = normalized_provider_api_key(
             provider_id,
-            (req.api_key or "").strip() or env_value(env_var),
+            (req.api_key or "").strip() or saved_key,
         )
 
         if preset["requires_key"] and not api_key:
@@ -2544,6 +2573,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         hermes_cfg = pantheon_cfg.setdefault("hermes", {})
         hermes_cfg["model"] = model
         hermes_cfg["provider"] = adapter
+        hermes_cfg['provider_id'] = provider_id
         hermes_cfg.setdefault("temperature", 0.2)
         hermes_cfg.setdefault("max_tokens", 4096)
 
@@ -2576,6 +2606,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 role_cfg.setdefault("enabled", True)
                 role_cfg["model"] = model
                 role_cfg["provider"] = adapter
+                role_cfg['provider_id'] = provider_id
             chronos_cfg = roles_cfg.setdefault("chronos", {})
             chronos_cfg.setdefault("name", "Chronos (时间之神)")
             chronos_cfg.setdefault("description", "Schedules and runs periodic tasks")
@@ -2590,6 +2621,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         active_cfg["api_key"] = f"${{{env_var}}}" if env_var else ""
         active_cfg["base_url"] = base_url
         active_cfg["enabled"] = True
+        config.setdefault('provider_connections', {})[provider_id] = {
+            'base_url': base_url, 'api_key': f'${{{env_var}}}' if env_var else '', 'test_model': model,
+        }
         for provider_name in ("openai", "anthropic", "ollama"):
             if provider_name != adapter and provider_name in providers_cfg:
                 providers_cfg[provider_name]["enabled"] = False
@@ -2602,6 +2636,101 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         write_yaml_config(config_file, config)
         reset_pantheon()
         return setup_status_payload("Saved. Pantheon will use this config on the next request.")
+
+    @app.post('/api/connections/save')
+    async def save_connection(req: ConnectionSaveRequest) -> dict:
+        provider = req.provider.strip().lower()
+        if provider not in SETUP_PROVIDER_PRESETS:
+            raise HTTPException(400, 'Unknown provider')
+        preset = SETUP_PROVIDER_PRESETS[provider]
+        endpoint = (req.base_url or preset['base_url']).strip().rstrip('/')
+        parsed = urlsplit(endpoint)
+        if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise HTTPException(400, 'Use an HTTP(S) API base URL without credentials, query or fragment.')
+        model = req.model.strip() or preset['model']
+        if not re.fullmatch(r'[A-Za-z0-9_.:/-]{1,160}', model):
+            raise HTTPException(400, 'Provide a valid test model ID')
+        key = normalized_provider_api_key(provider, req.api_key or '')
+        config_path = setup_config_path()
+        with file_mutex(config_path.with_suffix('.lock')):
+            config = read_yaml_config(config_path)
+            _old_endpoint, old_key = provider_catalog_connection(provider, config)
+            if preset['requires_key'] and not key and not old_key:
+                raise HTTPException(400, f"Add the {preset['label']} API key before saving.")
+            env_var = preset['env_var']
+            # A blank edit preserves an existing literal legacy credential too.
+            if env_var and (key or old_key):
+                try:
+                    workspace_services.credentials.save(env_var, key or old_key, storage=req.credential_storage)
+                except CredentialError as exc:
+                    raise HTTPException(400, str(exc)) from exc
+            config.setdefault('provider_connections', {})[provider] = {
+                'base_url': endpoint, 'api_key': f'${{{env_var}}}' if env_var else '', 'test_model': model,
+            }
+            write_yaml_config(config_path, config)
+        reset_pantheon()
+        return setup_status_payload(f"{preset['label']} connection saved. Role models were not changed.")
+
+    @app.post('/api/models/defaults')
+    async def save_default_models(req: DefaultModelsRequest) -> dict:
+        required = {'hermes', 'hephaestus', 'athena', 'apollo'}
+        if set(req.models) != required:
+            raise HTTPException(400, 'Provide a model for each of the four AI roles.')
+        config_path = setup_config_path()
+        with file_mutex(config_path.with_suffix('.lock')):
+            config = read_yaml_config(config_path)
+            for name, choice in req.models.items():
+                provider, model = choice.get('provider', ''), choice.get('model', '')
+                if provider not in SETUP_PROVIDER_PRESETS or not re.fullmatch(r'[A-Za-z0-9_.:/-]{1,160}', model):
+                    raise HTTPException(400, f'Choose a provider and model for {name}.')
+                _endpoint, key = provider_catalog_connection(provider, config)
+                if SETUP_PROVIDER_PRESETS[provider]['requires_key'] and not key:
+                    raise HTTPException(400, f"Add the {SETUP_PROVIDER_PRESETS[provider]['label']} API key in Connections first.")
+            # Pin legacy chats before changing defaults, including chats from other tabs.
+            previous = {item['role']: {'provider': item['provider'], 'model': item['model']}
+                        for item in role_setup_statuses(config)
+                        if item['role'] in required and item['provider'] in SETUP_PROVIDER_PRESETS}
+            for _ in range(3):
+                snapshot = conversation_store.get()
+                sessions = copy.deepcopy(snapshot['sessions'])
+                for session in sessions:
+                    session['overrides'] = {**previous, **session.get('overrides', {})}
+                if sessions == snapshot['sessions']:
+                    break
+                if conversation_store.replace(sessions, snapshot['revision']) is not None:
+                    break
+            else:
+                raise HTTPException(409, 'Chats changed while saving defaults. Please try again.')
+            pantheon = config.setdefault('pantheon', {})
+            for name, choice in req.models.items():
+                cfg = pantheon.setdefault('hermes', {}) if name == 'hermes' else pantheon.setdefault('roles', {}).setdefault(name, {})
+                cfg.update({'provider': choice['provider'], 'provider_id': choice['provider'], 'model': choice['model']})
+                provider = choice['provider']
+                if provider not in config.get('provider_connections', {}):
+                    preset = SETUP_PROVIDER_PRESETS[provider]
+                    existing = connection_config(config, provider)
+                    endpoint, _key = provider_catalog_connection(provider, config)
+                    config.setdefault('provider_connections', {})[provider] = {
+                        'base_url': endpoint,
+                        'api_key': existing.get('api_key') or (f"${{{preset['env_var']}}}" if preset['env_var'] else ''),
+                        'test_model': choice['model'],
+                    }
+            write_yaml_config(config_path, config)
+        reset_pantheon()
+        return setup_status_payload('New chat defaults saved. Existing chat model choices were preserved.')
+
+    @app.post('/api/models/status')
+    async def current_model_status(req: RoleStatusRequest) -> dict:
+        config = normalized_config(read_yaml_config(setup_config_path()))
+        for name, choice in req.overrides.items():
+            if name not in {'hermes', 'hephaestus', 'athena', 'apollo'}:
+                continue
+            cfg = role_config(config, name)
+            if choice.get('provider') in SETUP_PROVIDER_PRESETS:
+                cfg.update({'provider': choice['provider'], 'provider_id': choice['provider']})
+            if choice.get('model'):
+                cfg['model'] = choice['model']
+        return {'role_statuses': role_setup_statuses(config)}
 
     # ----- Local memory -----
     @app.get("/api/memory")

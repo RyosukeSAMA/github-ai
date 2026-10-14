@@ -109,6 +109,62 @@ def test_openai_setup_lists_gpt6_astra(
     )
 
 
+def test_save_connections_keeps_role_defaults_and_chat_choices(page: Page, live_server_url: str) -> None:
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    before = page.request.get(f'{live_server_url}/api/setup/status').json()['role_statuses']
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    expect(page.locator('#provider-connections .provider-connection-card')).to_have_count(4)
+    expect(page.locator('#setup-apply-roles')).to_have_count(0)
+    for provider, key in [('anthropic', 'fake-e2e-anthropic'), ('openai', 'fake-e2e-openai'), ('deepseek', 'fake-e2e-deepseek')]:
+        page.locator(f'[data-edit-provider="{provider}"]').click()
+        page.locator('#setup-api-key').fill(key)
+        page.locator('#setup-save').click()
+        expect(page.locator('#setup-check-result')).to_contain_text('Provider connection saved')
+        expect(page.locator('#setup-api-key')).to_have_value('')
+    after = page.request.get(f'{live_server_url}/api/setup/status').json()['role_statuses']
+    assert [(i['role'],i['provider'],i['model']) for i in after] == [(i['role'],i['provider'],i['model']) for i in before]
+    assert not errors
+
+
+def test_single_or_mixed_models_and_default_scope_keep_existing_chats(page: Page, live_server_url: str) -> None:
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="models"]').click()
+    page.locator('#models-shared-provider').select_option('deepseek')
+    page.locator('#models-shared-model').select_option('deepseek-flash')
+    page.locator('#models-apply-all').click()
+    expect(page.locator('.settings-role[data-role="hermes"] .sr-provider')).to_have_value('deepseek')
+    hephaestus = page.locator('.settings-role[data-role="hephaestus"]')
+    hephaestus.locator('.sr-provider').select_option('anthropic')
+    athena = page.locator('.settings-role[data-role="athena"]')
+    athena.locator('.sr-provider').select_option('openai')
+    expect(page.locator('#models-status-title')).to_contain_text('3 providers')
+    saved = page.evaluate("JSON.parse(localStorage.getItem('pantheon:chat-sessions'))")
+    original = saved[0]['overrides']
+    assert original['hephaestus']['provider'] == 'anthropic'
+    assert original['athena']['provider'] == 'openai'
+    page.locator('#models-scope').select_option('defaults')
+    page.locator('#models-shared-provider').select_option('deepseek')
+    page.locator('#models-shared-model').select_option('deepseek-flash')
+    page.locator('#models-apply-all').click()
+    page.locator('#models-save-defaults').click()
+    expect(page.locator('#models-feedback')).to_contain_text('New chat defaults saved')
+    page.locator('#models-scope').select_option('chat')
+    expect(hephaestus.locator('.sr-provider')).to_have_value('anthropic')
+    expect(athena.locator('.sr-provider')).to_have_value('openai')
+    page.locator('#new-chat-btn').click()
+    expect(hephaestus.locator('.sr-provider')).to_have_value('deepseek')
+    expect(athena.locator('.sr-provider')).to_have_value('deepseek')
+    page.reload()
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="models"]').click()
+    expect(hephaestus.locator('.sr-provider')).to_have_value('deepseek')
+    stored = page.evaluate("JSON.parse(localStorage.getItem('pantheon:chat-sessions'))")
+    assert next(i for i in stored if i['id'] == saved[0]['id'])['overrides'] == original
+
+
 def test_prompt_enhancement_rewrites_draft_without_sending(
     page: Page,
     live_server_url: str,

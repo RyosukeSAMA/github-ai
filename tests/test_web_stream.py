@@ -205,6 +205,7 @@ def test_provider_override_preserves_custom_endpoint_and_separates_compatible_ap
     from pantheon.core.hermes import Hermes
 
     configured = SimpleNamespace(base_url='https://custom.deepseek.example/v1')
+    monkeypatch.setenv('OPENAI_API_KEY', 'fake-openai-separate-key')
     created = []
 
     class FakePantheon:

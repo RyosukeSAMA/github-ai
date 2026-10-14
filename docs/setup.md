@@ -205,7 +205,7 @@ This manual source path applies to macOS, Ubuntu and WSL. One-line installer use
 Expected result:
 
 ```text
-pantheon 0.3.0
+pantheon 0.3.1
 ```
 
 A newer version number is also valid. Do not use `sudo pip install`.
@@ -228,18 +228,18 @@ Keep this terminal window open. Open <http://127.0.0.1:8000/> in a current versi
 
 `127.0.0.1` means only this computer can reach Pantheon. Do not change the host to `0.0.0.0` during initial setup.
 
-## 6. Configure one provider in the browser
+## 6. Configure a provider and assign role models
 
-1. Open **Settings**.
-2. Open **Setup**.
-3. Select the provider for which you have an API key: DeepSeek, OpenAI, or Anthropic. Select Ollama only if it is already running locally.
-4. Keep the official Base URL shown by Pantheon.
-5. Paste the API key from that provider's official console.
-6. Select a model.
-   Keep **Use this model for all chat agents** checked for the first setup.
-7. Choose `.env` or available **System credential storage**, then **Save local config**. Saving makes no model request.
-8. Select **Test API**. It sends one short request and may incur a provider charge. Check that the saved model shows **API verified**.
-9. **Check setup** validates only local configuration. **configured · untested** means no API request has verified it. Verification lasts 24 hours and is bound to model, endpoint and credential. Expand **Saved model details** to review a model absent from the fresh provider catalog.
+1. Open **Settings → Setup**. Select DeepSeek, OpenAI, Anthropic, or a locally running Ollama.
+2. Enter that provider's key and keep the official Base URL. Choose a model for the connection test.
+3. Click **Test API**. This sends one short request and may incur a charge. **API connected** confirms that exact key, endpoint and model combination.
+4. Choose private `.env` or available **System credential storage**, then **Save provider connection**. This does not change any role's model or make another API call.
+5. Open **Models → New chat defaults**. Under **Use one model for all AI roles**, select the same provider and model, then **Apply to all AI roles → Save new chat defaults**.
+6. Create **New Chat**. All four AI roles can use this single connection; Chronos needs no model.
+
+Multiple providers are optional. Add each provider independently in Setup, then assign providers/models per role in Models. **Current chat only** saves choices automatically for that conversation. **New chat defaults** requires an explicit save and affects future chats; existing chats retain their assignments. Role skills are independent of the chosen provider. Costs depend on prices, tokens and calls, not simply the number of connected providers. Review usage and budgets in Info.
+
+Use **Test this role** to verify the role's selected model. Testing one model does not establish access to all models at that provider. Evidence expires after 24 hours. Catalog visibility is separate from API verification. Check setup validates local configuration only.
 
 Setup shows the actual config and credential paths. Existing source installations keep local `.env` and `config/pantheon.yaml`; new workspaces default to user application data. System credential storage uses a supported OS keyring; `pantheon credentials --migrate` explicitly migrates saved API keys and channel tokens, verifies them, then removes dotenv values. Do not paste secrets into issues, screenshots, or chat messages.
 
@@ -308,7 +308,7 @@ The service uses your selected workspace and installation. macOS uses a LaunchAg
 3. Start Pantheon and open **Settings → Setup**.
 4. Select **Ollama** and keep `http://localhost:11434` as the Base URL.
 5. Select or enter the model ID shown by `ollama list`.
-6. Keep **Use this model for all chat agents** checked. Select **Test API**, then **Save local config**, then **Check setup**. The final check should show every enabled agent as ready.
+6. Run **Test API → Save provider connection**. In **Models → New chat defaults**, select Ollama and the downloaded model, then **Apply to all AI roles → Save new chat defaults**. Create a new chat to use it.
 
 Ollama model downloads can be several gigabytes. Performance depends on the model and computer hardware.
 
@@ -412,7 +412,7 @@ The provider rejected the request because of account quota, billing, or rate lim
 
 ### The Web UI opens, but a task says another agent has no key
 
-Setup must configure every enabled chat agent, or the unused role must be disabled. Return to **Settings → Setup**, review the agent status list, and save a provider/model combination available to all enabled roles.
+Open **Models** and review the affected role. Add its provider key in **Setup**, or use **Apply to all AI roles** to assign your existing provider/model to every AI role. Saving a connection alone does not change role assignments.
 
 ### Reset the local setup
 

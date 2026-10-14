@@ -14,6 +14,7 @@ from typing import Any
 import yaml
 
 from pantheon.core.base import Task
+from pantheon.core.connections import normalized_config
 from pantheon.core.hermes import Hermes
 from pantheon.core.paths import DataPaths
 from pantheon.core.router import Router
@@ -200,7 +201,7 @@ class Pantheon:
     def _load_config(path: str, env_lookup=None) -> dict[str, Any]:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        return _expand_env_vars(data, env_lookup)
+        return _expand_env_vars(normalized_config(data), env_lookup)
 
     def _build_llm_clients(self) -> dict[str, Any]:
         providers = self.config.get("llm_providers", {})
@@ -218,7 +219,7 @@ class Pantheon:
                 )
             try:
                 client = get_llm_client(
-                    provider=name,
+                    provider=cfg.get('adapter') or name,
                     api_key=api_key,
                     base_url=cfg.get("base_url"),
                 )
