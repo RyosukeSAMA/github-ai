@@ -472,6 +472,9 @@ def test_model_catalog_updates_on_focus_without_overwriting_setup_draft(page: Pa
     expect(page.locator('#setup-model')).to_have_value('gpt-6.1-sol')
     expect(page.locator('#setup-api-key')).to_have_value('unsaved-test-key')
     expect(page.locator('#setup-base-url')).to_have_value('https://draft.example/v1')
+    # Focus can leave another catalog request in flight. Drain route callbacks
+    # before Playwright disposes this test's request context.
+    page.unroute_all(behavior='wait')
 
 
 def test_media_upload_and_transcript_prepare_without_sending(page: Page, live_server_url: str):
