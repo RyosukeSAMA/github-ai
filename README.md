@@ -238,7 +238,7 @@ Pantheon uses god identities to make responsibilities explicit: Hermes orchestra
 
 <p align="center">
   <a href="docs/images/posters/pantheon.webp">
-    <img src="docs/images/posters/pantheon.webp" alt="Pantheon multi-agent system concept poster" width="420">
+    <img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/pantheon.webp" alt="Pantheon multi-agent system concept poster" width="420">
   </a>
 </p>
 
@@ -247,14 +247,14 @@ Pantheon uses god identities to make responsibilities explicit: Hermes orchestra
 ### Concept Posters
 
 <p align="center">
-  <a href="docs/images/posters/hermes.webp"><img src="docs/images/posters/hermes.webp" alt="Hermes - orchestration and routing" width="30%"></a>
-  <a href="docs/images/posters/hephaestus-poster.webp"><img src="docs/images/posters/hephaestus-poster.webp" alt="Hephaestus - engineering and building" width="30%"></a>
-  <a href="docs/images/posters/athena.webp"><img src="docs/images/posters/athena.webp" alt="Athena - research and reasoning" width="30%"></a>
+  <a href="docs/images/posters/hermes.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/hermes.webp" alt="Hermes - orchestration and routing" width="30%"></a>
+  <a href="docs/images/posters/hephaestus-poster.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/hephaestus-poster.webp" alt="Hephaestus - engineering and building" width="30%"></a>
+  <a href="docs/images/posters/athena.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/athena.webp" alt="Athena - research and reasoning" width="30%"></a>
 </p>
 
 <p align="center">
-  <a href="docs/images/posters/apollo.webp"><img src="docs/images/posters/apollo.webp" alt="Apollo - creative direction" width="30%"></a>
-  <a href="docs/images/posters/chronos.webp"><img src="docs/images/posters/chronos.webp" alt="Chronos - scheduling and time" width="30%"></a>
+  <a href="docs/images/posters/apollo.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/apollo.webp" alt="Apollo - creative direction" width="30%"></a>
+  <a href="docs/images/posters/chronos.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/chronos.webp" alt="Chronos - scheduling and time" width="30%"></a>
 </p>
 
 <p align="center"><sub>Select a poster to open the full image. Artwork expresses each role's product identity; actual model, web, and media capabilities depend on the provider, Skills, and MCP tools configured by the user.</sub></p>

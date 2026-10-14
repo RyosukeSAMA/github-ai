@@ -237,7 +237,7 @@ Pantheon 用神祇身份表达清晰的职责边界：Hermes 负责编排，Heph
 
 <p align="center">
   <a href="docs/images/posters/pantheon.webp">
-    <img src="docs/images/posters/pantheon.webp" alt="Pantheon multi-agent system concept poster" width="420">
+    <img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/pantheon.webp" alt="Pantheon multi-agent system concept poster" width="420">
   </a>
 </p>
 
@@ -246,14 +246,14 @@ Pantheon 用神祇身份表达清晰的职责边界：Hermes 负责编排，Heph
 ### 五神概念海报
 
 <p align="center">
-  <a href="docs/images/posters/hermes.webp"><img src="docs/images/posters/hermes.webp" alt="Hermes — orchestration and routing" width="30%"></a>
-  <a href="docs/images/posters/hephaestus-poster.webp"><img src="docs/images/posters/hephaestus-poster.webp" alt="Hephaestus — engineering and building" width="30%"></a>
-  <a href="docs/images/posters/athena.webp"><img src="docs/images/posters/athena.webp" alt="Athena — research and reasoning" width="30%"></a>
+  <a href="docs/images/posters/hermes.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/hermes.webp" alt="Hermes — orchestration and routing" width="30%"></a>
+  <a href="docs/images/posters/hephaestus-poster.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/hephaestus-poster.webp" alt="Hephaestus — engineering and building" width="30%"></a>
+  <a href="docs/images/posters/athena.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/athena.webp" alt="Athena — research and reasoning" width="30%"></a>
 </p>
 
 <p align="center">
-  <a href="docs/images/posters/apollo.webp"><img src="docs/images/posters/apollo.webp" alt="Apollo — creative direction" width="30%"></a>
-  <a href="docs/images/posters/chronos.webp"><img src="docs/images/posters/chronos.webp" alt="Chronos — scheduling and time" width="30%"></a>
+  <a href="docs/images/posters/apollo.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/apollo.webp" alt="Apollo — creative direction" width="30%"></a>
+  <a href="docs/images/posters/chronos.webp"><img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/posters/chronos.webp" alt="Chronos — scheduling and time" width="30%"></a>
 </p>
 
 <p align="center"><sub>点击海报查看大图。角色图用于表达产品定位；实际模型、联网能力和媒体生成能力取决于用户配置的 Provider、Skills 与 MCP 工具。</sub></p>
