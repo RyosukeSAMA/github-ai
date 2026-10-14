@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from pantheon.core.budgets import TASK_ID
+from pantheon.core.connections import connection_config, resolve_connection
 from pantheon.core.credentials import atomic_text
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
@@ -61,15 +62,17 @@ class MediaService:
         return self.status()
 
     def connection(self, provider: str):
-        cfg = self._provider_config(provider)
-        key = self.services.env_value(provider.upper() + '_API_KEY') or cfg.get('api_key') or ''
+        endpoint, key = resolve_connection(self.connection_provider() or {}, provider, self.services.env_value)
         if not key:
             raise ValueError(f'Configure a {provider.title()} API key in Settings → Setup before using this capability.')
-        client = get_llm_client(provider, api_key=key, base_url=cfg.get('base_url'))
+        client = get_llm_client(provider, api_key=key, base_url=endpoint)
         client.budget = self.services.budget  # Disable implicit SDK retries for paid calls.
         return client._get_client()
 
     def _provider_config(self, provider):
+        explicit = connection_config(self.connection_provider() or {}, provider)
+        if explicit:
+            return explicit
         expected_host = 'api.openai.com' if provider == 'openai' else 'api.anthropic.com'
         for name, cfg in (self.connection_provider() or {}).get('llm_providers', {}).items():
             if (cfg.get('provider_id') or name) != provider or not cfg.get('enabled', True):

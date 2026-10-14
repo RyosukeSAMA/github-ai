@@ -163,7 +163,6 @@
   const setupCustomModelInput = $('#setup-custom-model');
   const setupBaseUrlInput = $('#setup-base-url');
   const setupApiKeyInput = $('#setup-api-key');
-  const setupApplyRoles = $('#setup-apply-roles');
   const setupSaveBtn = $('#setup-save');
   const setupCheckBtn = $('#setup-check');
   const setupTestBtn = $('#setup-test');
@@ -908,6 +907,9 @@
   ];
   let setupProviders = new Map(SETUP_PROVIDER_FALLBACKS.map((p) => [p.id, p]));
   let latestSetupStatus = null;
+  let setupFormTouched = false;
+  setupForm?.addEventListener('input', () => { setupFormTouched = true; });
+  setupForm?.addEventListener('change', () => { setupFormTouched = true; });
   let latestAppInfo = null;
 
   // Persisted in-memory overrides from the settings UI.
@@ -966,86 +968,198 @@
     return `${(value / 1000).toFixed(1)}s`;
   }
 
-  function renderSettingsModels() {
-    settingsRoles.innerHTML = '';
-    for (const r of roles) {
-      const meta = metaFor(r.name);
-      const provider = r.provider || 'none';
-      const override = roleOverrides[r.name] || {};
-      const currentProvider = override.provider || provider;
-      const currentModel = override.model || r.model || '';
-      const knownProviders = [...setupProviders.keys(), 'none'];
-      const knownModelIds = providerModelIds(currentProvider);
+  let modelScope = 'chat';
+  let defaultModelDraft = null;
+  let modelStatusRevision = 0;
 
+  function defaultRoleChoices() {
+    return Object.fromEntries((latestSetupStatus?.role_statuses || [])
+      .filter(item => item.role !== 'chronos' && item.model && setupProviders.has(item.provider))
+      .map(item => [item.role, {provider: item.provider, model: item.model}]));
+  }
+
+  function selectedRoleChoices() {
+    return modelScope === 'defaults' ? (defaultModelDraft || defaultRoleChoices())
+      : {...defaultRoleChoices(), ...roleOverrides};
+  }
+
+  // Pin missing choices once. Updating defaults never retargets an existing chat.
+  function pinChatModels() {
+    const defaults = defaultRoleChoices();
+    if (!defaults.hermes) return;
+    let changed = false;
+    for (const session of sessions) {
+      const previous = JSON.stringify(session.overrides || {});
+      session.overrides = {...cloneJSON(defaults, {}), ...(session.overrides || {})};
+      if (previous !== JSON.stringify(session.overrides)) changed = true;
+    }
+    const active = sessions.find(item => item.id === activeSessionId);
+    if (active) roleOverrides = cloneJSON(active.overrides, {});
+    if (changed) persistSessions();
+  }
+
+  function updateRoleChoice(name, choice) {
+    if (modelScope === 'defaults') {
+      defaultModelDraft = {...(defaultModelDraft || defaultRoleChoices()), [name]:choice};
+    } else {
+      roleOverrides[name] = choice;
+      saveActiveSession();
+      renderSessions();
+    }
+    renderSettingsModels();
+  }
+
+  function editProviderConnection(provider) {
+    openSettingsPane('setup');
+    setupProviderSelect.value = provider;
+    syncSetupProviderFields({useDefaults:true});
+    setupForm.scrollIntoView({block:'start'});
+    setupApiKeyInput.focus();
+  }
+
+  function renderProviderConnections() {
+    const list = $('#provider-connections');
+    if (!list) return;
+    list.innerHTML = [...setupProviders.values()].map(provider => {
+      const configured = provider.requires_key ? provider.key_configured : provider.connection_saved;
+      const health = provider.api_health?.state;
+      const state = !configured ? (provider.requires_key ? 'Add API key' : 'Optional local connection') : health === 'verified' ? `Tested: ${provider.test_model}`
+        : health === 'failed' ? 'Last test failed' : health === 'expired' ? 'Test expired' : 'Configured · test access';
+      return `<div class="provider-connection-card" data-provider="${escapeHtml(provider.id)}">
+        <strong>${escapeHtml(provider.label)}</strong>
+        <small class="${health === 'verified' ? 'connection-ok' : 'connection-muted'}">${escapeHtml(state)}</small>
+        <small>${escapeHtml(provider.masked_key || (provider.requires_key ? 'No saved key' : 'Local · no key needed'))}</small>
+        <button type="button" class="ghost-btn" data-edit-provider="${escapeHtml(provider.id)}">${configured ? 'Edit / test connection' : 'Add connection'}</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('[data-edit-provider]').forEach(button => button.addEventListener('click', () => editProviderConnection(button.dataset.editProvider)));
+  }
+
+  async function refreshRoleModelStatus() {
+    const revision = ++modelStatusRevision;
+    const choices = selectedRoleChoices();
+    try {
+      const response = await fetch('/api/models/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({overrides:choices})});
+      if (!response.ok) return;
+      const data = await response.json();
+      if (revision !== modelStatusRevision) return;
+      let configured = 0, verified = 0;
+      for (const item of data.role_statuses || []) {
+        if (item.role === 'chronos') continue;
+        configured += item.key_configured ? 1 : 0;
+        verified += item.status === 'verified' ? 1 : 0;
+        const label = settingsRoles.querySelector(`[data-role="${item.role}"] .sr-connection-status`);
+        if (label) {
+          label.textContent = item.status_label;
+          label.className = `sr-connection-status setup-role-status ${item.status}`;
+        }
+      }
+      const providers = new Set(Object.values(choices).map(item => item.provider));
+      $('#models-status-title').textContent = `${providers.size} provider${providers.size === 1 ? '' : 's'} · ${configured}/4 configured · ${verified} verified`;
+    } catch (_) { $('#models-status-title').textContent = 'Connection status unavailable'; }
+  }
+
+  async function testRoleModel(name, button) {
+    const choice = selectedRoleChoices()[name];
+    if (!choice) return;
+    button.disabled = true;
+    const feedback = button.closest('.settings-role').querySelector('.sr-feedback');
+    feedback.textContent = 'Testing the selected model…';
+    $('#models-feedback').textContent = `Testing ${metaFor(name).label}…`;
+    try {
+      const response = await fetch('/api/setup/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(choice)});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw Error(data.problem || data.detail || 'API test failed');
+      applySetupStatus(data, {preserveForm:true, announce:false});
+      $('#models-feedback').textContent = `${metaFor(name).label}: API connected (${choice.model}).`;
+      const updated = settingsRoles.querySelector(`[data-role="${name}"] .sr-feedback`);
+      if (updated) updated.textContent = `API connected: ${choice.model}`;
+    } catch (error) { $('#models-feedback').textContent = error.message; feedback.textContent = error.message; }
+    finally { button.disabled = false; void refreshRoleModelStatus(); }
+  }
+
+  function renderSettingsModels() {
+    if (!settingsRoles) return;
+    settingsRoles.innerHTML = '';
+    const choices = selectedRoleChoices();
+    const modelRoles = [{name:'hermes', description:'Orchestrator'}, ...roles];
+    for (const r of modelRoles) {
+      const meta = metaFor(r.name);
+      const choice = choices[r.name] || {provider:r.provider || 'none', model:r.model || ''};
+      const isChronos = r.name === 'chronos';
+      const knownProviders = isChronos ? ['none'] : [...setupProviders.keys()];
+      const knownModels = providerModelIds(choice.provider);
+      if (choice.model && !knownModels.includes(choice.model)) knownModels.unshift(choice.model);
       const card = document.createElement('div');
       card.className = 'settings-role';
       card.dataset.role = r.name;
-      const isChronos = (r.name === 'chronos');
-      if (isChronos) card.classList.add('scheduling-role');
-      const lockAttrs = isChronos ? 'disabled title="This role has no LLM by design (scheduling only)"' : '';
-      card.innerHTML = `
-        <div class="settings-role-head">
-          ${avatarHtml(meta, 'sr-avatar')}
-          <span class="sr-name">${escapeHtml(meta.label)}</span>
-          ${isChronos ? '<span class="sr-badge">scheduling</span>' : ''}
-        </div>
-        ${r.note ? `<div class="settings-role-note">${escapeHtml(cleanDisplayText(r.note))}</div>` : ''}
-        <div class="settings-role-row">
-          <span class="sr-key">Provider</span>
-          <select class="sr-provider" data-role="${escapeHtml(r.name)}" title="Provider" ${lockAttrs}>
-            ${knownProviders.map((p) => `<option value="${escapeHtml(p)}" ${p === currentProvider ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="settings-role-row">
-          <span class="sr-key">Model</span>
-          <select class="sr-model" data-role="${escapeHtml(r.name)}" title="Model" ${lockAttrs}>
-            ${knownModelIds.map((id) => {
-              const lbl = modelLabel(currentProvider, id);
-              return `<option value="${escapeHtml(id)}" ${id === currentModel ? 'selected' : ''}>${escapeHtml(lbl)}</option>`;
-            }).join('')}
-          </select>
-        </div>
-      `;
+      card.innerHTML = `<div class="settings-role-head">${avatarHtml(meta, 'sr-avatar')}<span class="sr-name">${escapeHtml(meta.label)}</span></div>
+        ${isChronos ? '<p class="setup-muted">Local scheduling · no model or API key required.</p>' : ''}
+        <label class="settings-role-row"><span class="sr-key">Provider</span><select class="sr-provider" ${isChronos ? 'disabled' : ''}>
+          ${knownProviders.map(p => `<option value="${escapeHtml(p)}" ${p === choice.provider ? 'selected' : ''}>${escapeHtml(setupProviders.get(p)?.label || p)}</option>`).join('')}</select></label>
+        <label class="settings-role-row"><span class="sr-key">Model</span><select class="sr-model" ${isChronos ? 'disabled' : ''}>
+          ${knownModels.map(id => `<option value="${escapeHtml(id)}" ${id === choice.model ? 'selected' : ''}>${escapeHtml(modelLabel(choice.provider,id))}</option>`).join('')}</select></label>
+        ${isChronos ? '' : '<span class="sr-connection-status setup-role-status">Checking connection…</span><div class="setup-actions"><button class="ghost-btn sr-test" type="button">Test this role</button><button class="ghost-btn sr-edit-key" type="button">Configure connection</button></div><small class="sr-feedback setup-muted" role="status"></small>'}`;
       settingsRoles.appendChild(card);
-
-      const provSel = card.querySelector('.sr-provider');
-      const modSel = card.querySelector('.sr-model');
-      // If currentModel isn't in the catalog for this provider, add a synthetic
-      // option so the user can still see what was set (for example a custom yaml model).
-      if (currentModel && !knownModelIds.includes(currentModel)) {
-        const opt = document.createElement('option');
-        opt.value = currentModel;
-        opt.textContent = currentModel + ' (custom)';
-        modSel.appendChild(opt);
-        modSel.value = currentModel;
-      }
-      // Scheduling role: don't bind change handlers (selects are disabled)
-      if (isChronos) return;
-      provSel.addEventListener('change', () => {
-        const newProv = provSel.value;
-        const ids = providerModelIds(newProv);
-        modSel.innerHTML = ids.map((id) => {
-          const lbl = modelLabel(newProv, id);
-          return `<option value="${escapeHtml(id)}">${escapeHtml(lbl)}</option>`;
-        }).join('');
-        // Pick first option of new provider as default
-        const defaultModel = ids[0] || '';
-        if (defaultModel) modSel.value = defaultModel;
-        roleOverrides[r.name] = { provider: newProv, model: modSel.value };
-        modSel.classList.add('changed');
-        provSel.classList.add('changed');
-        saveActiveSession();
-        renderSessions();
+      if (isChronos) continue;
+      card.querySelector('.sr-provider').addEventListener('change', event => {
+        const provider = event.target.value;
+        const model = providerModelIds(provider)[0] || setupProviders.get(provider)?.model || '';
+        updateRoleChoice(r.name, {provider,model});
       });
-      modSel.addEventListener('change', () => {
-        roleOverrides[r.name] = { provider: provSel.value, model: modSel.value };
-        modSel.classList.add('changed');
-        provSel.classList.add('changed');
-        saveActiveSession();
-        renderSessions();
-      });
+      card.querySelector('.sr-model').addEventListener('change', event => updateRoleChoice(r.name, {provider:choice.provider,model:event.target.value}));
+      card.querySelector('.sr-edit-key').addEventListener('click', () => editProviderConnection(choice.provider));
+      card.querySelector('.sr-test').addEventListener('click', event => void testRoleModel(r.name,event.target));
     }
+    const sharedProvider = $('#models-shared-provider');
+    const existingProvider = sharedProvider.value;
+    sharedProvider.innerHTML = [...setupProviders.values()].map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`).join('');
+    sharedProvider.value = setupProviders.has(existingProvider) ? existingProvider : choices.hermes?.provider || 'deepseek';
+    renderSharedModels();
+    $('#models-save-defaults').hidden = modelScope !== 'defaults';
+    $('#models-scope-note').textContent = modelScope === 'defaults'
+      ? 'Save below to use these choices for new chats. Existing chats retain their assigned models.'
+      : 'Choices are saved automatically for this chat. Other chats keep their models.';
+    $('#models-status-scope').textContent = modelScope === 'defaults' ? 'New chat defaults (draft)' : 'Current chat';
+    void refreshRoleModelStatus();
   }
+
+  function renderSharedModels() {
+    const provider = $('#models-shared-provider').value;
+    const selected = $('#models-shared-model').value;
+    $('#models-shared-model').innerHTML = providerModels(provider).map(model => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label || model.id)}</option>`).join('');
+    if (providerModelIds(provider).includes(selected)) $('#models-shared-model').value = selected;
+  }
+
+  $('#models-shared-provider').addEventListener('change', renderSharedModels);
+  $('#models-scope').addEventListener('change', event => {
+    modelScope = event.target.value;
+    if (modelScope === 'defaults') defaultModelDraft = cloneJSON(defaultRoleChoices(), {});
+    renderSettingsModels();
+  });
+  $('#models-apply-all').addEventListener('click', () => {
+    const choice = {provider:$('#models-shared-provider').value, model:$('#models-shared-model').value};
+    if (!choice.model) return;
+    for (const name of ['hermes','hephaestus','athena','apollo']) {
+      if (modelScope === 'defaults') defaultModelDraft[name] = {...choice};
+      else roleOverrides[name] = {...choice};
+    }
+    if (modelScope === 'chat') { saveActiveSession(); renderSessions(); }
+    renderSettingsModels();
+  });
+  $('#models-save-defaults').addEventListener('click', async event => {
+    event.target.disabled = true;
+    pinChatModels();
+    try {
+      const response = await fetch('/api/models/defaults', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({models:defaultModelDraft})});
+      const data = await response.json();
+      if (!response.ok) throw Error(data.detail || 'Could not save defaults');
+      applySetupStatus(data, {preserveForm:true});
+      await loadRoles();
+      $('#models-feedback').textContent = 'New chat defaults saved. Existing chat choices are unchanged.';
+    } catch(error) { $('#models-feedback').textContent = error.message; }
+    finally { event.target.disabled = false; }
+  });
 
   // Get current effective provider/model for a role (with override)
   function effectiveModel(roleName) {
@@ -1057,7 +1171,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.2.6';
+    const version = latestAppInfo?.ui_version || '0.3.1';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1104,7 +1218,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.2.6';
+    const version = info.ui_version || '0.3.1';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1278,6 +1392,7 @@
       renderSetupModelOptions(provider);
       if (setupBaseUrlInput) setupBaseUrlInput.value = provider.base_url || '';
       if (setupApiKeyInput) setupApiKeyInput.value = '';
+      $('#setup-credential-storage').value = provider.credential_storage || 'env';
     }
     if (setupProviderNote) {
       setupProviderNote.textContent = provider.note || '';
@@ -1303,7 +1418,7 @@
     if (!guide) return;
     const steps = guide.steps || {};
     $('#onboarding-steps').innerHTML = [
-      ['workspace', `Workspace: ${guide.workspace}`], ['configured', 'Save provider and model below'],
+      ['workspace', `Workspace: ${guide.workspace}`], ['configured', 'Assign role models in Models'],
       ['verified', 'Test the saved API configuration'], ['first_task', 'Complete a first task'],
     ].map(([key, label]) => `<li class="${steps[key] ? 'done' : ''}">${steps[key] ? '✓' : '○'} ${escapeHtml(label)}</li>`).join('');
   }
@@ -1383,7 +1498,7 @@
   function applySetupStatus(status, options = {}) {
     if (!setupForm || !status) return;
     latestSetupStatus = status;
-    const preserveForm = Boolean(options.preserveForm);
+    const preserveForm = Boolean(options.preserveForm || setupFormTouched);
     const announce = options.announce !== false;
     const formProvider = preserveForm ? setupProviderSelect?.value || '' : '';
     const formModel = preserveForm
@@ -1417,9 +1532,11 @@
       syncSetupProviderFields({ useDefaults: false });
     }
 
+    renderProviderConnections();
     const label = status.provider_label || providerLabelFromSetup(status.provider);
     if (setupStatusTitle) {
-      setupStatusTitle.textContent = status.summary_title || `${label} · ${status.model || 'model not set'}`;
+      const count = status.providers.filter(p => p.requires_key ? p.key_configured : p.connection_saved).length;
+      setupStatusTitle.textContent = `${count} provider${count === 1 ? '' : 's'} configured · single or mixed models`;
     }
     renderSetupRoleStatuses(status.role_statuses || []);
     renderOnboarding(status.onboarding);
@@ -1449,14 +1566,11 @@
       setupEnvPath.textContent = status.env_path || '—';
       setupEnvPath.title = status.env_path || '';
     }
-    if (status.setup_ready) {
-      const verified = status.verified_count === status.role_count;
-      setSetupPill(verified ? 'API verified' : 'configured', verified ? 'ok' : 'warn');
-      if (setupStatusEl) setupStatusEl.title = status.message || 'Configuration is saved. API access requires an explicit test.';
-    } else {
-      setSetupPill(`${status.ready_count || 0}/${status.role_count || 0} ready`, 'warn');
-      if (setupStatusEl) setupStatusEl.title = status.message || 'Some chat agents need API configuration.';
-    }
+    const configuredConnections = status.providers.filter(p => p.requires_key ? p.key_configured : p.connection_saved);
+    const testedConnections = configuredConnections.filter(p => p.api_health?.state === 'verified');
+    setSetupPill(configuredConnections.length ? `${testedConnections.length}/${configuredConnections.length} tested` : 'add a provider',
+      configuredConnections.length && testedConnections.length === configuredConnections.length ? 'ok' : 'warn');
+    if (setupStatusEl) setupStatusEl.title = 'Connection tests verify the displayed test model. See Models for each role’s actual configuration.';
     if (announce && status.message) setComposerStatus(status.message, status.setup_ready ? 'ok' : 'warn');
     renderSettingsInfo();
   }
@@ -1835,7 +1949,6 @@
       ).trim(),
       base_url: (setupBaseUrlInput?.value || '').trim(),
       api_key: (setupApiKeyInput?.value || '').trim(),
-      apply_to_roles: setupApplyRoles ? setupApplyRoles.checked : true,
       credential_storage: $('#setup-credential-storage')?.value || 'env',
     };
   }
@@ -1856,7 +1969,7 @@
       applySetupStatus(data, { preserveForm: true, announce: false });
       if (data.ok) {
         renderSetupCheckResult('API connected', [], 'ok');
-        setSetupPill('api ok', 'ok');
+        setSetupPill('test passed', 'ok');
         setComposerStatus('API connection works', 'ok');
       } else {
         const problem = data.problem || 'API test failed';
@@ -1939,20 +2052,18 @@
     setSetupBusy(true);
     setSetupPill('saving');
     try {
-      const resp = await fetch('/api/setup/save', {
+      const resp = await fetch('/api/connections/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data = await resp.json();
       if (!resp.ok) throw data;
-      applySetupStatus(data);
+      applySetupStatus(data, {preserveForm:true});
+      setupApiKeyInput.value = '';
       await loadRoles();
-      renderSetupCheckResult('Local config saved', [
-        'Saved provider/model choices to config/pantheon.yaml.',
-        'Saved the API key to .env when a new key was provided.',
-      ], 'ok');
-      setComposerStatus('Local config saved', 'ok');
+      renderSetupCheckResult('Provider connection saved', ['Role models were not changed. Open Models to assign roles.'], 'ok');
+      setComposerStatus('Provider connection saved', 'ok');
     } catch (e) {
       console.error(e);
       const message = setupErrorMessage(e);
@@ -3467,6 +3578,8 @@
       loadMedia(),
       loadTasks(),
     ]);
+    pinChatModels();
+    renderSettingsModels();
     if (latestSetupStatus?.onboarding?.show) openSettingsPane('setup');
   }
 
@@ -5691,7 +5804,9 @@
         isPrefix(previous.messages || [], session.messages || []);
       const previousExtends = previous && (previous.messages || []).length > (session.messages || []).length &&
         isPrefix(session.messages || [], previous.messages || []);
-      if (!previous || extendsPrevious || (!previousExtends && (session.updatedAt || 0) > (previous.updatedAt || 0))) merged.set(session.id, session);
+      if (!previous || extendsPrevious || (!previousExtends && (session.updatedAt || 0) > (previous.updatedAt || 0))) {
+        merged.set(session.id, {...session, overrides:{...(previous?.overrides || {}), ...(session.overrides || {})}});
+      }
     }
     return [...merged.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   }
@@ -6027,6 +6142,8 @@
     const session = sessions.find((item) => item.id === sessionId);
     if (!session) return;
     activeSessionId = session.id;
+    modelScope = 'chat';
+    $('#models-scope').value = 'chat';
     roleOverrides = cloneJSON(session.overrides, {});
     isRestoringSession = true;
     setMode(session.mode || 'auto');
@@ -6046,7 +6163,10 @@
     const session = createSession('New chat');
     sessions.unshift(session);
     activeSessionId = session.id;
-    roleOverrides = {};
+    modelScope = 'chat';
+    $('#models-scope').value = 'chat';
+    roleOverrides = cloneJSON(defaultRoleChoices(), {});
+    session.overrides = cloneJSON(roleOverrides, {});
     isRestoringSession = true;
     setMode('auto');
     turns = [];
@@ -6057,6 +6177,7 @@
     renderSettingsModels();
     isRestoringSession = false;
     saveActiveSession();
+    persistSessions();
     renderSessions();
   }
 
@@ -6795,7 +6916,9 @@
           case 'done': {
             void loadBudgets({preserveForm: true});
             void loadTasks();
-            if (latestSetupStatus?.onboarding?.show) void loadSetupStatus({quiet: true, preserveForm: true});
+            pinChatModels();
+    renderSettingsModels();
+    if (latestSetupStatus?.onboarding?.show) void loadSetupStatus({quiet: true, preserveForm: true});
             providerDot.classList.remove('connecting');
             providerDot.classList.add('online');
             const failed = data.success === false || (data.status && data.status !== 'completed');

@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.3.0-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.1-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -163,7 +163,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-最后一条命令应显示 `pantheon 0.3.0` 或更新版本。
+最后一条命令应显示 `pantheon 0.3.1` 或更新版本。
 
 ### 第三步：启动并配置 Web UI
 
@@ -173,15 +173,21 @@ pantheon web
 
 保持终端窗口打开，并访问 <http://127.0.0.1:8000/>。然后：
 
-1. 选择 DeepSeek、OpenAI、Anthropic 或 Ollama。
-2. 输入该 Provider 的 API key；如果使用 Ollama，请确认 Ollama 已在本机运行。
-3. 选择模型。
-   首次配置请保持 **Use this model for all chat agents** 已勾选。
-4. 点击 **Test API**；这会向 Provider 发出一次很小的真实请求。
-5. 测试成功后点击 **Save local config**。
-6. 点击 **Check setup**，确认所有已启用 Agent 均已就绪。
+1. 在 **Settings → Setup** 选择你拥有 API key 的供应商（或本地 Ollama），填写密钥，保留官方 Base URL。
+2. 选择用于测试的模型，点击 **Test API → Save provider connection**。保存连接不会更改角色模型。
+3. 打开 **Models**，选择 **New chat defaults**，在 **Use one model for all AI roles** 中选择供应商和模型，点击 **Apply to all AI roles → Save new chat defaults**。只配置一家即可使用。
+4. 多家混用是可选功能：分别添加供应商连接，再逐个角色选择模型。**Current chat only** 只更改当前聊天；旧聊天保留各自的模型选择。
 
 点击 **New Chat**，发送一个简单任务，例如 `写一个 Python hello world 示例`。看到模型回复，并且 Activity 显示任务完成，就代表安装成功。按终端中的 `Control-C` 可以停止 Pantheon。
+
+<details>
+<summary>查看供应商连接与角色模型设置</summary>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/pantheon-connections.png" alt="独立供应商连接：配置一家即可使用" width="42%">
+  <img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/pantheon-role-models.png" alt="所有 AI 角色共用模型，或逐个角色选择模型" width="42%">
+</p>
+示例配置。连接测试验证所选模型，添加多家供应商是可选功能。
+</details>
 
 ### 以后再次启动
 
@@ -409,7 +415,7 @@ for step in result["steps"]:
 
 ## 当前边界
 
-Pantheon v0.3.0 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
+Pantheon v0.3.1 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
 - 安全的独立步骤可并行，默认 3 个、最多 4 个；依赖步骤和有外部操作的步骤保持顺序。模型响应目前按完整消息返回，不是供应商逐 token 流式输出。
 - 失败恢复默认最多 1 轮，可设置 0–2 轮；仅修复原计划内失败指令，不扩大任务、不改变角色或依赖、不静默重跑外部操作。

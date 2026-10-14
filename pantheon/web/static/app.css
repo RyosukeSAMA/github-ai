@@ -3145,6 +3145,29 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
   font-weight: 600;
   font-size: 12px;
 }
+.provider-connections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+.provider-connection-card, .models-shared-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+.provider-connection-card small { overflow-wrap: anywhere; }
+.connection-ok { color: var(--teal, #54cfc7); }
+.connection-muted { color: var(--text-muted, #8991ac); }
+.models-shared-controls label { display: flex; flex-direction: column; gap: 6px; }
+.models-shared-controls select { width: 100%; min-width: 0; }
+.sr-connection-status { display: inline-block; margin-top: 10px; white-space: normal; }
+@media (max-width: 480px) { .provider-connections { grid-template-columns: minmax(0, 1fr); } }
+
 .settings-role-row {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 11px;

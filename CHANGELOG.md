@@ -2,6 +2,14 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.3.1] - 2026-10-14
+
+- Save provider connections independently of role models; keep legacy configuration and credential storage usable without a mandatory migration.
+- Let all AI roles share one provider/model or mix providers per role, including Hermes. Separate current-chat choices from explicitly saved new-chat defaults.
+- Keep existing chats pinned to their model assignments across default changes and reloads; show and test each selected role's actual connection.
+- Preserve provider/key/endpoint drafts when initial settings or catalog requests return after editing begins.
+- Resolve DeepSeek and OpenAI credentials/endpoints independently across Web, CLI, SDK and media. Additional provider keys are optional; test probes never imply access to all models.
+
 ## [0.3.0] - 2026-10-14
 
 - Share Memory, Skills, plugins, MCP policy/approvals and scheduling between CLI, Web and SDK; serialize cross-process state writes.

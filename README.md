@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.3.0-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.1-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -164,7 +164,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-The last command should print `pantheon 0.3.0` or a newer version.
+The last command should print `pantheon 0.3.1` or a newer version.
 
 ### 3. Start and configure the Web UI
 
@@ -174,15 +174,21 @@ pantheon web
 
 Keep the terminal open and visit <http://127.0.0.1:8000/>. Then:
 
-1. Select DeepSeek, OpenAI, Anthropic, or Ollama.
-2. Enter that provider's API key, or make sure Ollama is running locally.
-3. Select a model.
-   Keep **Use this model for all chat agents** checked for your first setup.
-4. Select **Test API**. This makes one small real provider request.
-5. After the test succeeds, select **Save local config**.
-6. Select **Check setup** and confirm that every enabled agent is ready.
+1. In **Settings → Setup**, select the provider whose API key you own (or local Ollama), enter the key, and keep its official Base URL.
+2. Select a test model, run **Test API**, then **Save provider connection**. A connection save never changes role models.
+3. Open **Models**, choose **New chat defaults**, select your provider/model under **Use one model for all AI roles**, and click **Apply to all AI roles → Save new chat defaults**. One provider is enough.
+4. Optionally add other provider connections and select a different provider/model for each role. **Current chat only** changes that chat; existing chats retain their choices.
 
 Create a **New Chat** and send a simple first task such as `Write a Python hello world example`. A model response and a completed Activity timeline confirm that the installation works. Press `Control-C` in Terminal to stop Pantheon.
+
+<details>
+<summary>Provider connections and role model settings</summary>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/pantheon-connections.png" alt="Independent provider connections: one provider is enough" width="42%">
+  <img src="https://raw.githubusercontent.com/RyosukeSAMA/github-ai/main/docs/images/pantheon-role-models.png" alt="Assign one model to all AI roles or choose models per role" width="42%">
+</p>
+Example configuration. Connection tests verify the selected model; adding providers is optional.
+</details>
 
 ### Start Pantheon again later
 
@@ -410,7 +416,7 @@ These repository-local state files are covered by `.gitignore` and should remain
 
 ## Current Boundaries
 
-Pantheon v0.3.0 is still an alpha local workspace. Understand these limits before deployment:
+Pantheon v0.3.1 is still an alpha local workspace. Understand these limits before deployment:
 
 - Independent safe steps run concurrently (default 3, maximum 4); dependencies and side-effecting steps retain order. Model responses arrive as complete messages, not token streams.
 - Recovery repairs failed instructions within the original plan (default 1 round, maximum 2). It cannot expand scope, change roles/dependencies or silently repeat external actions.

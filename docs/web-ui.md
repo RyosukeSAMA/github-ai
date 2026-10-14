@@ -4,7 +4,7 @@ v0.3.0 新增 Media 页、首次启动引导、系统凭据选项、Info 中的�
 
 本文记录当前 Web UI 与 Workspace 的主要改动、使用方式、测试方法，以及后续发布到 GitHub 前需要检查的事项。
 
-当前界面标识：`UI v0.3.0`
+当前界面标识：`UI v0.3.1`
 
 ## 改动总览
 
@@ -12,7 +12,7 @@ v0.3.0 新增 Media 页、首次启动引导、系统凭据选项、Info 中的�
 
 - OpenAI 的内置推荐模型包含 `gpt-6-astra`、`gpt-6-sol` 和 `gpt-6-luna`，Setup 和各角色的 Models 下拉框共用这份目录。新配置仍推荐 Astra，已有选择不会自动切换。
 - 即使尚未配置 OpenAI API key，也会显示这三个模型；这表示产品已支持选择，并不表示账户已获得访问权限。
-- 在 Settings → Setup 选择 OpenAI，填写自己的 API key，选择需要的 GPT-6 型号，再运行 `Refresh models` 和 `Test API`。验证后点击 `Save local config` 保存。
+- 在 Settings → Setup 选择 OpenAI，填写自己的 API key，选择需要的 GPT-6 型号，再运行 `Refresh models` 和 `Test API`。验证后点击 `Save provider connection` 保存；角色分配在 Models 页面独立设置。
 - 当前使用 DeepSeek 时，OpenAI API key 需要单独配置；DeepSeek 的 key 不能用于 OpenAI。
 - 已配置的官方供应商在服务启动时检查目录，之后每小时检查一次，缓存满 24 小时才重新获取。自动刷新只更新可选列表，不切换已保存的模型。
 - 三个 GPT-6 型号都使用现有 Responses API 调用路径；旧会话的角色覆盖和已保存的模型保持原样。
@@ -23,7 +23,7 @@ v0.3.0 新增 Media 页、首次启动引导、系统凭据选项、Info 中的�
 - 将 Web UI 调整为更接近 agent workspace 的三栏布局：左侧会话与模式，中间对话，右侧 Workspace。
 - Light / Dark 主题统一使用变量与玻璃拟态风格，减少硬编码背景色。
 - 背景改为低饱和蓝紫渐变网格与柔和氛围层。
-- 左下角增加 `UI v0.3.0`，方便后续定位 UI 版本。
+- 左下角增加 `UI v0.3.1`，方便后续定位 UI 版本。
 - 左下角 GitHub 按钮改为官方 GitHub mark。
 
 ### 会话
@@ -175,10 +175,10 @@ Setup 是给本地安装用户准备的配置入口，适合不熟悉命令行�
 保存规则：
 
 - API key 保存到 Setup 显示的 `.env` 或受支持的系统凭据存储；后者由用户明确选择。
-- provider、base URL、默认模型写入 `config/pantheon.yaml`。
+- 独立连接保存在 `config/pantheon.yaml` 的 `provider_connections`，密钥只保存引用。默认模型在 Models 中另行保存。
 - API key 不会写入浏览器 `localStorage`。
 - 后端接口不会返回完整 API key，只返回 mask 后的状态，例如 `sk-t••••1234`。
-- 保存后后端会重置当前 Pantheon 实例，下一次请求会使用新的本地配置。
+- 保存连接后后端重载连接；默认角色模型和会话选择不变。每家可单独保存，不再需要恢复 Hermes。
 - Anthropic 模型目录包含 Claude Opus 5.5（`claude-opus-5-5`）和 Opus 5（`claude-opus-5`）。Claude Messages
   兼容网关也选择 `Anthropic`，并按服务商说明修改 Base URL。
 - `Current setup` 会按 Hermes、Hephaestus、Athena、Apollo、Chronos 分行显示状态。
@@ -272,13 +272,15 @@ Info 是轻量只读诊断页，不放完整说明书。
 
 ### Models
 
-Models 用来做当前会话内的临时模型覆盖。
+角色技能与模型供应商独立。只配置一家就可以让 Hermes、Hephaestus、Athena、Apollo 共用模型，也可按角色选择多家。Chronos 使用本地调度。
 
-注意：
-
-- 这里的改动会跟随当前聊天会话保存到浏览器本地历史里。
-- 它不会写入 `.env` 或 `config/pantheon.yaml`。
-- 如果要让配置长期生效，应该使用 `Setup`。
+- **Current chat only**：自动保存当前会话的选择，不影响其他聊天。
+- **New chat defaults**：编辑后点击 **Save new chat defaults**，用于以后创建的会话。已有会话保存自己的模型快照。
+- **Apply to all AI roles**：将所选供应商和模型批量应用到当前配置范围。
+- **Configure connection**：直接跳转到该供应商的连接表单。
+- **Test this role**：验证该角色选中的模型、密钥和地址，显示实际验证状态。
+- Setup 中每家连接独立保存。`provider_connections` 保存密钥引用和接口地址，模型默认值保存在角色配置中；旧 `llm_providers` 配置仍可读取。
+- 所有模型相同仍会按任务路由调用角色；多家连接本身不产生 token，实际调用数量和价格影响费用。
 
 ### Artifact 卡片
 
@@ -558,29 +560,22 @@ Settings / Security，并显式传入 `--allow-network`。Chronos 仍依赖该�
 ### 基础界面
 
 1. 打开 `http://127.0.0.1:8000/`。
-2. 确认左下角显示 `UI v0.3.0`。
+2. 确认左下角显示 `UI v0.3.1`。
 3. 确认 GitHub 按钮使用 GitHub mark。
 4. 打开 Settings 切换 Light / Dark，刷新后确认主题保留。
 
-### Setup 本地配置
+### Setup 连接与 Models 角色分配
 
-1. 打开 Settings。
-2. 进入 `Setup`。
-3. 选择 `DeepSeek`。
-4. 确认 Default model 是 `deepseek-flash`。
-5. 确认 Base URL 是 `https://api.deepseek.com`。
-6. 粘贴一次 DeepSeek API key。
-7. 点击 `Save local config`。
-8. 确认状态变成 `ready`。
-9. 确认 `Current setup` 显示 `DeepSeek · 4/4 ready`，并列出 Hermes、Hephaestus、Athena、Apollo、Chronos 的状态。
-10. 检查项目根目录 `.env` 里出现 `DEEPSEEK_API_KEY=...`。
-11. 检查 `config/pantheon.yaml` 里 `llm_providers.openai.base_url` 是 DeepSeek endpoint。
-12. 点击 `Check`，确认没有报错。
-13. 点击 `Refresh models`，确认状态显示供应商返回的模型数量，模型下拉更新为当前 API key 可见的模型。
-14. 切换到一个新发现的模型，确认只有点击 `Save local config` 后才会修改本地配置。
-15. 暂时断网后再次点击 `Refresh models`，确认界面保留当前模型，并回退到 `.pantheon/model_catalog.json` 中的缓存目录。
-16. 重启 Web 服务，确认已配置的官方供应商会自动建立模型缓存；24 小时内再次重启不会重复请求供应商。
-17. 将 Base URL 改为第三方兼容网关，确认后台不会自动探测；仅点击 `Refresh models` 时才访问该网关。
+1. 在 Setup 选择 DeepSeek，确认测试模型和 Base URL，填写 API key。
+2. 点击 Test API，再点击 Save provider connection。确认显示连接卡片，保存不修改角色模型。
+3. 在 Models 选择 New chat defaults，将 DeepSeek 模型 Apply to all AI roles，然后 Save new chat defaults。
+4. 新建聊天，确认 Hermes 与其他三个 AI 角色共用 DeepSeek，Chronos 不需要模型。
+5. 添加 OpenAI、Anthropic 连接，确认三家的密钥和接口地址独立，原角色模型不变。
+6. 在 Current chat only 范围给角色分配不同供应商，确认实际状态摘要与分配一致。
+7. 使用 Test this role，确认只验证所选模型，未填写密钥的角色显示需配置。
+8. 更改新会话默认配置，确认已有会话保持原模型，新会话使用新默认值，刷新后仍保留。
+9. Refresh models 只刷新可选目录，不修改角色分配；断网时保留缓存与当前选择。
+10. 自定义端点不会后台自动探测，只有用户显式刷新或测试才会访问。
 
 ### `/` 命令菜单
 
