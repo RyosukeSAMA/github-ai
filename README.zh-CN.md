@@ -247,7 +247,7 @@ Pantheon 用神祇身份表达清晰的职责边界：Hermes 负责编排，Heph
 
 <p align="center">
   <a href="docs/images/posters/hermes.webp"><img src="docs/images/posters/hermes.webp" alt="Hermes — orchestration and routing" width="30%"></a>
-  <a href="docs/images/posters/hephaestus.webp"><img src="docs/images/posters/hephaestus.webp" alt="Hephaestus — engineering and building" width="30%"></a>
+  <a href="docs/images/posters/hephaestus-poster.webp"><img src="docs/images/posters/hephaestus-poster.webp" alt="Hephaestus — engineering and building" width="30%"></a>
   <a href="docs/images/posters/athena.webp"><img src="docs/images/posters/athena.webp" alt="Athena — research and reasoning" width="30%"></a>
 </p>
 
