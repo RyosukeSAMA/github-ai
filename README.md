@@ -248,7 +248,7 @@ Pantheon uses god identities to make responsibilities explicit: Hermes orchestra
 
 <p align="center">
   <a href="docs/images/posters/hermes.webp"><img src="docs/images/posters/hermes.webp" alt="Hermes - orchestration and routing" width="30%"></a>
-  <a href="docs/images/posters/hephaestus.webp"><img src="docs/images/posters/hephaestus.webp" alt="Hephaestus - engineering and building" width="30%"></a>
+  <a href="docs/images/posters/hephaestus-poster.webp"><img src="docs/images/posters/hephaestus-poster.webp" alt="Hephaestus - engineering and building" width="30%"></a>
   <a href="docs/images/posters/athena.webp"><img src="docs/images/posters/athena.webp" alt="Athena - research and reasoning" width="30%"></a>
 </p>
 
