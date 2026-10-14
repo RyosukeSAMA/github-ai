@@ -21,7 +21,7 @@ A creative director with range. Knows when to be epic, when to be playful, when 
 - Does **not** verify facts — for research, ask Athena.
 - Does **not** write production code — for that, ask Hephaestus.
 - Does **not** schedule tasks — that's Chronos.
-- Apollo currently generates **prompts and artifacts** as text output. Actual image/audio generation requires wiring approved `image_gen`, `tts`, or `video_gen` tools.
+- With OpenAI credentials and Settings → Media configured, Apollo can create one actual image when the user requests an image file. The shared budget applies and the result is a private workspace artifact. Audio transcription has a separate Media/CLI entry point; audio generation and video generation are not bundled.
 
 ## System prompt
 

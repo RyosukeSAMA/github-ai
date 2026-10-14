@@ -39,7 +39,7 @@ jobs:
       - name: Smoke test one-line installer
         if: matrix.python-version == '3.11'
         run: |
-          git tag -f v0.2.6
+          git tag -f v0.3.0
           install_dir="$(mktemp -d)/github-ai"
           PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
           "$install_dir/.venv/bin/pantheon" --version
@@ -82,7 +82,7 @@ jobs:
           python-version: "3.12"
       - name: Install stable-tag checkout and verify CLI
         run: |
-          git tag -f v0.2.6
+          git tag -f v0.3.0
           install_dir="$(mktemp -d)/github-ai"
           PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
           "$install_dir/.venv/bin/pantheon" --version
@@ -104,7 +104,7 @@ jobs:
           python -m pip install -e ".[dev]"
           python -m pip check
       - name: Test shared data, cancellation, crash recovery and backup
-        run: python -m pytest tests/test_paths.py tests/test_tasks.py tests/test_runtime.py tests/test_backup.py tests/test_context.py tests/test_credentials.py tests/test_budgets.py tests/test_service.py tests/test_windows_native.py
+        run: python -m pytest tests/test_paths.py tests/test_tasks.py tests/test_runtime.py tests/test_backup.py tests/test_context.py tests/test_credentials.py tests/test_budgets.py tests/test_service.py tests/test_windows_native.py tests/test_media.py tests/test_channels.py tests/test_resume.py tests/test_parallel.py tests/test_replanning.py
 
   windows-install:
     runs-on: windows-latest
@@ -116,7 +116,7 @@ jobs:
       - name: Native install, update and rollback without WSL
         shell: pwsh
         run: |
-          git tag -f v0.2.6
+          git tag -f v0.3.0
           $env:PANTHEON_REPO_URL = $env:GITHUB_WORKSPACE
           $env:PANTHEON_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'Pantheon app'
           $env:PANTHEON_DATA_DIR = Join-Path $env:RUNNER_TEMP 'Pantheon data'

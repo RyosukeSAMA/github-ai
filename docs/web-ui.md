@@ -1,8 +1,10 @@
-# Pantheon Web UI 更新说明
+# Pantheon Web UI 使用说明
+
+v0.3.0 新增 Media 页、首次启动引导、系统凭据选项、Info 中的预算/工作流/任务恢复，以及 Integrations 中的 Telegram、Slack、Discord。先阅读[新手安装](setup.zh-CN.md)、[媒体与恢复](workflows.zh-CN.md)和[聊天平台配置](channels.zh-CN.md)。下面保留详细操作说明。
 
 本文记录当前 Web UI 与 Workspace 的主要改动、使用方式、测试方法，以及后续发布到 GitHub 前需要检查的事项。
 
-当前界面标识：`UI v0.2.3`
+当前界面标识：`UI v0.3.0`
 
 ## 改动总览
 
@@ -21,7 +23,7 @@
 - 将 Web UI 调整为更接近 agent workspace 的三栏布局：左侧会话与模式，中间对话，右侧 Workspace。
 - Light / Dark 主题统一使用变量与玻璃拟态风格，减少硬编码背景色。
 - 背景改为低饱和蓝紫渐变网格与柔和氛围层。
-- 左下角增加 `UI v0.2.3`，方便后续定位 UI 版本。
+- 左下角增加 `UI v0.3.0`，方便后续定位 UI 版本。
 - 左下角 GitHub 按钮改为官方 GitHub mark。
 
 ### 会话
@@ -95,16 +97,16 @@
 - Settings / Display 里增加 `Voice language` 下拉。
 - 支持拖拽文件到输入区。
 - 文本类附件会作为上下文注入 prompt，一起发送给 agent。
-- 图片、PDF、二进制等暂时只发送文件 metadata，不会假装模型已经读取了文件内容。
+- PNG/JPEG/WebP/PDF 保存到本地；发送时由 Settings → Media 的视觉模型实际读取。其他二进制附件仍只显示 metadata。
 - 附件会在发送前显示 chip，可删除单个附件。
 - 语音输入使用浏览器原生 SpeechRecognition，支持时会把语音转成文字填入输入框；不支持时会显示提示。
 - 语音语言默认 `Auto` 跟随浏览器，也可以手动选择中文、英文、日文、韩文、法语、德语、西语等。
 
 当前边界：
 
-- 附件不是后端多模态文件直传。
+- 图片/PDF 通过后端发送给配置的视觉供应商，不是自动发送给聊天所用的 DeepSeek 或其他文本模型。
 - 文件内容不会长期完整保存到会话历史，历史里只保留附件名称、大小、类型等 metadata。
-- 如果要让模型真正读取 PDF、图片或多模态文件，需要后续扩展后端 request schema 和具体 LLM provider 适配。
+- 识别结果和文件保存在当前工作区，恢复任务时复用识别检查点。图片每个最多 8 MiB，合计最多 20 MiB、6 个文件。
 
 ### `/` 命令
 
@@ -172,7 +174,7 @@ Setup 是给本地安装用户准备的配置入口，适合不熟悉命令行�
 
 保存规则：
 
-- API key 写入项目根目录的 `.env`。
+- API key 保存到 Setup 显示的 `.env` 或受支持的系统凭据存储；后者由用户明确选择。
 - provider、base URL、默认模型写入 `config/pantheon.yaml`。
 - API key 不会写入浏览器 `localStorage`。
 - 后端接口不会返回完整 API key，只返回 mask 后的状态，例如 `sk-t••••1234`。
@@ -180,7 +182,7 @@ Setup 是给本地安装用户准备的配置入口，适合不熟悉命令行�
 - Anthropic 模型目录包含 Claude Opus 5.5（`claude-opus-5-5`）和 Opus 5（`claude-opus-5`）。Claude Messages
   兼容网关也选择 `Anthropic`，并按服务商说明修改 Base URL。
 - `Current setup` 会按 Hermes、Hephaestus、Athena、Apollo、Chronos 分行显示状态。
-- 顶部摘要会显示 `DeepSeek · 4/4 ready` 或 `Mixed providers · 3/4 ready`。
+- 顶部摘要区分 configured 与 API verified；仅有 key 不表示模型实际可调用，未验证/过期/失败会分别显示。
 - `4/4` 统计的是聊天相关 agent：Hermes、Hephaestus、Athena、Apollo。Chronos 是调度角色，不需要 API key。
 - `Check setup` 只读取本地 `.env` 和 `config/pantheon.yaml`，不会保存表单改动，也不会调用真实模型 API。
 - `Check setup` 不会把表单切回已保存配置；用户正在编辑的 provider/model/base URL 会保留。
@@ -556,7 +558,7 @@ Settings / Security，并显式传入 `--allow-network`。Chronos 仍依赖该�
 ### 基础界面
 
 1. 打开 `http://127.0.0.1:8000/`。
-2. 确认左下角显示 `UI v0.2.3`。
+2. 确认左下角显示 `UI v0.3.0`。
 3. 确认 GitHub 按钮使用 GitHub mark。
 4. 打开 Settings 切换 Light / Dark，刷新后确认主题保留。
 

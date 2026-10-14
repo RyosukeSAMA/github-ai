@@ -205,7 +205,7 @@ This manual source path applies to macOS, Ubuntu and WSL. One-line installer use
 Expected result:
 
 ```text
-pantheon 0.2.6
+pantheon 0.3.0
 ```
 
 A newer version number is also valid. Do not use `sudo pip install`.
@@ -429,7 +429,7 @@ Open Setup and configure the provider again.
 
 ### Get useful diagnostics
 
-In the Web UI, open **Settings → Support → Copy diagnostics**. It masks saved API keys. For service installations, run `pantheon service logs`.
+In the Web UI, open **Settings → Info → Copy diagnostics**. It masks saved API keys. For service installations, run `pantheon service logs`.
 
 If the problem remains, open a GitHub issue and include the operating system, `python3 --version`, `pantheon --version`, the exact failing command, and the sanitized error. Never include an API key.
 
@@ -479,4 +479,7 @@ Normal automated tests use mock clients and do not require API keys. Live provid
 
 Start locally and enable **Settings → Security** before binding with `--host 0.0.0.0`. Remote binds refuse to start without a configured login. Set `PANTHEON_ALLOWED_HOSTS` to a comma-separated list of the IP addresses or domain names used in your browser. Cross-origin UI requests are rejected. Remote terminal execution defaults to disabled; enable it only when intended with `PANTHEON_TERMINAL_ENABLED=true` before startup. Set the same variable to `false` to disable terminal execution locally. Restart after changing these server settings.
 
-Stopping a Web task prevents later agent/tool calls and synthesis. A synchronous model request already accepted by the provider may finish and be billed. Model requests have a 120-second timeout with at most one SDK retry; Web task execution has a 10-minute budget. Plans have at most eight steps, and prior-result context is truncated to bound its size. Large tasks may need to be split into smaller requests.
+Stopping a Web task prevents later agent/tool calls and synthesis. A synchronous model request already accepted by the provider may finish and be billed. Model requests have a 120-second timeout; budget-managed clients disable SDK retries. Web execution has a 10-minute budget. Plans have at most eight steps, bounded recovery is configurable, and long context is summarized with an explicit excerpt fallback. Large tasks may need to be split into smaller requests.
+
+
+After installation, see [media, budgets and task recovery](workflows.md) and [chat platform setup](channels.md).

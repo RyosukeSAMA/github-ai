@@ -79,6 +79,8 @@ def test_generation_transcription_outputs_and_no_foreign_provider_key(tmp_path, 
     # DeepSeek uses the OpenAI adapter, but its key must never become the OpenAI media key.
     media.connection_provider = lambda: {'llm_providers': {'openai': {'provider_id': 'deepseek', 'api_key': 'deepseek-test'}}}
     assert not media.status()['configured']['openai']
+    media.connection_provider = lambda: {'llm_providers': {'openai': {'base_url': 'https://api.deepseek.com', 'api_key': 'legacy-deepseek-test'}}}
+    assert not media.status()['configured']['openai']
     with pytest.raises(ValueError, match='Openai API key'):
         media.connection('openai')
     calls = []

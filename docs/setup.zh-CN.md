@@ -205,7 +205,7 @@ py -3.12 --version
 预期结果：
 
 ```text
-pantheon 0.2.6
+pantheon 0.3.0
 ```
 
 显示更高版本也正常。不要使用 `sudo pip install`。
@@ -429,7 +429,7 @@ pantheon web
 
 ### 收集可用的诊断信息
 
-在 Web UI 打开 **Settings → Support → Copy diagnostics**。它会隐藏已保存 API key。使用后台服务时可以运行 `pantheon service logs`。
+在 Web UI 打开 **Settings → Info → Copy diagnostics**。它会隐藏已保存 API key。使用后台服务时可以运行 `pantheon service logs`。
 
 问题仍未解决时，可以创建 GitHub Issue，并提供操作系统、`python3 --version`、`pantheon --version`、失败命令和去除敏感信息后的错误。不要提供 API key。
 
@@ -479,4 +479,7 @@ pytest e2e --browser chromium
 
 先在本机启动并开启 **Settings → Security**，再使用 `--host 0.0.0.0`。未配置登录时，远程绑定会拒绝启动。通过 `PANTHEON_ALLOWED_HOSTS` 设置浏览器访问使用的 IP 或域名，多个值用逗号分隔；跨来源 UI 请求会被拒绝。远程终端默认关闭，确有需要时在启动前设置 `PANTHEON_TERMINAL_ENABLED=true`；本机也可设置为 `false` 禁用。修改这些服务设置后需重启。
 
-停止 Web 任务后，不会再启动后续角色、工具或汇总。供应商已接受的同步模型请求可能继续完成并计费。模型请求超时为 120 秒，SDK 最多重试一次；Web 任务总执行预算为 10 分钟。计划最多八步，历史结果上下文会截断以限制大小，大任务可拆成多个请求。
+停止 Web 任务后，不会再启动后续角色、工具或汇总。供应商已接受的同步模型请求可能继续完成并计费。模型请求超时为 120 秒，预算管理下关闭 SDK 内部重试；Web 任务总执行预算为 10 分钟。计划最多八步，可配置有限恢复；长上下文按来源摘要，失败时明确使用节选，大任务可拆成多个请求。
+
+
+安装后可继续阅读[媒体、预算和任务恢复](workflows.zh-CN.md)及[聊天平台配置](channels.zh-CN.md)。

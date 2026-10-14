@@ -8,6 +8,7 @@ import re
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pantheon.core.budgets import TASK_ID
 from pantheon.core.credentials import atomic_text
@@ -60,9 +61,7 @@ class MediaService:
         return self.status()
 
     def connection(self, provider: str):
-        config = self.connection_provider() or {}
-        candidates = config.get('llm_providers', {})
-        cfg = next((v for k, v in candidates.items() if (v.get('provider_id') or k) == provider and v.get('enabled', True)), {})
+        cfg = self._provider_config(provider)
         key = self.services.env_value(provider.upper() + '_API_KEY') or cfg.get('api_key') or ''
         if not key:
             raise ValueError(f'Configure a {provider.title()} API key in Settings → Setup before using this capability.')
@@ -70,13 +69,21 @@ class MediaService:
         client.budget = self.services.budget  # Disable implicit SDK retries for paid calls.
         return client._get_client()
 
+    def _provider_config(self, provider):
+        expected_host = 'api.openai.com' if provider == 'openai' else 'api.anthropic.com'
+        for name, cfg in (self.connection_provider() or {}).get('llm_providers', {}).items():
+            if (cfg.get('provider_id') or name) != provider or not cfg.get('enabled', True):
+                continue
+            # Older configs used the OpenAI adapter name for DeepSeek/gateways.
+            # Only an explicit provider identity or official endpoint can identify media credentials.
+            if cfg.get('provider_id') == provider or not cfg.get('base_url') or urlsplit(cfg['base_url']).hostname == expected_host:
+                return cfg
+        return {}
+
     def status(self):
         available = {}
-        config = self.connection_provider() or {}
         for provider in ('openai', 'anthropic'):
-            available[provider] = bool(self.services.env_value(provider.upper() + '_API_KEY') or any(
-                (cfg.get('provider_id') or name) == provider and cfg.get('enabled', True) and cfg.get('api_key')
-                for name, cfg in config.get('llm_providers', {}).items()))
+            available[provider] = bool(self.services.env_value(provider.upper() + '_API_KEY') or self._provider_config(provider).get('api_key'))
         return {'settings': self.settings(), 'configured': available, 'max_file_bytes': MAX_INPUT_BYTES,
                 'max_vision_bytes': MAX_VISION_BYTES, 'note': 'Keys mean configured, not verified access. Uploading is local. Sending images/PDFs, generating an image or transcribing sends files to the selected provider and may cost money. Model IDs are editable; account access varies.'}
 

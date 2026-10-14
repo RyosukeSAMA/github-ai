@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.2.6-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -45,6 +45,8 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 | 扩展 | 6 个内置 Skills、本地 Skills、Plugin prompt packs、MCP 工具和 Webhook |
 | 本地配置 | Provider/模型向导、配置检查、API 测试、登录锁和可选自动启动服务 |
 
+新增能力：图片/PDF 理解、Apollo 原生图片生成、音频转文字、Telegram/Slack/Discord 回调、任务检查点与完整归档、工作区预算、系统凭据存储和原生 Windows 安装。CLI、Web、SDK 共用这些能力。
+
 Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 Web 会话保存在所选工作区；浏览器还保留会话缓存和显示偏好。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
 <a id="quick-start"></a>
@@ -60,7 +62,7 @@ Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 W
 | Windows 11 | 原生 PowerShell + Python 3.11/3.12 | 原生安装、后台启动和 ConPTY 终端；CI 验收 |
 | Windows + WSL2 Ubuntu | Ubuntu 22.04/24.04 | 可选 Linux 环境 |
 
-此外还需要 Git、`curl`、现代浏览器，以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。
+此外还需要 Git、现代浏览器（macOS/Linux 安装还使用 `curl`），以及一个模型 Provider 的 API key，或者本地 Ollama。ChatGPT 订阅不包含 OpenAI API 使用权限。如果还没有 key，请先阅读[服务商准备说明](docs/setup.zh-CN.md)。
 
 ### 一行安装
 
@@ -161,7 +163,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-最后一条命令应显示 `pantheon 0.2.6` 或更新版本。
+最后一条命令应显示 `pantheon 0.3.0` 或更新版本。
 
 ### 第三步：启动并配置 Web UI
 
@@ -225,7 +227,7 @@ cp .env.example .env
 4. 使用 **Preview** 查看 HTML，使用 **Files** 管理文件，使用 **Terminal** 执行本地命令。
 5. 在输入框键入 `/`，可以使用 `/multi`、`/schedule`、`/memory`、`/skills`、`/preview` 等命令。
 
-Web UI 会把 API key 保存到本地 `.env`，把 Provider、Base URL 和模型选择写入 `config/pantheon.yaml`。修改后端配置后，如需完整重载运行时，请重启 `pantheon web`。
+Web UI 可将 API key 保存到 `.env` 或受支持的系统凭据存储，Provider、Base URL 和模型选择写入配置文件；实际路径在 Setup 中显示。修改后端配置后，如需完整重载运行时，请重启 `pantheon web`。
 
 <a id="agent-roles"></a>
 
@@ -307,7 +309,7 @@ Integrations 提供的是真实本地能力，不是静态展示开关。
 | **Skills** | 可用 | 加载标准 `SKILL.md`；支持自动匹配、显式 `/skill` 调用、6 个内置 Skill 和可编辑本地 Skill |
 | **MCP** | 可用 | 连接 stdio 或 Streamable HTTP server，发现工具、分配神祇，并设置自动执行/每次审批策略 |
 | **Plugins** | 可用 | 把启用的本地 Prompt Pack 注入指定 Agent 上下文；不会执行任意 Python 插件代码 |
-| **Channels** | Webhook 可用 | 通过 `/api/channels/webhook` 接收带 Token 的脚本或服务任务 |
+| **Channels** | 可用 | Webhook、Telegram 文本、Slack 提及和 Discord `/pantheon` 命令；回调验证、白名单及可选回复 |
 
 ### 内置 Skills
 
@@ -328,7 +330,23 @@ Integrations 提供的是真实本地能力，不是静态展示开关。
 
 GitHub、Context7 和 Figma Desktop 是连接表单预设，不是 Pantheon 内置账号或托管 MCP 服务。用户仍需提供凭据，并准备对应的本地或远程 Server。
 
-Channels 当前只提供 Webhook 入口。钉钉、企业微信、微信、QQ、Slack、Teams 等原生适配器属于后续计划，目前尚未内置。
+在 **Settings → Integrations → Channels** 配置 Telegram、Slack 或 Discord。需要公网 HTTPS 回调、用户和聊天/频道白名单；没有配置时显示未连接。详见[聊天平台配置](docs/channels.zh-CN.md)。其他聊天平台尚未内置。
+
+## 工作流、多模态与任务恢复
+
+在 **Settings → Info** 设置独立步骤并发数、失败恢复次数和预算；CLI 的 `pantheon workflow`、`pantheon budgets` 及 SDK 的 `p.services` 共用这些设置。额度为 0 表示不限；金额额度需要用户提供模型单价或每次媒体请求的费用估算。
+
+在 **Settings → Media** 配置视觉、图片生成和音频转写模型。对话框可上传图片/PDF；生成图片和音频转写有单独按钮。配置 OpenAI 后也可直接让 Apollo 生成实际图片。详见[多模态与恢复指南](docs/workflows.zh-CN.md)。
+
+```sh
+pantheon ask --file report.pdf "总结这个文件中的关键证据"
+pantheon image "星空下的蓝色玻璃神殿"
+pantheon transcribe recording.wav
+pantheon tasks --resume TASK_ID
+pantheon tasks --archive TASK_ID > result.json
+```
+
+恢复会复用已成功的步骤和附件识别结果；未完成的外部操作需要先核对再重试。备份包含上传文件和媒体成果，恢复后聊天平台关闭、队列不自动重放。
 
 ## CLI 与 Python SDK
 
@@ -391,13 +409,13 @@ for step in result["steps"]:
 
 ## 当前边界
 
-Pantheon v0.2.6 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
+Pantheon v0.3.0 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
-- Chat Agent 为同步执行；Multi-role 会按计划顺序执行步骤，而不是并行运行。
-- Agent 之间使用由 Hermes 中介的结构化消息，不会进行无边界的点对点群聊或自主反馈循环。
-- Question、Review 与 Revision 消息目前来自既定计划；运行结果暂时不会自动触发重新规划。
-- 附件会在支持时转换为文本上下文，并不是通用的多模态模型文件上传。
-- 语音输入依赖浏览器 SpeechRecognition，不同浏览器和语言的支持程度不同。
+- 安全的独立步骤可并行，默认 3 个、最多 4 个；依赖步骤和有外部操作的步骤保持顺序。模型响应目前按完整消息返回，不是供应商逐 token 流式输出。
+- 失败恢复默认最多 1 轮，可设置 0–2 轮；仅修复原计划内失败指令，不扩大任务、不改变角色或依赖、不静默重跑外部操作。
+- 图片/PDF 理解使用配置的 OpenAI 或 Anthropic 视觉模型；图片生成与音频转写需要 OpenAI API 权限。上传只保存在本地，发送任务或明确点击媒体操作才调用供应商。其他二进制格式暂不支持。
+- 聊天平台支持文本任务，Web 或后台服务需要运行。本版不转发平台附件，也不为每个平台线程维护独立连续对话。
+- 浏览器语音输入仍依赖 SpeechRecognition。音频文件可在 Settings → Media 使用 API 转文字。
 - HTML Preview 使用沙箱，但仍应把生成页面视为不可信内容。
 - Plugin Pack 是 Prompt 型扩展，不包含任意可执行插件或插件市场。
 - Security 登录锁是本地单用户保护，不是生产级身份管理。
@@ -485,6 +503,8 @@ CI 不会获取或测试真实 Provider 密钥。
 | [中文新手安装指南](docs/setup.zh-CN.md) | 按系统准备环境、安装、首次配置、更新、卸载和逐项排错 |
 | [核心补齐进度与数据备份](docs/core-readiness.zh-CN.md) | 开发进度、数据路径、任务管理和离线备份恢复 |
 | [English setup guide](docs/setup.md) | English OS-specific installation and troubleshooting |
+| [工作流与媒体指南](docs/workflows.zh-CN.md) | 预算、并行、恢复、图片/PDF 和音频 |
+| [聊天平台](docs/channels.zh-CN.md) | Telegram、Slack、Discord 配置 |
 | [Web UI 指南](docs/web-ui.md) | Workspace、Memory、Integrations、测试和快捷键 |
 | [架构说明](docs/architecture.md) | 路由、执行流程与组件设计 |
 | [角色说明](docs/roles/) | 各神祇 Prompt 与职责 |

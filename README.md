@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.2.6-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -37,15 +37,18 @@ Pantheon turns a request into an observable, controllable local workflow. Use **
 
 | Area | Current implementation |
 |---|---|
-| Multi-agent orchestration | Auto routing, direct roles, and structured Multi-role plans with handoffs and review contracts |
+| Multi-agent orchestration | Dependency-aware parallel steps, bounded failure recovery, structured handoffs and reviews |
 | Agent workspace | Live Activity, sandboxed HTML Preview, file browsing/editing, and Terminal |
 | Conversations | Multiple chats, first-message titles, Markdown export, attachments, and slash commands |
 | Memory | Local SQLite storage, per-role scope, natural-language detection, and save suggestions |
 | Chronos | Persistent one-time and recurring jobs with run history |
-| Extensions | 6 built-in Skills, local Skills, plugin prompt packs, MCP tools, and Webhook input |
+| Extensions | Shared CLI/Web/SDK Memory, Skills, plugins, MCP approvals and scheduling |
+| Multimodal | Image/PDF understanding, native Apollo image generation, audio transcription and private artifacts |
+| Chat platforms | Verified Telegram, Slack and Discord callbacks, allowlists, deduplication and optional replies |
+| Task control | Checkpoints, resume failed steps, full JSON archives, request and cost estimate limits |
 | Local setup | Provider/model wizard, configuration checks, API tests, login lock, and optional auto-start service |
 
-Pantheon is local-first. Configuration, memory, scheduled jobs, and extension state stay in the selected workspace. Conversations and display preferences stay in the current browser. Task content is sent only to model providers and external integrations that you enable.
+Pantheon is local-first. Configuration, memory, scheduled jobs, and extension state stay in the selected workspace. Conversations persist locally, with a browser cache; display preferences stay in the browser. Task content is sent only to model providers and external integrations that you enable.
 
 <a id="quick-start"></a>
 
@@ -60,7 +63,7 @@ This path is for a first-time user starting from a new computer. Pantheon is tes
 | Windows 11 | Native PowerShell + Python 3.11/3.12 | Native installer, startup and ConPTY checks in CI |
 | Windows + WSL2 Ubuntu | Ubuntu 22.04/24.04 | Optional Linux environment |
 
-You also need Git, `curl`, a modern browser, and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).
+You also need Git, a modern browser (`curl` is used on macOS/Linux), and either one provider API key or a local Ollama installation. A ChatGPT subscription does not include OpenAI API access. If you do not have a key yet, follow the [provider preparation guide](docs/setup.md).
 
 ### One-line install
 
@@ -161,7 +164,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-The last command should print `pantheon 0.2.6` or a newer version.
+The last command should print `pantheon 0.3.0` or a newer version.
 
 ### 3. Start and configure the Web UI
 
@@ -225,7 +228,7 @@ Add the required keys to `.env`, then set matching providers, models, and base U
 4. Use **Preview** for HTML, **Files** for saved artifacts, and **Terminal** for local commands.
 5. Type `/` in the composer to access commands such as `/multi`, `/schedule`, `/memory`, `/skills`, and `/preview`.
 
-The Web UI saves API keys to the local `.env` file and writes provider, base URL, and model choices to `config/pantheon.yaml`. Restart `pantheon web` when a backend configuration change needs a complete runtime reload.
+The Web UI saves API keys to `.env` or supported system credential storage, and writes provider/base URL/model choices to the config. Setup shows the actual paths. Restart `pantheon web` when a backend configuration change needs a complete runtime reload.
 
 <a id="agent-roles"></a>
 
@@ -307,7 +310,7 @@ Integrations expose working local capabilities rather than decorative toggles.
 | **Skills** | Available | Loads standard `SKILL.md` files with automatic matching, explicit `/skill` invocation, 6 built-in Skills, and editable local Skills |
 | **MCP** | Available | Connects stdio or Streamable HTTP servers, discovers tools, assigns gods, and applies auto-run or per-call approval policies |
 | **Plugins** | Available | Injects enabled local prompt packs into selected agent contexts; it does not execute arbitrary Python plugin code |
-| **Channels** | Webhook available | Accepts token-protected tasks from scripts or services through `/api/channels/webhook` |
+| **Channels** | Available | Webhook, Telegram text, Slack mentions and Discord `/pantheon` commands; verified callbacks and optional replies |
 
 ### Built-in Skills
 
@@ -328,7 +331,23 @@ Integrations expose working local capabilities rather than decorative toggles.
 
 GitHub, Context7, and Figma Desktop are connection-form presets, not bundled accounts or hosted MCP services. Users still provide credentials and run or connect the corresponding local or remote server.
 
-Channels currently expose only the Webhook input. Native adapters for DingTalk, WeCom, WeChat, QQ, Slack, Teams, and similar services are planned but not bundled.
+Configure Telegram, Slack or Discord in **Settings → Integrations → Channels**. These callbacks need a public HTTPS endpoint and explicit user/channel allowlists; they are disconnected until configured. See [chat platform setup](docs/channels.md). Other chat adapters are not bundled.
+
+## Workflow, media and task recovery
+
+In **Settings → Info**, set simultaneous independent steps, recovery attempts and workspace budgets. The same controls are available through `pantheon workflow`, `pantheon budgets` and `p.services`. A zero budget disables that limit; USD limits require your own model/media cost estimates.
+
+In **Settings → Media**, choose the vision, image generation and audio models. Attach images/PDFs in the composer; use the explicit generation/transcription forms, or ask Apollo for an actual image once OpenAI is configured. See [multimodal and recovery guide](docs/workflows.md).
+
+```sh
+pantheon ask --file report.pdf "Summarize the evidence in this document"
+pantheon image "A blue glass temple under the stars"
+pantheon transcribe recording.wav
+pantheon tasks --resume TASK_ID
+pantheon tasks --archive TASK_ID > result.json
+```
+
+Completed checkpoints are reused. An unfinished external operation needs review before retry. Backups include uploaded/generated media; restore disables chat callbacks and does not replay queued messages.
 
 ## CLI and Python SDK
 
@@ -391,15 +410,13 @@ These repository-local state files are covered by `.gitignore` and should remain
 
 ## Current Boundaries
 
-Pantheon v0.2.6 is still an alpha local workspace. Understand these limits before deployment:
+Pantheon v0.3.0 is still an alpha local workspace. Understand these limits before deployment:
 
-- Chat agents execute synchronously. Multi-role steps run in plan order, not in parallel.
-- Agent communication is structured and mediated by Hermes. Pantheon does not run
-  unbounded peer-to-peer conversations or autonomous feedback loops.
-- Question, review, and revision messages currently come from the planned workflow;
-  runtime results do not yet trigger automatic replanning.
-- Attachments are converted to text context when supported; this is not universal multimodal file input.
-- Voice input depends on browser SpeechRecognition support, which varies by browser and language.
+- Independent safe steps run concurrently (default 3, maximum 4); dependencies and side-effecting steps retain order. Model responses arrive as complete messages, not token streams.
+- Recovery repairs failed instructions within the original plan (default 1 round, maximum 2). It cannot expand scope, change roles/dependencies or silently repeat external actions.
+- Image/PDF understanding uses a configured OpenAI or Anthropic vision model; image generation and audio transcription require OpenAI access. Uploads are local until you send or explicitly invoke a media action. Other binary formats are not supported.
+- Chat platforms accept text tasks through verified callbacks while Web/service runs. This release does not forward platform file attachments or maintain a separate conversational transcript per platform thread.
+- Browser dictation still depends on SpeechRecognition support. Uploaded audio can instead use Settings → Media transcription.
 - HTML Preview is sandboxed, but generated pages should still be treated as untrusted content.
 - Plugin packs are prompt-based extensions, not arbitrary executable plugins or a plugin marketplace.
 - The Security login lock is single-user local protection, not production identity management.
@@ -488,6 +505,8 @@ Chromium E2E job. CI never receives or tests real provider credentials.
 | [Beginner setup guide](docs/setup.md) | OS-specific installation, first launch, updating, uninstalling, and troubleshooting |
 | [中文新手安装指南](docs/setup.zh-CN.md) | 中文系统准备、安装、首次配置和逐项排错 |
 | [Core readiness and backup (中文)](docs/core-readiness.zh-CN.md) | Development status, data paths, task management, and offline backup/restore |
+| [Workflow and media guide](docs/workflows.md) | Budgets, parallel execution, recovery, images/PDFs and audio |
+| [Chat platforms](docs/channels.md) | Telegram, Slack and Discord setup |
 | [Web UI guide](docs/web-ui.md) | Workspace, Memory, Integrations, testing, and shortcuts |
 | [Architecture](docs/architecture.md) | Routing, execution flow, and component design |
 | [Role guides](docs/roles/) | Prompts and responsibilities for every god |

@@ -80,11 +80,19 @@ Yes — just instantiate `Pantheon()` once at startup and call `p.ask()` from yo
 
 ### How much do calls cost?
 
-Each `p.ask()` makes:
-- 1 planner LLM call (Hermes) — small
-- N role LLM calls (one per role that runs)
+Request counts vary: explicit direct-role tasks skip planning; Auto uses a planner, Multi-role adds synthesis, and tools/context compaction/media or bounded recovery can add calls. Use Settings → Info → Budgets or `pantheon budgets` to inspect actual attempts and set caps. Token rates and per-media-operation prices are user-supplied local estimates, not provider invoices.
 
-In single-role mode: 2 calls. In multi-role with 3 steps: 4 calls. Add up by your providers' pricing.
+### Can I use images, PDFs or audio?
+
+Yes. Image/PDF understanding supports configured OpenAI or Anthropic models; image generation and audio transcription use OpenAI. See [workflows](workflows.md). Browser dictation is separate and depends on browser support.
+
+### Can I continue a failed task?
+
+Use Web Info → Task history → Resume failed steps or `pantheon tasks --resume ID`. Successful checkpoints are reused. Review uncertain external actions first. Older tasks without checkpoints must be restarted from their saved request.
+
+### Is Windows native now?
+
+Yes: the PowerShell installer, per-user startup service and ConPTY terminal do not require Ubuntu/WSL. WSL remains optional. See [setup](setup.md).
 
 ## Errors
 

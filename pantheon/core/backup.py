@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
+from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 from pantheon.core.paths import DataPaths
@@ -34,7 +35,7 @@ def _sanitize_channel_snapshot(path: Path, name: str):
     """Restoring a backup must not replay queued messages or reactivate callbacks."""
     if name not in {'channels.sqlite', 'readiness.sqlite'}:
         return
-    with sqlite3.connect(path) as db:
+    with closing(sqlite3.connect(path)) as db, db:
         if name == 'channels.sqlite':
             db.execute('UPDATE events SET state="interrupted" WHERE state IN ("queued", "running")')
             db.execute('UPDATE events SET data=json_remove(data, "$.route.token")')
