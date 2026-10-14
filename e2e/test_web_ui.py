@@ -477,6 +477,24 @@ def test_model_catalog_updates_on_focus_without_overwriting_setup_draft(page: Pa
     page.unroute_all(behavior='wait')
 
 
+def test_late_initial_status_preserves_a_connection_being_edited(page: Page, live_server_url: str):
+    pending = []
+    page.route('**/api/setup/status', lambda route: pending.append(route))
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('#setup-provider').select_option('openai')
+    page.locator('#setup-api-key').fill('unsaved-draft-key')
+    page.locator('#setup-base-url').fill('https://draft-openai.example/v1')
+    payload = page.request.get(f'{live_server_url}/api/setup/status').json()
+    for route in pending:
+        route.fulfill(json=payload)
+    expect(page.locator('#setup-provider')).to_have_value('openai')
+    expect(page.locator('#setup-model option[value="gpt-6.1-sol"]')).to_have_count(1)
+    expect(page.locator('#setup-api-key')).to_have_value('unsaved-draft-key')
+    expect(page.locator('#setup-base-url')).to_have_value('https://draft-openai.example/v1')
+    page.unroute_all(behavior='wait')
+
+
 def test_media_upload_and_transcript_prepare_without_sending(page: Page, live_server_url: str):
     requests = []
     media_id = 'a' * 32

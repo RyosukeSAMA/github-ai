@@ -907,6 +907,9 @@
   ];
   let setupProviders = new Map(SETUP_PROVIDER_FALLBACKS.map((p) => [p.id, p]));
   let latestSetupStatus = null;
+  let setupFormTouched = false;
+  setupForm?.addEventListener('input', () => { setupFormTouched = true; });
+  setupForm?.addEventListener('change', () => { setupFormTouched = true; });
   let latestAppInfo = null;
 
   // Persisted in-memory overrides from the settings UI.
@@ -1495,7 +1498,7 @@
   function applySetupStatus(status, options = {}) {
     if (!setupForm || !status) return;
     latestSetupStatus = status;
-    const preserveForm = Boolean(options.preserveForm);
+    const preserveForm = Boolean(options.preserveForm || setupFormTouched);
     const announce = options.announce !== false;
     const formProvider = preserveForm ? setupProviderSelect?.value || '' : '';
     const formModel = preserveForm
