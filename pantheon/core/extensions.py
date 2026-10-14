@@ -12,15 +12,19 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import threading
 import time
 import uuid
 from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
 import httpx
 import yaml
+
+from pantheon.core.runtime import file_mutex
 
 EXTENSION_ROLES = {
     "global",
@@ -50,6 +54,17 @@ def _roles(value: list[str] | None) -> list[str]:
     return selected or ["global"]
 
 
+def extension_write(method):
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        collection = getattr(self, 'collection', None)
+        path = collection.path if collection is not None else self.local_path
+        state = path.parent
+        with file_mutex(state / 'maintenance.lock'), file_mutex(state / '.locks' / (path.name + '.lock')):
+            return method(self, *args, **kwargs)
+    return locked
+
+
 class JsonCollection:
     """Small atomic JSON collection used for local extension metadata."""
 
@@ -67,12 +82,13 @@ class JsonCollection:
         return [dict(item) for item in value] if isinstance(value, list) else []
 
     def write(self, items: list[dict[str, Any]]) -> None:
-        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(items, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(self.path)
+        fd, temporary = tempfile.mkstemp(dir=self.path.parent, suffix='.partial')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                stream.write(json.dumps(items, ensure_ascii=False, indent=2) + '\n')
+            os.replace(temporary, self.path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
 
 class PromptExtensionStore:
@@ -104,6 +120,7 @@ class PromptExtensionStore:
     def get(self, item_id: str) -> dict[str, Any] | None:
         return next((item for item in self.collection.read() if item.get("id") == item_id), None)
 
+    @extension_write
     def save(
         self,
         *,
@@ -148,6 +165,7 @@ class PromptExtensionStore:
         self.collection.write(items)
         return item
 
+    @extension_write
     def delete(self, item_id: str) -> bool:
         items = self.collection.read()
         remaining = [item for item in items if item.get("id") != item_id]
@@ -156,6 +174,7 @@ class PromptExtensionStore:
         self.collection.write(remaining)
         return True
 
+    @extension_write
     def set_enabled(self, item_id: str, enabled: bool) -> dict[str, Any] | None:
         item = self.get(item_id)
         if item is None:
@@ -408,6 +427,7 @@ class SkillStore:
         temporary.write_text(content, encoding="utf-8")
         temporary.replace(path)
 
+    @extension_write
     def save(
         self,
         *,
@@ -518,6 +538,7 @@ class SkillStore:
             raise ValueError("skill could not be saved")
         return saved
 
+    @extension_write
     def delete(self, item_id: str) -> bool:
         item = self.get(item_id)
         if item is None:
@@ -535,6 +556,7 @@ class SkillStore:
         self._write_state(state)
         return True
 
+    @extension_write
     def set_enabled(self, item_id: str, enabled: bool) -> dict[str, Any] | None:
         item = self.get(item_id)
         if item is None:
@@ -868,6 +890,7 @@ class MCPManager:
             }
         return policies
 
+    @extension_write
     def save(self, data: dict[str, Any], server_id: str = "") -> dict[str, Any]:
         name = str(data.get("name") or "").strip()
         if not name:
@@ -972,6 +995,7 @@ class MCPManager:
         self.collection.write(items)
         return item
 
+    @extension_write
     def delete(self, server_id: str) -> bool:
         items = self.list()
         remaining = [item for item in items if item.get("id") != server_id]
@@ -980,6 +1004,7 @@ class MCPManager:
         self.collection.write(remaining)
         return True
 
+    @extension_write
     def _record_test(
         self,
         server_id: str,
@@ -1192,6 +1217,7 @@ class MCPManager:
             raise MCPError("MCP tool is not in the discovered tool list")
         return self._run_sync(lambda: self._call_async(server, tool_name, arguments))
 
+    @extension_write
     def set_tool_policy(
         self,
         server_id: str,
@@ -1233,7 +1259,7 @@ class MCPManager:
             raise MCPError("MCP server is disabled")
         if not server.get("allow_agent_calls", False):
             raise MCPError("MCP agent calls are disabled for this server")
-        if not server.get("last_test", {}).get("ok"):
+        if not (server.get("last_test") or {}).get("ok"):
             raise MCPError("MCP server must pass its connection test first")
         tool = next(
             (
@@ -1266,7 +1292,7 @@ class MCPManager:
             for server in self.list()
             if server.get("enabled", True)
             and server.get("allow_agent_calls", False)
-            and server.get("last_test", {}).get("ok")
+            and (server.get("last_test") or {}).get("ok")
             and server.get("tools")
         ]
         if not servers:

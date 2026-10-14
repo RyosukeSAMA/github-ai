@@ -102,7 +102,7 @@ def test_setup_save_writes_env_and_config_without_leaking_key(tmp_path, monkeypa
     assert data["key_configured"] is True
     assert data["masked_key"] == "sk-t••••1234"
     assert data["setup_ready"] is True
-    assert data["summary_title"] == "DeepSeek · 4/4 ready"
+    assert data["summary_title"] == "DeepSeek · 4/4 configured · 0 verified"
     providers = {item["id"]: item for item in data["providers"]}
     assert providers["deepseek"]["model"] == "deepseek-flash"
     assert any(model["id"] == "deepseek-v4-pro" for model in providers["deepseek"]["models"])
@@ -119,7 +119,7 @@ def test_setup_save_writes_env_and_config_without_leaking_key(tmp_path, monkeypa
         "chronos",
     }
     assert all(
-        item["status"] == "ready"
+        item["status"] == "untested"
         for item in data["role_statuses"]
         if item["counts_toward_ready"]
     )
@@ -210,7 +210,7 @@ def test_setup_status_reports_existing_env_secret_as_masked(tmp_path, monkeypatc
     assert data["key_configured"] is True
     assert data["masked_key"] == "sk-e••••9999"
     assert data["setup_ready"] is True
-    assert data["summary_title"] == "OpenAI · 4/4 ready"
+    assert data["summary_title"] == "OpenAI · 4/4 configured · 0 verified"
 
 
 def test_setup_catalog_keeps_latest_official_models(tmp_path, monkeypatch) -> None:
@@ -613,7 +613,7 @@ def test_setup_status_reports_mixed_provider_matrix(tmp_path, monkeypatch) -> No
     assert status_resp.status_code == 200
     data = status_resp.json()
     assert data["setup_ready"] is False
-    assert data["summary_title"] == "Mixed providers · 3/4 ready"
+    assert data["summary_title"] == "Mixed providers · 3/4 configured · 0 verified"
     roles = {item["role"]: item for item in data["role_statuses"]}
     assert roles["hermes"]["provider_label"] == "OpenAI"
     assert roles["hephaestus"]["provider_label"] == "Anthropic"

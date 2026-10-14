@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -310,13 +311,197 @@ def main(
         os.environ["PANTHEON_WORKSPACE"] = str(workspace.expanduser().resolve())
 
 
+def _workspace_services():
+    from pantheon.core.paths import DataPaths
+    from pantheon.core.services import WorkspaceServices
+    return WorkspaceServices(DataPaths.for_workspace())
+
+
+@app.command("update")
+def update(version: str = typer.Option('latest', '--version'),
+           rollback: bool = typer.Option(False, '--rollback'),
+           target: Path | None = typer.Option(None, '--target', help='Installer checkout; defaults to this installation.'),
+           repo: str | None = typer.Option(None, '--repo')) -> None:
+    """Install a stable version transactionally, or restore the previous installation."""
+    from pantheon import installer
+    metadata = Path(sys.prefix) / 'pantheon-install.json'
+    saved = json.loads(metadata.read_text(encoding='utf-8')) if metadata.exists() else {}
+    root = (target or Path(saved.get('target', Path(__file__).resolve().parents[1]))).expanduser().absolute()
+    args = [sys.executable, '-m', 'pantheon.installer', '--target', str(root), '--repo', repo or saved.get('repo', installer.REPOSITORY)]
+    args += ['--rollback'] if rollback else ['--update', '--version', version]
+    # A separate installer process avoids keeping the replaced package/environment open on Windows.
+    result = subprocess.run(args)
+    raise typer.Exit(result.returncode)
+
+
+@app.command('workflow')
+def workflow(parallel: int | None = typer.Option(None, '--parallel'),
+             recovery: int | None = typer.Option(None, '--recovery')) -> None:
+    """View or set simultaneous independent steps and bounded failure recovery."""
+    services = _workspace_services()
+    policy = services.workflow_policy()
+    if parallel is not None or recovery is not None:
+        try:
+            policy = services.save_workflow_policy(parallel if parallel is not None else policy['parallel_workers'],
+                                                   recovery if recovery is not None else policy['replan_attempts'])
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+    console.print_json(data=policy)
+
+
+@app.command('channels')
+def channels(platform: str | None = typer.Option(None, '--platform'),
+             config: Path | None = typer.Option(None, '--config', help='JSON with config, secrets and storage fields.')):
+    """Configure Telegram, Slack or Discord; callbacks are served by pantheon web/service."""
+    from pantheon.core.channels import CHANNELS
+    services = _workspace_services()
+    try:
+        if config:
+            if not platform:
+                raise ValueError('Choose --platform telegram, slack or discord')
+            value = json.loads(config.read_text(encoding='utf-8'))
+            services.channels.save(platform, value.get('config') or {}, value.get('secrets') or {}, storage=value.get('storage') or 'env')
+        console.print_json(data={'items': [services.channels.status(name) for name in CHANNELS], 'events': services.channels.history()})
+    except (ValueError, OSError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command('media')
+def media(settings: Path | None = typer.Option(None, '--settings', help='JSON file with media model IDs.')):
+    """View multimodal configuration or save model choices."""
+    p = Pantheon()
+    try:
+        result = p.services.media.save_settings(json.loads(settings.read_text())) if settings else p.services.media.status()
+        console.print_json(data=result)
+    except (ValueError, OSError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command('image')
+def image(prompt: str = typer.Argument(...), size: str = typer.Option('1024x1024', '--size')):
+    """Generate one image using configured OpenAI credentials (paid request)."""
+    p = Pantheon()
+    try:
+        artifact = p.services.media.generate_image(prompt, size=size)
+        meta, path = p.services.media.get(artifact['id'])
+        console.print_json(data={**meta, 'path': str(path)})
+    except Exception as exc:
+        console.print(str(exc), markup=False, style='red')
+        raise typer.Exit(1) from exc
+
+
+@app.command('transcribe')
+def transcribe(file: Path = typer.Argument(..., exists=True, dir_okay=False)):
+    """Transcribe an audio file using OpenAI (paid request), without sending it as a chat."""
+    p = Pantheon()
+    try:
+        artifact = p.services.media.upload_path(file)
+        console.print_json(data=p.services.media.transcribe(artifact['id']))
+    except Exception as exc:
+        console.print(str(exc), markup=False, style='red')
+        raise typer.Exit(1) from exc
+
+
+@app.command("budgets")
+def budgets(policy: Path | None = typer.Option(None, '--policy', help='JSON file with workspace limits and optional price estimates.')) -> None:
+    """View usage limits, or save a workspace budget policy."""
+    import json
+    store = _workspace_services().budget
+    try:
+        if policy:
+            store.save_policy(json.loads(policy.read_text(encoding='utf-8')))
+        console.print_json(data=store.summary())
+    except (ValueError, OSError) as error:
+        console.print(str(error), style='red', markup=False)
+        raise typer.Exit(1) from error
+
+
+@app.command("credentials")
+def credentials(migrate: bool = typer.Option(False, "--migrate", help="Move saved API keys and channel tokens to verified OS credential storage.")) -> None:
+    """Check system credential availability, or explicitly migrate dotenv credentials."""
+    from pantheon.core.credentials import CredentialError
+    store = _workspace_services().credentials
+    try:
+        migrated = store.migrate() if migrate else []
+        console.print_json(data={**store.status(), 'migrated': migrated})
+    except CredentialError as error:
+        console.print(str(error), style='red', markup=False)
+        raise typer.Exit(1) from error
+
+
+@app.command("jobs")
+def jobs(pause: str | None = typer.Option(None, "--pause"),
+         resume: str | None = typer.Option(None, "--resume"),
+         delete: str | None = typer.Option(None, "--delete")) -> None:
+    """View or manage Chronos jobs shared with Web. The background service runs them."""
+    if sum(bool(value) for value in (pause, resume, delete)) > 1:
+        raise typer.BadParameter("Choose only one of --pause, --resume and --delete")
+    scheduler = _workspace_services().scheduler
+    if pause or resume:
+        if not scheduler.set_enabled(pause or resume, bool(resume)):
+            raise typer.BadParameter("Job not found")
+    if delete and not scheduler.delete_job(delete):
+        raise typer.BadParameter("Job not found")
+    console.print_json(data={'jobs': scheduler.list_jobs(), 'runs': scheduler.list_runs()})
+
+
+@app.command("memory")
+def memory(add: str | None = typer.Option(None, "--add"),
+           query: str = typer.Option('', "--query"),
+           role: str = typer.Option('', "--role")) -> None:
+    """Save or search the same Memory used by the Web workspace."""
+    store = _workspace_services().memory
+    if add:
+        console.print_json(data=store.add(add, role=role))
+    else:
+        console.print_json(data={'items': store.list(query=query, role=role), 'stats': store.stats()})
+
+
+@app.command("plugins")
+def plugins() -> None:
+    """List shared prompt plugins. Configure them in Web Settings or the SDK."""
+    console.print_json(data={'plugins': _workspace_services().plugins.list()})
+
+
+@app.command("mcp")
+def mcp(inspect: str | None = typer.Option(None, "--inspect")) -> None:
+    """List shared MCP connections or explicitly test a connection (no tool execution)."""
+    manager = _workspace_services().mcp
+    console.print_json(data=manager.inspect(inspect) if inspect else {'servers': manager.list()})
+
+
 @app.command("tasks")
 def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID."),
-          show: str | None = typer.Option(None, "--show", help="View a stored task result by ID.")) -> None:
+          show: str | None = typer.Option(None, "--show", help="View a stored task result by ID."),
+          resume: str | None = typer.Option(None, '--resume', help='Resume failed steps from a checkpoint, using current model config.'),
+          acknowledge_effects: bool = typer.Option(False, '--acknowledge-effects', help='Retry after reviewing unfinished external tool/scheduling actions.'),
+          archive: str | None = typer.Option(None, '--archive', help='Print the full result archive for a task ID.')) -> None:
     """List shared task history or stop an executing task."""
     from pantheon.core.paths import DataPaths
     from pantheon.core.tasks import TaskStore
     store = TaskStore(DataPaths.for_workspace().state / "tasks.sqlite")
+    if sum(bool(value) for value in (stop, show, resume, archive)) > 1:
+        raise typer.BadParameter('Choose only one task action')
+    if archive:
+        path = store.archive_path(archive)
+        if not store.get(archive) or not path.is_file():
+            raise typer.BadParameter('No full archive is available for this older task')
+        console.print_json(path.read_text(encoding='utf-8'))
+        return
+    if resume:
+        p = Pantheon()
+        if sys.stdin.isatty():
+            def approve_tool(payload):
+                console.print(Panel(Text(json.dumps(payload, ensure_ascii=False, indent=2)), title='Tool approval'))
+                return typer.confirm('Allow this tool call once?', default=False)
+            p.services.approval_handler = approve_tool
+        try:
+            result = p.resume(resume, acknowledge_effects=acknowledge_effects)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        console.print(result.get('content', ''), markup=False)
+        console.print(f"Task: {result['task_id']} · {result.get('status', 'completed')}")
+        return
     if show:
         task = store.get(show)
         if task is None:
@@ -388,8 +573,10 @@ def ask(
     ),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON instead of formatted text."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
+    file: list[Path] | None = typer.Option(None, '--file', help='Attach an image or PDF; repeat for multiple files.', exists=True, dir_okay=False),
 ) -> None:
     """Ask the Pantheon to do something."""
+    file = file if isinstance(file, (list, tuple)) else None
     _configure_cli_logging(verbose)
     try:
         p = Pantheon(config_path=config, verbose=verbose)
@@ -415,10 +602,16 @@ def ask(
         )
         console.print(_task_panel(task, mode, skill))
 
+    if not raw and sys.stdin.isatty():
+        def approve_tool(payload):
+            console.print(Panel(Text(json.dumps(payload, ensure_ascii=False, indent=2)), title="Tool approval"))
+            return typer.confirm("Allow this tool call once?", default=False)
+        p.services.approval_handler = approve_tool
+
     started_at = time.perf_counter()
     try:
         if raw:
-            result = p.ask(task, mode=mode, skill=skill)
+            result = p.ask(task, mode=mode, skill=skill, **({'attachments': file} if file else {}))
         else:
             with console.status(
                 f"[{BRAND_COLOR}]Hermes is opening the council…[/]",
@@ -429,6 +622,7 @@ def ask(
                     mode=mode,
                     skill=skill,
                     on_event=_run_event_handler(run_status),
+                    **({'attachments': file} if file else {}),
                 )
     except Exception as e:
         console.print(

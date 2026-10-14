@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
+import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
 
 from pantheon.core.base import Task
-from pantheon.core.extensions import SkillStore
 from pantheon.core.hermes import Hermes
 from pantheon.core.paths import DataPaths
 from pantheon.core.router import Router
-from pantheon.core.tasks import TaskStore
+from pantheon.core.services import WorkspaceServices
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.roles import register_default_roles
@@ -34,15 +35,14 @@ class Pantheon:
         env_path: str | None = None,
         verbose: bool = False,
     ) -> None:
-        # Load .env if present (silently)
         self.paths = DataPaths.for_workspace()
         env_path = env_path or str(self.paths.env)
-        if Path(env_path).exists():
-            load_dotenv(env_path)
+        self.paths = replace(self.paths, env=Path(env_path).resolve())
+        self.services = WorkspaceServices(self.paths)
 
         # Load YAML config (do this first; needed before logging init)
         config_path = config_path or self._find_config()
-        self.config = self._load_config(config_path)
+        self.config = self._load_config(config_path, self.services.env_value)
 
         # Logging
         log_cfg = self.config.get("logging", {})
@@ -77,14 +77,10 @@ class Pantheon:
 
         # Hermes (the orchestrator)
         self.hermes = Hermes(roles=self.roles, router=self.router)
-        self.hermes.task_store = TaskStore(self.paths.state / "tasks.sqlite")
-        self.skill_store = SkillStore(
-            self.paths.state / "skills",
-            legacy_path=self.paths.state / "skills.json",
-        )
-        self.hermes.skill_context_provider = self.skill_store.context_block
-        self.hermes.skill_catalog_provider = self.skill_store.catalog_for_roles
-        self.hermes.skill_lookup_provider = self.skill_store.get
+        self.hermes.task_store = self.services.tasks
+        self.skill_store = self.services.skills
+        self.services.attach(self)
+        self.handle_memory = True
 
     # ---------- public API ----------
 
@@ -94,6 +90,7 @@ class Pantheon:
         mode: str = "auto",
         skill: str | None = None,
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
+        attachments: list[str | Path] | None = None,
     ) -> dict[str, Any]:
         """Ask the Pantheon to do something.
 
@@ -109,12 +106,59 @@ class Pantheon:
         Returns:
             Dict with keys: mode, plan, content, steps.
         """
-        task = Task(content=content, mode=mode, skill=skill)
-        return self.hermes.dispatch(task, on_event=on_event)
+        identities = [self.services.media.upload_path(item)['id'] if isinstance(item, Path) or Path(item).is_file() else str(item)
+                      for item in (attachments or [])]
+        if identities:
+            self.services.media.validate_attachments(identities)
+        task = Task(content=content, mode=mode, skill=skill, attachments=identities)
+        memory_events = self.services.process_input(content) if self.handle_memory else {'saved': [], 'suggestions': []}
+        result = self._execution_hermes(on_event).dispatch(task, on_event=on_event)
+        if self.handle_memory:
+            self.services.capture_result(content, result, mode)
+        result['memory_events'] = memory_events
+        return result
 
     def list_roles(self) -> list[str]:
         """Return names of all enabled roles."""
         return list(self.roles.keys())
+
+    def resume(self, task_id: str, *, acknowledge_effects: bool = False, on_event=None) -> dict:
+        """Reuse completed checkpoints; retry failed steps with current model configuration."""
+        store = self.hermes.task_store
+        store.list()
+        record = store.get(task_id)
+        if not record or record['status'] not in {'failed', 'partial_failure', 'stopped', 'interrupted'}:
+            raise ValueError('Only failed, stopped or interrupted tasks can be resumed.')
+        checkpoint = record['data'].get('checkpoint')
+        if not checkpoint:
+            raise ValueError('This older task has no checkpoint. Start a new task from its saved request.')
+        steps = checkpoint.get('steps', {})
+        uncertain = any(not steps.get(index, {}).get('success') for index in checkpoint.get('effects', {}))
+        if uncertain and not acknowledge_effects:
+            raise ValueError('An unfinished step attempted an external tool or scheduling action. Review its result before acknowledging a retry.')
+        saved_task = checkpoint['task']
+        task = Task(content=saved_task['content'], mode=saved_task['mode'], skill=saved_task.get('skill'), attachments=saved_task.get('attachments', []))
+        store.claim_resume(task_id, task.task_id)
+        result = self._execution_hermes(on_event).dispatch(task, on_event=on_event, resume_checkpoint=checkpoint)
+        result['resumed_from'] = task_id
+        if self.handle_memory:
+            self.services.capture_result(task.content, result, task.mode)
+        return result
+
+    def _execution_hermes(self, on_event=None):
+        hermes = copy.copy(self.hermes)
+        hermes.cancel_event = getattr(on_event, 'cancel_event', None) or threading.Event()
+        hermes.active_task_id = None
+        hermes.router = copy.copy(self.router)
+        hermes.roles = {name: copy.copy(role) for name, role in self.roles.items()}
+        policy_reader = getattr(self.services, 'workflow_policy', None)
+        if callable(policy_reader):
+            policy = policy_reader()
+            hermes.parallel_workers = policy['parallel_workers']
+            hermes.replan_attempts = policy['replan_attempts']
+        for role in hermes.roles.values():
+            role.config = dict(getattr(role, 'config', {}) or {})
+        return hermes
 
     def get_role(self, name: str) -> Any:
         """Get a role by name."""
@@ -153,10 +197,10 @@ class Pantheon:
         )
 
     @staticmethod
-    def _load_config(path: str) -> dict[str, Any]:
+    def _load_config(path: str, env_lookup=None) -> dict[str, Any]:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        return _expand_env_vars(data)
+        return _expand_env_vars(data, env_lookup)
 
     def _build_llm_clients(self) -> dict[str, Any]:
         providers = self.config.get("llm_providers", {})
@@ -164,9 +208,7 @@ class Pantheon:
         for name, cfg in providers.items():
             if not cfg.get("enabled", True):
                 continue
-            api_key = cfg.get("api_key") or os.environ.get(
-                f"{name.upper()}_API_KEY", ""
-            )
+            api_key = cfg.get("api_key") or self.services.env_value(f"{name.upper()}_API_KEY")
             # The YAML may have ${OPENAI_API_KEY} which _expand_env_vars handles
             api_key = api_key or ""
             if not api_key and name != "ollama":
@@ -182,6 +224,7 @@ class Pantheon:
                 )
                 client.provider_name = cfg.get("provider_id") or name
                 client.usage_recorder = self.usage_store.record
+                client.budget = self.services.budget
                 clients[name] = client
             except Exception as e:
                 self.log.error("Failed to init provider '%s': %s", name, e)
@@ -219,7 +262,7 @@ class Pantheon:
         return out
 
 
-def _expand_env_vars(obj: Any) -> Any:
+def _expand_env_vars(obj: Any, env_lookup=None) -> Any:
     """Recursively expand ${VAR} patterns in a parsed YAML structure."""
     import re
 
@@ -227,13 +270,13 @@ def _expand_env_vars(obj: Any) -> Any:
 
     def expand(s: str) -> str:
         def repl(m: re.Match) -> str:
-            return os.environ.get(m.group(1), "")
+            return env_lookup(m.group(1)) if env_lookup else os.environ.get(m.group(1), "")
         return pattern.sub(repl, s)
 
     if isinstance(obj, dict):
-        return {k: _expand_env_vars(v) for k, v in obj.items()}
+        return {k: _expand_env_vars(v, env_lookup) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_expand_env_vars(v) for v in obj]
+        return [_expand_env_vars(v, env_lookup) for v in obj]
     if isinstance(obj, str):
         return expand(obj)
     return obj

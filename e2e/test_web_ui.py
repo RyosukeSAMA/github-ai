@@ -32,6 +32,70 @@ def test_core_navigation_and_conversation_state(page: Page, live_server_url: str
     expect(page.locator("#workspace")).to_be_hidden()
 
 
+def test_getting_started_can_reopen_and_prepare_without_sending(page: Page, live_server_url: str) -> None:
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('#guide-reopen').click()
+    expect(page.locator('#onboarding-card')).to_be_visible()
+    page.locator('[data-guide-action="confirm_workspace"]').click()
+    expect(page.locator('#onboarding-steps li').first).to_have_class('done')
+    expect(page.locator('#setup-status-title')).to_contain_text('configured')
+    page.locator('#guide-first-task').click()
+    expect(page.locator('#settings-panel')).to_be_hidden()
+    expect(page.locator('#input')).to_have_value(re.compile('Explain which Pantheon agent'))
+    assert not any('/api/setup/test' in url or '/api/ask' in url for url in requests)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-guide-action="skip"]').click()
+    expect(page.locator('#onboarding-card')).to_be_hidden()
+
+
+def test_task_checkpoint_resume_uses_stream_and_retains_current_overrides(page: Page, live_server_url: str) -> None:
+    requests = []
+    task = {'id': 'checkpoint-task', 'status': 'partial_failure', 'data': {'task': 'Complete the saved plan',
+            'mode': 'multi', 'recoverable': True, 'archive_available': True}, 'updated': 1}
+    page.route('**/api/tasks', lambda route: route.fulfill(json={'tasks': [task]}))
+    def resume(route):
+        requests.append(route.request.post_data_json)
+        events = [('phase', {'stage': 'executing', 'task_id': 'resume-task', 'role': 'athena'}),
+                  ('step_start', {'index': 0, 'role': 'athena', 'total': 1}),
+                  ('step_done', {'index': 0, 'role': 'athena', 'content': 'Retained research', 'reused': True, 'success': True}),
+                  ('done', {'status': 'completed', 'success': True})]
+        body = ''.join(f'event: {event}\ndata: {json.dumps(data)}\n\n' for event, data in events)
+        route.fulfill(content_type='text/event-stream', body=body)
+    page.route('**/api/ask/stream', resume)
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="info"]').click()
+    expect(page.locator('#info-tasks-list')).to_contain_text('Resume failed steps')
+    page.get_by_role('button', name='Resume failed steps').click()
+    expect(page.locator('#chat')).to_contain_text('Retained research')
+    assert requests[0]['resume_task_id'] == 'checkpoint-task'
+    assert 'overrides' not in requests[0]
+
+
+def test_parallel_results_finish_out_of_order_in_their_own_blocks(page: Page, live_server_url: str) -> None:
+    events = [('step_start', {'index': 0, 'total': 2, 'role': 'athena', 'task': 'Research'}),
+              ('step_start', {'index': 1, 'total': 2, 'role': 'apollo', 'task': 'Draft'}),
+              ('step_chunk', {'index': 1, 'role': 'apollo', 'text': 'Apollo independent draft'}),
+              ('step_done', {'index': 1, 'role': 'apollo', 'content': 'Apollo independent draft', 'success': True}),
+              ('step_chunk', {'index': 0, 'role': 'athena', 'text': 'Athena independent research'}),
+              ('step_done', {'index': 0, 'role': 'athena', 'content': 'Athena independent research', 'success': True}),
+              ('done', {'status': 'completed', 'success': True})]
+    body = ''.join(f'event: {event}\ndata: {json.dumps(data)}\n\n' for event, data in events)
+    page.route('**/api/ask/stream', lambda route: route.fulfill(content_type='text/event-stream', body=body))
+    page.goto(live_server_url)
+    page.locator('#input').fill('Research and draft independent sections')
+    page.locator('#send-btn').click()
+    athena = page.locator('#chat [data-role="athena"] [data-step-body]')
+    apollo = page.locator('#chat [data-role="apollo"] [data-step-body]')
+    expect(athena).to_contain_text('Athena independent research')
+    expect(athena).not_to_contain_text('Apollo independent draft')
+    expect(apollo).to_contain_text('Apollo independent draft')
+    expect(apollo).not_to_contain_text('Athena independent research')
+
+
 def test_openai_setup_lists_gpt6_astra(
     page: Page,
     live_server_url: str,
@@ -352,3 +416,53 @@ def test_model_catalog_updates_on_focus_without_overwriting_setup_draft(page: Pa
     expect(page.locator('#setup-model')).to_have_value('gpt-6.1-sol')
     expect(page.locator('#setup-api-key')).to_have_value('unsaved-test-key')
     expect(page.locator('#setup-base-url')).to_have_value('https://draft.example/v1')
+
+
+def test_media_upload_and_transcript_prepare_without_sending(page: Page, live_server_url: str):
+    requests = []
+    media_id = 'a' * 32
+    page.route('**/api/media/upload?*', lambda route: route.fulfill(json={'id': media_id, 'name': 'sample.pdf', 'type': 'application/pdf', 'size': 16}))
+    page.route('**/api/media/transcribe', lambda route: route.fulfill(json={'text': 'Review this transcript', 'artifact': {'id': 'b' * 32}}))
+    def ask(route):
+        requests.append(route.request.post_data_json)
+        route.fulfill(content_type='text/event-stream', body='event: done\ndata: {"success":true,"content":"Read the PDF"}\n\n')
+    page.route('**/api/ask/stream', ask)
+    page.goto(live_server_url)
+    page.locator('#attachment-input').set_input_files({'name': 'sample.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.7\nfixture'})
+    expect(page.locator('#composer-attachments')).to_contain_text('vision model reads on Send')
+    assert not requests
+    page.locator('#input').fill('Summarize the PDF')
+    page.locator('#send-btn').click()
+    expect(page.locator('#send-btn')).not_to_be_disabled()
+    assert requests[0]['attachments'] == [media_id]
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="media"]').click()
+    expect(page.locator('#media-settings-form')).to_be_visible()
+    page.locator('#media-audio-file').set_input_files({'name': 'voice.wav', 'mimeType': 'audio/wav', 'buffer': b'RIFF0000WAVE'})
+    page.locator('#media-audio-form button').click()
+    expect(page.locator('#media-transcript')).to_have_value('Review this transcript')
+    page.locator('#media-use-transcript').click()
+    expect(page.locator('#input')).to_have_value('Review this transcript')
+    assert len(requests) == 1
+
+
+def test_chat_platform_configuration_and_empty_allowlists(page: Page, live_server_url: str):
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="integrations"]').click()
+    page.locator('[data-integration-section="channels"]').click()
+    telegram = page.locator('[data-chat-channel="telegram"]')
+    telegram.locator('xpath=..').locator('summary').click()
+    telegram.locator('[data-channel-enabled]').check()
+    telegram.locator('button[type="submit"]').click()
+    expect(telegram.locator('[data-channel-status]')).to_contain_text('allowlists')
+    telegram.locator('[data-channel-users]').fill('11')
+    telegram.locator('[data-channel-destinations]').fill('22')
+    telegram.locator('[data-channel-secret="bot_token"]').fill('123:test-token')
+    telegram.locator('[data-channel-secret="secret_token"]').fill('callback-test')
+    telegram.locator('button[type="submit"]').click()
+    expect(page.locator('#integration-list')).to_contain_text('configured')
+    assert page.request.get(live_server_url + '/api/channels').json()['items'][1]['users'] == ['11']
+    assert 'test-token' not in page.locator('#integration-list').inner_text()
+    assert page.locator('[data-chat-channel="slack"]').count() == 1
+    assert page.locator('[data-chat-channel="discord"]').count() == 1

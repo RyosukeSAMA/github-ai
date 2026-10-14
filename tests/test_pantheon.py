@@ -131,3 +131,54 @@ def test_pantheon_ask_returns_dict(temp_config):
         "step_start",
         "step_done",
     ]
+
+
+def test_sdk_chronos_persists_jobs_visible_to_web(temp_config, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from pantheon.web.app import create_app
+
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    p = Pantheon(config_path=temp_config)
+    result = p.ask('in 10 minutes remind me to check the build', mode='role:chronos')
+    assert result['steps'][0].metadata['scheduled']
+    job_id = result['steps'][0].metadata['job']['id']
+    client = TestClient(create_app(config_path=temp_config))
+    jobs = client.get('/api/chronos/jobs').json()['jobs']
+    assert jobs[0]['id'] == job_id
+    assert p.services.scheduler.get_job(job_id) is not None
+
+
+def test_sdk_uses_shared_memory_and_plugin_context(temp_config, tmp_path, monkeypatch):
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    p = Pantheon(config_path=temp_config)
+    saved = p.services.process_input('remember that this project uses PostgreSQL')
+    assert len(saved['saved']) == 1
+    context, matches = p.hermes.memory_context_provider('project PostgreSQL', 'hephaestus')
+    assert 'PostgreSQL' in context
+    assert matches[0]['id'] == saved['saved'][0]['id']
+    p.services.plugins.save(name='Review rules', description='project review', instructions='Check migrations', roles=['hephaestus'])
+    context, _ = p.hermes.plugin_context_provider('review', 'hephaestus')
+    assert 'Check migrations' in context
+
+
+def test_sdk_mcp_enforces_approval_before_execution(temp_config, tmp_path, monkeypatch):
+    from pantheon.core.extensions import MCPError
+
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    p = Pantheon(config_path=temp_config)
+    manager = p.services.mcp
+    server = manager.save({'name': 'test writer', 'command': 'mock-command', 'allow_agent_calls': True,
+                           'roles': ['hephaestus'], 'last_test': {'ok': True}, 'tools': [{'name': 'write_file', 'risk': 'write'}]})
+    called = []
+    monkeypatch.setattr(manager, 'call_tool', lambda *args: called.append(args) or {'content': 'saved'})
+    call = {'server_id': server['id'], 'tool': 'write_file', 'arguments': {'path': 'demo.py'}}
+    with pytest.raises(MCPError, match='needs approval'):
+        p.hermes.mcp_tool_executor(call, role_name='hephaestus')
+    assert not called
+    p.services.approval_handler = lambda payload: False
+    with pytest.raises(MCPError, match='denied'):
+        p.hermes.mcp_tool_executor(call, role_name='hephaestus')
+    p.services.approval_handler = lambda payload: payload['arguments']['path'] == 'demo.py'
+    assert p.hermes.mcp_tool_executor(call, role_name='hephaestus')['content'] == 'saved'
+    assert len(called) == 1

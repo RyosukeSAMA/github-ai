@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from pantheon.core.pantheon import Pantheon
@@ -28,6 +30,7 @@ class FakeClient:
 
 class FakePantheon:
     def __init__(self, client: FakeClient) -> None:
+        self.services = Mock()
         self.router = type(
             "Router",
             (),

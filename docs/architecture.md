@@ -42,7 +42,7 @@ Pantheon is built around three layers:
         └─────────────────────────────────────────┘
 ```
 
-The three entry points (CLI / Web / SDK) all call the **same `Pantheon.ask()` method**, so behavior is identical no matter how you invoke it. This is deliberate: the Web UI and CLI are thin wrappers over the SDK.
+The three entry points (CLI / Web / SDK) all call the **same `Pantheon.ask()` method**, so core capabilities and state are shared across entry points. This is deliberate: the Web UI and CLI are thin wrappers over the SDK.
 
 ## Request lifecycle
 
@@ -67,7 +67,7 @@ When a user calls `p.ask("write a Python decorator")`:
    - Otherwise the role receives at most one matching implicit Skill.
    - Skill instructions are injected only for the selected step and recorded in `TaskResult.metadata`.
    - **Single**: the named role's `run()` is called once, result returned.
-   - **Multi**: each step's role is called in order. Hermes converts dependencies
+   - **Multi**: dependency-ready safe steps run concurrently (up to 4); unsafe tools and scheduling run exclusively. Hermes converts dependencies
      into typed `AgentMessage` records (`handoff`, `question`, `review_request`, or
      `revision_request`) and sends the role its contract plus prior results.
    - Successful steps return a structured `result` message to Hermes or the role
@@ -90,16 +90,21 @@ When a user calls `p.ask("write a Python decorator")`:
 - **Useful collaboration**: roles still exchange explicit handoffs, questions,
   review requests, revision requests, and results.
 - **Debuggable**: every message is recorded and streamed to Workspace Activity.
-- **Bounded cost**: the number of role calls is fixed by the plan.
+- **Bounded work**: plans have at most eight steps and up to two recovery rounds; requests reserve the shared budget before being sent.
 
 ### Why allow per-role models?
 
-Different tasks favor different models:
-- **Claude Sonnet 4.6** is strong at code → Hephaestus uses it.
-- **GPT-5.5 / GPT-5.4 mini** cover broad research and creative drafting → Athena & Apollo use them.
-- **No LLM at all** → Chronos doesn't need one.
+Each role can use a separately configured provider/model. Directory discovery updates selectable models without switching existing conversations or defaults. Actual API checks are explicit and bound to credentials, model and endpoint. Chronos uses no LLM for deterministic scheduling.
 
-This matches the user's intuition that "different roles should use different tools."
+## Shared runtime and recovery
+
+`WorkspaceServices` owns paths, credentials, readiness, budgets, tasks, memory, extensions, scheduler, media and channels. Execution snapshots isolate cancellation, roles and router settings between concurrent requests. A task ContextVar shares reservations across planner, independent workers, recovery and synthesis.
+
+`TaskStore` persists the root request, attachment IDs and interpreted context, plan, complete step results and attempted external effects. Resume claims the failed task atomically, reuses successful steps and refuses unreviewed uncertain external effects. Full results are separate private JSON artifacts; lists/details can return marked excerpts.
+
+`MediaService` validates bounded inputs, stores private UUID artifacts and calls OpenAI Responses/Images/Audio or Anthropic Messages. Media reservations use explicit per-request estimates rather than pricing base64 as text. Apollo can create one real image and records that effect before sending.
+
+`ChannelStore` verifies platform callbacks before parsing tasks, enforces identity/destination allowlists and atomically queues unique event IDs. Web acknowledges immediately and a single workspace worker invokes the shared runtime. Delivery is one attempt; uncertain replies are not automatically repeated. Backups disable adapters and convert pending events to interrupted state.
 
 ### Why three interfaces?
 
@@ -115,6 +120,8 @@ All three share the same `Pantheon.ask()` so there's one source of truth.
 
 | Class | Location | Purpose |
 |-------|----------|---------|
+| `WorkspaceServices` | `core/services.py` | Shared workspace capabilities |
+| `MediaService` / `ChannelStore` | `core/media.py`, `core/channels.py` | Multimodal artifacts and verified platform tasks |
 | `Pantheon` | `core/pantheon.py` | Public facade |
 | `Hermes` | `core/hermes.py` | Orchestrator |
 | `Router` | `core/router.py` | LLM-driven planner |
@@ -151,9 +158,9 @@ Then register in `pantheon/roles/__init__.py` and add a section in `config/panth
 Configuration is split between:
 
 - **`config/pantheon.yaml`** — non-secret config (model names, temperature, role enables).
-- **`.env`** — secrets (API keys). Never commit.
+- **`.env` / supported system credential storage** — secrets. Never commit secrets or credential reference files.
 
-This split lets users commit their `pantheon.yaml` (it's project-specific tuning, not secret) while keeping keys local.
+Keep runtime configuration private; commit only reviewed examples without literal credentials. Setup can explicitly migrate keys to supported OS storage after readback verification.
 
 The YAML schema is documented in `config/pantheon.example.yaml`.
 

@@ -2,6 +2,18 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.3.0] - 2026-10-14
+
+- Share Memory, Skills, plugins, MCP policy/approvals and scheduling between CLI, Web and SDK; serialize cross-process state writes.
+- Separate configured keys, catalog visibility and time-limited API verification; add dismissible first-run onboarding and supported OS credential storage with explicit migration.
+- Add atomic request/cost reservations, task/daily caps and media-operation estimates; unknown prices remain unknown and SDK retries are disabled for budget-managed calls.
+- Install/update in a staged environment with health checks and rollback; add native Windows PowerShell installation, startup service and ConPTY terminal.
+- Persist step checkpoints, reuse successful steps on resume, review uncertain external actions and download full result archives.
+- Run safe independent steps concurrently (up to four) and repair failed instructions within the existing plan (up to two rounds).
+- Understand images/PDFs through OpenAI or Anthropic; generate actual images through Apollo/OpenAI; transcribe audio and save private media artifacts across entry points.
+- Verify Telegram, Slack and Discord callbacks with identity/destination allowlists, durable deduplication, bounded queues and optional replies. Do not replay uncertain deliveries or restored queues.
+- Refresh installation, workflow and platform documentation and screenshots. Keep WSL checks manually runnable; native Windows/Linux/macOS checks remain automatic.
+
 ## [0.2.6] - 2026-10-12
 
 ### Added

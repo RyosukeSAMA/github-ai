@@ -11,7 +11,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 
-  <link rel="stylesheet" href="/static/app.css?v=0.2.6" />
+  <link rel="stylesheet" href="/static/app.css?v=0.3.0" />
   <style>
     html.file-open body {
       display: block;
@@ -217,7 +217,7 @@
           GitHub
         </a>
       </div>
-      <div class="sidebar-version" id="sidebar-version">UI v0.2.6</div>
+      <div class="sidebar-version" id="sidebar-version">UI v0.3.0</div>
     </div>
   </aside>
 
@@ -482,6 +482,7 @@
         <button class="settings-tab" data-tab="integrations">
           <span>Integrations</span>
         </button>
+        <button class="settings-tab" data-tab="media"><span>Media</span></button>
         <button class="settings-tab" data-tab="display">
           <span>Display</span>
         </button>
@@ -492,8 +493,20 @@
 
       <!-- Setup tab -->
       <div class="settings-pane active" data-pane="setup" id="settings-setup">
+        <button class="ghost-btn" type="button" id="guide-reopen">Open getting started guide</button>
+        <div class="onboarding-card" id="onboarding-card" hidden>
+          <strong>Get started with Pantheon</strong>
+          <p class="setup-muted">Confirm your workspace, save a provider, test access, then run your first task.</p>
+          <ol id="onboarding-steps"></ol>
+          <div class="setup-actions">
+            <button class="ghost-btn" type="button" data-guide-action="confirm_workspace">Use this workspace</button>
+            <button class="ghost-btn" type="button" id="guide-first-task">Try a first task</button>
+            <button class="ghost-btn" type="button" data-guide-action="skip">Close guide</button>
+          </div>
+          <p class="setup-muted">To work in another folder, restart with <code>pantheon --workspace /path/to/project web</code>. Test API sends one short request and may incur a small charge.</p>
+        </div>
         <p class="settings-hint">
-          Configure Pantheon for local use. API keys are saved to <code>.env</code>;
+          Configure Pantheon for local use. Choose system credential storage or <code>.env</code> for API keys;
           provider and model choices are saved to <code>config/pantheon.yaml</code>.
         </p>
 
@@ -551,6 +564,13 @@
               <button class="ghost-btn" type="button" id="setup-toggle-key">Show</button>
             </div>
             <p class="setup-muted" id="setup-key-status">No key status yet</p>
+            <label for="setup-credential-storage">Credential storage</label>
+            <select class="setting-select" id="setup-credential-storage">
+              <option value="env">Private .env file (compatible)</option>
+              <option value="system">System credential storage</option>
+            </select>
+            <p class="setup-muted" id="credential-storage-status"></p>
+            <button class="ghost-btn" type="button" id="credentials-migrate">Migrate saved API keys and channel tokens to system storage</button>
           </div>
 
           <label class="setting-check">
@@ -772,6 +792,41 @@
       </div>
 
       <!-- Display tab -->
+      <div class="settings-pane" data-pane="media" id="settings-media">
+        <section class="info-card">
+          <span class="setup-kicker">Images, PDFs and audio</span>
+          <p class="info-note" id="media-status">Loading media configuration...</p>
+          <form class="setup-form" id="media-settings-form">
+            <label>Image/PDF provider <select class="setting-input" id="media-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></label>
+            <label>Image/PDF model <input class="setting-input" id="media-vision-model" required /></label>
+            <label>Image generation model · OpenAI <input class="setting-input" id="media-image-model" required /></label>
+            <label>Audio transcription model · OpenAI <input class="setting-input" id="media-audio-model" required /></label>
+            <p class="info-note">Configure the provider key in Setup. Upload PNG/JPEG/WebP/PDF in the chat composer; the selected vision model reads them when you send. Maximum 8 MiB each, 20 MiB combined, six files. Files and results stay in this workspace. Sending them to a provider may incur charges.</p>
+            <button class="primary-btn" type="submit">Save media models</button>
+          </form>
+        </section>
+        <section class="info-card">
+          <span class="setup-kicker">Generate an image</span>
+          <form class="setup-form" id="media-image-form">
+            <label>Describe your image <textarea class="setting-input" id="media-image-prompt" rows="4" maxlength="12000" required></textarea></label>
+            <label>Size <select class="setting-input" id="media-image-size"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option></select></label>
+            <button class="primary-btn" type="submit">Generate · paid request</button>
+          </form>
+          <div id="media-image-result"></div>
+        </section>
+        <section class="info-card">
+          <span class="setup-kicker">Transcribe audio</span>
+          <form class="setup-form" id="media-audio-form">
+            <label>Audio · maximum 24 MiB <input class="setting-input" id="media-audio-file" type="file" accept=".wav,.mp3,.m4a,.mp4,.webm" required /></label>
+            <button class="primary-btn" type="submit">Transcribe · paid request</button>
+          </form>
+          <textarea class="setting-input" id="media-transcript" rows="6" readonly hidden></textarea>
+          <button class="ghost-btn" id="media-use-transcript" type="button" hidden>Use transcript in composer</button>
+          <a id="media-transcript-download" hidden>Download transcript</a>
+          <p class="info-note" id="media-action-status" role="status"></p>
+        </section>
+      </div>
+
       <div class="settings-pane" data-pane="display" id="settings-display">
         <p class="settings-hint">
           Display preferences are saved locally in your browser.
@@ -816,10 +871,10 @@
           <section class="info-card">
             <div class="info-card-head">
               <span class="setup-kicker">About</span>
-              <span class="setup-pill ok" id="info-version-pill">v0.2.6</span>
+              <span class="setup-pill ok" id="info-version-pill">v0.3.0</span>
             </div>
             <dl class="config-list info-list">
-              <dt>UI</dt><dd id="info-ui-version">v0.2.6</dd>
+              <dt>UI</dt><dd id="info-ui-version">v0.3.0</dd>
               <dt>Backend</dt><dd id="info-backend-version">—</dd>
               <dt>Python</dt><dd id="info-python-version">—</dd>
             </dl>
@@ -828,6 +883,7 @@
           <section class="info-card">
             <div class="info-card-head"><span class="setup-kicker">Updates</span><span class="setup-pill" id="info-update-pill">checking</span></div>
             <p class="info-note" id="info-update-status">Checking the latest GitHub release…</p>
+            <p class="info-note">When idle: <code>pantheon update</code>. Restore the previous installation with <code>pantheon update --rollback</code>.</p>
             <div class="info-inline-actions">
               <button class="ghost-btn" id="info-update-check" type="button">Check now</button>
               <a class="info-support-link" id="info-update-link" href="https://github.com/RyosukeSAMA/github-ai/blob/main/docs/setup.md#11-update-pantheon" target="_blank" rel="noopener noreferrer">How to update</a>
@@ -851,6 +907,36 @@
             <p class="info-note" id="info-usage-total">No usage recorded yet.</p>
             <div id="info-usage-models" class="usage-models"></div>
             <p class="info-note">Provider-reported tokens only. API charges vary by provider, model, caching and tier; check your provider bill for costs.</p>
+          </section>
+          <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">Workflow</span></div>
+            <form class="setup-form" id="workflow-form">
+              <label>Simultaneous independent steps <input class="setting-input" id="workflow-parallel" type="number" min="1" max="4" value="3" required /></label>
+              <label>Failure recovery attempts <input class="setting-input" id="workflow-recovery" type="number" min="0" max="2" value="1" required /></label>
+              <p class="info-note">Dependencies remain ordered. Write, unknown-risk and approval steps run exclusively. Recovery repairs failed instructions within the original scope; completed steps and unfinished external actions are never automatically replayed. Additional model calls use the same task budget. 0 disables recovery.</p>
+              <button class="primary-btn" type="submit">Save workflow</button>
+              <p class="info-note" id="workflow-status"></p>
+            </form>
+          </section>
+          <section class="info-card">
+            <div class="info-card-head"><span class="setup-kicker">Budgets · this workspace</span><button class="ghost-btn" id="budgets-refresh" type="button">Refresh</button></div>
+            <p class="info-note" id="budgets-status">Loading limits...</p>
+            <form id="budgets-form" class="setup-form">
+              <label>Requests per task <input class="setting-input" type="number" min="0" step="1" data-budget="task_requests" value="0" required /></label>
+              <label>Requests in 24 hours <input class="setting-input" type="number" min="0" step="1" data-budget="daily_requests" value="0" required /></label>
+              <label>Output tokens per request <input class="setting-input" type="number" min="0" step="1" data-budget="output_tokens" value="0" required /></label>
+              <label>Estimated USD per task <input class="setting-input" type="number" min="0" step="any" data-budget="task_usd" value="0" required /></label>
+              <label>Estimated USD in 24 hours <input class="setting-input" type="number" min="0" step="any" data-budget="daily_usd" value="0" required /></label>
+              <details><summary>Model price estimates</summary>
+                <p class="info-note">USD per million tokens. Enter your own current rates: <code>{"provider/model-id":{"input":1,"output":4}}</code>. Cost limits require a price for every model used.</p>
+                <textarea class="setting-input" id="budget-prices" rows="4" spellcheck="false">{}</textarea>
+                <p class="info-note">Media requests have image/audio/file costs. Set a conservative USD estimate per request: <code>{"openai/media-model-id":0.1}</code>. A USD cap blocks media models without an estimate.</p>
+                <textarea class="setting-input" id="budget-operation-prices" rows="3" spellcheck="false">{}</textarea>
+              </details>
+              <p class="info-note">0 disables a limit. Attempts include failures and planning calls. Cost estimates use your rates; unpriced requests have unknown cost. These are local controls, not provider invoices.</p>
+              <button class="primary-btn" type="submit">Save limits</button>
+            </form>
+            <p class="info-note" id="budgets-warning"></p>
           </section>
           <section class="info-card">
             <div class="info-card-head"><span class="setup-kicker">Task history · this workspace</span><button class="ghost-btn" id="info-tasks-refresh" type="button">Refresh</button></div>
@@ -933,7 +1019,7 @@
           </ul>
         </div>
         <div class="modal-footer">
-          <code>v0.2.6 · MIT License · © 2024 RyosukeSAMA</code>
+          <code>v0.3.0 · MIT License · © 2024 RyosukeSAMA</code>
         </div>
       </div>
     </div>
@@ -971,6 +1057,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=0.2.6"></script>
+  <script src="/static/app.js?v=0.3.0"></script>
 </body>
 </html>

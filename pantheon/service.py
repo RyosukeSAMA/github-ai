@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import plistlib
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -27,6 +29,7 @@ class ServicePaths:
     definition: Path
     stdout_log: Path
     stderr_log: Path
+    startup: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -47,7 +50,9 @@ def service_platform(system: str | None = None) -> str:
         return "launchd"
     if name == "linux":
         return "systemd"
-    raise ServiceError("Pantheon background services currently support macOS and Linux only.")
+    if name == "windows":
+        return "windows"
+    raise ServiceError("Pantheon background services support macOS, Linux and Windows.")
 
 
 def service_paths(
@@ -65,12 +70,17 @@ def service_paths(
     elif selected == "systemd":
         definition = user_home / ".config" / "systemd" / "user" / SYSTEMD_UNIT
         logs = user_home / ".local" / "state" / "pantheon"
+    elif selected == "windows":
+        local = user_home / 'AppData' / 'Local' if home else Path(os.environ.get('LOCALAPPDATA', user_home / 'AppData/Local'))
+        definition = local / 'Pantheon' / 'service.json'
+        logs = local / 'Pantheon' / 'logs'
     else:
         raise ServiceError(f"Unsupported service backend: {selected}")
     return ServicePaths(
         definition=definition,
         stdout_log=logs / "web.stdout.log",
         stderr_log=logs / "web.stderr.log",
+        startup=((user_home / 'AppData/Roaming' if home else Path(os.environ.get('APPDATA', user_home / 'AppData/Roaming'))) / 'Microsoft/Windows/Start Menu/Programs/Startup/Pantheon.lnk') if selected == 'windows' else None,
     )
 
 
@@ -222,6 +232,23 @@ def install_service(
         _run(["systemctl", "--user", "daemon-reload"])
         if start:
             _run(["systemctl", "--user", "enable", "--now", SYSTEMD_UNIT])
+    elif selected == "windows":
+        from pantheon import windows_service
+        from pantheon.core.credentials import atomic_text
+        if paths.definition.exists():
+            windows_service.stop(paths.definition)
+        config_path = config.expanduser() if config else None
+        if config_path and not config_path.is_absolute():
+            config_path = root / config_path
+        atomic_text(paths.definition, json.dumps({'workspace': str(root), 'host': host, 'port': port,
+                    'config': str(config_path.resolve()) if config_path else None,
+                    'arguments': arguments, 'stdout_log': str(paths.stdout_log), 'stderr_log': str(paths.stderr_log)}))
+        try:
+            windows_service.install_shortcut(paths.definition, paths.startup, interpreter)
+            if start:
+                windows_service.start(paths.definition)
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            raise ServiceError(str(exc)) from exc
     else:
         raise ServiceError(f"Unsupported service backend: {selected}")
     return paths
@@ -236,6 +263,9 @@ def start_service(*, backend: str | None = None, home: Path | None = None) -> No
         target = f"gui/{os.getuid()}"
         _run(["launchctl", "bootstrap", target, str(paths.definition)], check=False)
         _run(["launchctl", "kickstart", "-k", f"{target}/{SERVICE_LABEL}"])
+    elif selected == 'windows':
+        from pantheon import windows_service
+        windows_service.start(paths.definition)
     else:
         _run(["systemctl", "--user", "start", SYSTEMD_UNIT])
 
@@ -250,6 +280,9 @@ def stop_service(*, backend: str | None = None, home: Path | None = None) -> Non
             ["launchctl", "bootout", f"gui/{os.getuid()}", str(paths.definition)],
             check=False,
         )
+    elif selected == 'windows':
+        from pantheon import windows_service
+        windows_service.stop(paths.definition)
     else:
         _run(["systemctl", "--user", "stop", SYSTEMD_UNIT])
 
@@ -263,6 +296,9 @@ def restart_service(*, backend: str | None = None, home: Path | None = None) -> 
         domain = f"gui/{os.getuid()}"
         _run(["launchctl", "bootstrap", domain, str(paths.definition)], check=False)
         _run(["launchctl", "kickstart", "-k", f"{domain}/{SERVICE_LABEL}"])
+    elif selected == 'windows':
+        stop_service(backend=selected, home=home)
+        start_service(backend=selected, home=home)
     else:
         _run(["systemctl", "--user", "restart", SYSTEMD_UNIT])
 
@@ -277,6 +313,9 @@ def uninstall_service(*, backend: str | None = None, home: Path | None = None) -
             ["launchctl", "bootout", f"gui/{os.getuid()}", str(paths.definition)],
             check=False,
         )
+    elif selected == 'windows':
+        stop_service(backend=selected, home=home)
+        paths.startup.unlink(missing_ok=True)
     else:
         _run(["systemctl", "--user", "disable", "--now", SYSTEMD_UNIT], check=False)
     paths.definition.unlink(missing_ok=True)
@@ -310,6 +349,12 @@ def service_status(
         result = _run(["launchctl", "print", target], check=False)
         running = result.returncode == 0 and "state = running" in result.stdout
         detail = (result.stderr or result.stdout or "loaded").strip().splitlines()[0]
+    elif installed and selected == 'windows':
+        from pantheon import windows_service
+        running = windows_service.running(paths.definition)
+        detail = 'running' if running else 'stopped'
+        config = json.loads(paths.definition.read_text(encoding='utf-8'))
+        host, port = config['host'], config['port']
     elif installed:
         result = _run(["systemctl", "--user", "is-active", SYSTEMD_UNIT], check=False)
         running = result.returncode == 0 and result.stdout.strip() == "active"
@@ -347,6 +392,24 @@ def read_service_logs(
     existing = [path for path in (paths.stdout_log, paths.stderr_log) if path.exists()]
     if not existing:
         raise ServiceError(f"No service logs found under {paths.stdout_log.parent}")
+    if selected == 'windows':
+        streams = []
+        try:
+            for path in existing:
+                stream = path.open('r', encoding='utf-8', errors='replace')
+                print(f'==> {path} <==')
+                print(''.join(stream.readlines()[-max(1, lines):]), end='')
+                streams.append(stream)
+            while follow:
+                for stream in streams:
+                    print(stream.read(), end='', flush=True)
+                time.sleep(.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            for stream in streams:
+                stream.close()
+        return 0
     command = ["tail", "-n", str(max(1, lines))]
     if follow:
         command.append("-f")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from pantheon.core.budgets import BudgetExceededError
 from pantheon.core.pantheon import Pantheon
 from pantheon.llm.openai_client import is_responses_api_model
 
@@ -71,10 +72,17 @@ def probe_role_provider(
             **_probe_kwargs(client, model),
         )
     except Exception as exc:
+        if not isinstance(exc, BudgetExceededError):
+            runtime.services.readiness.record(_provider_name(client), model,
+                                              str(getattr(client, 'base_url', '') or ''),
+                                              str(getattr(client, 'api_key', '') or ''), False)
         raise ProviderProbeError(
             _safe_provider_error(exc, str(getattr(client, "api_key", "")))
         ) from exc
 
+    runtime.services.readiness.record(_provider_name(client), model,
+                                      str(getattr(client, 'base_url', '') or ''),
+                                      str(getattr(client, 'api_key', '') or ''), True)
     return {
         "ok": True,
         "role": normalized_role,

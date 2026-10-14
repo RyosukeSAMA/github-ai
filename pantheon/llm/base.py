@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import abc
+import inspect
+from functools import wraps
 from typing import Any
 
 
@@ -12,12 +14,58 @@ class BaseLLMClient(abc.ABC):
     default_model: str = ""
     provider_name: str = ""
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        complete = cls.__dict__.get('complete')
+        if complete is None:
+            return
+        signature = inspect.signature(complete)
+        extras_name = next((name for name, parameter in signature.parameters.items()
+                            if parameter.kind == inspect.Parameter.VAR_KEYWORD), 'kwargs')
+
+        @wraps(complete)
+        def guarded(self, messages, model='', system='', *args, **options):
+            budget = getattr(self, 'budget', None)
+            if budget is None:
+                return complete(self, messages, model, system, *args, **options)
+            from pantheon.core.budgets import RESERVATION
+            bound = signature.bind(self, messages, model, system, *args, **options)
+            options = dict(bound.arguments.get(extras_name, {}))
+            target = model or self.default_model
+            responses = callable(getattr(self, '_uses_responses_api', None)) and self._uses_responses_api(target)
+            output = options.get('max_output_tokens', bound.arguments.get('max_tokens', options.get('max_tokens', 4096)))
+            identity, output = budget.reserve(self.provider_name, target, messages, system, int(output or 4096))
+            if responses:
+                options.pop('max_tokens', None)
+                options['max_output_tokens'] = output
+            else:
+                if 'max_tokens' in signature.parameters:
+                    bound.arguments['max_tokens'] = output
+                else:
+                    options['max_tokens'] = output
+            bound.arguments[extras_name] = options
+            token = RESERVATION.set((budget, identity))
+            try:
+                return complete(*bound.args, **bound.kwargs)
+            finally:
+                RESERVATION.reset(token)
+        cls.complete = guarded
+
     def __init__(self, api_key: str = "", base_url: str | None = None) -> None:
         self.api_key = api_key
         self.base_url = base_url
         self.usage_recorder: Any = None
+        self.budget: Any = None
 
     def _record_usage(self, model: str, response: Any, *, responses_api: bool = False) -> None:
+        from pantheon.core.budgets import RESERVATION
+        reservation = RESERVATION.get()
+        if reservation:
+            try:
+                reservation[0].settle(reservation[1], response, responses_api=responses_api)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning('Usage settlement unavailable; conservative budget reservation retained.')
         if self.usage_recorder is not None:
             try:
                 self.usage_recorder(self.provider_name, model, response, responses_api=responses_api)

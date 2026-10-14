@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,7 @@ class UsageStore:
 
     def record(self, provider: str, model: str, response: Any, *, responses_api: bool = False) -> None:
         counts = usage_from_response(response, responses_api=responses_api)
-        with self._lock, self._connect() as db:
+        with self._lock, closing(self._connect()) as db, db:
             db.execute(
                 "INSERT INTO calls (created_at, provider, model, input_tokens, output_tokens, cached_input_tokens) VALUES (?, ?, ?, ?, ?, ?)",
                 (int(time.time()), provider, model, counts["input_tokens"], counts["output_tokens"], counts["cached_input_tokens"]),
@@ -59,7 +60,7 @@ class UsageStore:
 
     def summary(self, days: int = 30) -> dict[str, Any]:
         since = int(time.time()) - days * 86400
-        with self._lock, self._connect() as db:
+        with self._lock, closing(self._connect()) as db, db:
             rows = db.execute("""SELECT provider, model, COUNT(*),
                 SUM(input_tokens), SUM(output_tokens), SUM(cached_input_tokens),
                 COUNT(input_tokens) FROM calls WHERE created_at >= ?

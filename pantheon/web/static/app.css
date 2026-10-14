@@ -2,6 +2,14 @@
    Pantheon Web UI — focused agent workspace
    ========================================================================== */
 
+.onboarding-card { margin: 14px 0; padding: 16px; border: 1px solid var(--accent); border-radius: 12px; background: var(--bg-2); }
+.onboarding-card[hidden] { display: none; }
+.onboarding-card ol { padding-left: 22px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.onboarding-card li.done { color: var(--accent-3); }
+.setup-role-status.verified { color: var(--accent-3); }
+.setup-role-status.failed { color: var(--accent-err); }
+.setup-role-status.untested, .setup-role-status.expired { color: var(--accent-warn); }
+
 /* ---------- Design tokens ---------- */
 :root {
   --bg-0:        #080912;
@@ -5228,3 +5236,5 @@ body.font-lg .msg-content pre code { font-size: 15px; }
 .conversation-row .chat-row { flex: 1; min-width: 0; }
 .conversation-delete { background: transparent; border: 0; color: var(--text-muted, #999); cursor: pointer; padding: 6px; font-size: 20px; }
 .conversation-save-notice { padding: 10px; color: #c78536; font-size: 12px; line-height: 1.5; }
+
+.media-chat-image { display: block; max-width: 100%; max-height: 680px; border-radius: var(--radius); margin: 12px 0; object-fit: contain; }

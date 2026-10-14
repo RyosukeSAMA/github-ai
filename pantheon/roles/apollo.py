@@ -29,6 +29,7 @@ You do NOT: do factual research (ask Athena), write production code (ask Hephaes
 
 
 class Apollo(Role):
+    parallel_safe = True
     name = "apollo"
     description = "Writes image prompts, lyrics, storyboards, and creative content"
     default_model = "gpt-5.4-mini"

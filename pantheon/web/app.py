@@ -23,32 +23,32 @@ from urllib.parse import urlsplit
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pantheon import __version__
+from pantheon.core.budgets import BudgetExceededError
+from pantheon.core.channels import CHANNELS, ChannelAuthError, ChannelQueueFullError
+from pantheon.core.credentials import CredentialError, atomic_text
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
     MCPError,
-    MCPManager,
     PluginStore,
     SkillStore,
     mcp_available,
 )
+from pantheon.core.media import MAX_INPUT_BYTES
 from pantheon.core.memory import (
     DEFAULT_MEMORY_KINDS,
     DEFAULT_MEMORY_ROLES,
-    MemoryStore,
     classify_memory_text,
-    detect_memory_candidate,
-    normalize_memory_role,
 )
 from pantheon.core.pantheon import Pantheon
 from pantheon.core.paths import DataPaths
 from pantheon.core.runtime import RuntimeLease
-from pantheon.core.scheduler import ChronosScheduler, ScheduleParseError, parse_schedule_request
-from pantheon.core.tasks import TaskStore
+from pantheon.core.scheduler import ScheduleParseError, parse_schedule_request
+from pantheon.core.services import WorkspaceServices
 from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.llm.openai_client import is_responses_api_model
@@ -87,6 +87,9 @@ class AskRequest(BaseModel):
     role: str | None = None     # convenience: --role foo → mode = "role:foo"
     skill: str | None = None    # optional explicit installed skill id
     overrides: dict[str, dict[str, str]] | None = None  # {role_name: {provider, model}}
+    resume_task_id: str | None = None
+    acknowledge_effects: bool = False
+    attachments: list[str] = []
 
 
 class PromptEnhanceRequest(BaseModel):
@@ -112,6 +115,7 @@ class SetupSaveRequest(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     apply_to_roles: bool = True
+    credential_storage: str = "env"
 
 
 class SetupTestRequest(BaseModel):
@@ -119,6 +123,19 @@ class SetupTestRequest(BaseModel):
     model: str
     base_url: str | None = None
     api_key: str | None = None
+
+
+class OnboardingRequest(BaseModel):
+    action: str
+
+
+class ResumeRequest(BaseModel):
+    acknowledge_effects: bool = False
+
+
+class WorkflowRequest(BaseModel):
+    parallel_workers: int = 3
+    replan_attempts: int = 1
 
 
 class SetupModelsRequest(BaseModel):
@@ -492,23 +509,25 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     _pantheon: dict[str, Pantheon | None] = {"instance": None}
     workspace_root = Path(os.environ.get("PANTHEON_WORKSPACE", Path.cwd())).resolve()
     data_paths = DataPaths.for_workspace(workspace_root)
-    chronos_scheduler = ChronosScheduler(data_paths.state / "chronos_jobs.json")
-    memory_store = MemoryStore(data_paths.state / "memory.sqlite")
+    workspace_services = WorkspaceServices(data_paths)
+    readiness = workspace_services.readiness
+    initially_configured = Path(config_path).exists() if config_path else data_paths.config.exists()
+    chronos_scheduler = workspace_services.scheduler
+    memory_store = workspace_services.memory
     conversation_store = ConversationStore(data_paths.state / "conversations.json")
     usage_store = UsageStore(data_paths.state / "usage.sqlite")
-    task_store = TaskStore(data_paths.state / "tasks.sqlite")
+    task_store = workspace_services.tasks
     update_checker = UpdateChecker(__version__)
-    skill_store = SkillStore(
-        data_paths.state / "skills",
-        legacy_path=data_paths.state / "skills.json",
-    )
-    plugin_store = PluginStore(data_paths.state / "plugins.json")
-    mcp_manager = MCPManager(data_paths.state / "mcp_servers.json")
+    skill_store = workspace_services.skills
+    plugin_store = workspace_services.plugins
+    mcp_manager = workspace_services.mcp
     mcp_approval_lock = threading.Lock()
     pending_mcp_approvals: dict[str, dict[str, Any]] = {}
     chronos_runner: dict[str, asyncio.Task | None] = {"task": None}
     chronos_job_tasks: set[asyncio.Task[None]] = set()
     model_catalog_runner: dict[str, asyncio.Task | None] = {"task": None}
+    channel_runner: dict[str, asyncio.Task | None] = {'task': None}
+    channel_cancel = threading.Event()
     model_catalog_attempts: dict[str, int] = {}
     model_catalog_errors: dict[str, str] = {}
 
@@ -520,13 +539,18 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     async def lifespan(_app: FastAPI):
         runtime.acquire()
         try:
+            workspace_services.channels.recover_interrupted()
+            channel_cancel.clear()
+            channel_runner['task'] = asyncio.create_task(channel_loop())
             if chronos_runner["task"] is None or chronos_runner["task"].done():
                 chronos_runner["task"] = asyncio.create_task(chronos_loop())
             if model_catalog_runner["task"] is None or model_catalog_runner["task"].done():
                 model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
             yield
         finally:
+            channel_cancel.set()
             runner_tasks = [
+                channel_runner.get('task'),
                 chronos_runner.get("task"),
                 model_catalog_runner.get("task"),
             ]
@@ -543,6 +567,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             chronos_job_tasks.clear()
             chronos_runner["task"] = None
             model_catalog_runner["task"] = None
+            channel_runner['task'] = None
             runtime.release()
 
     app = FastAPI(title="Pantheon Web UI", version=__version__, lifespan=lifespan)
@@ -562,6 +587,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 config_path=active_config_path,
                 env_path=str(env_path) if env_path.exists() else None,
             )
+            if hasattr(_pantheon["instance"], "services"):
+                _pantheon["instance"].services = workspace_services
+                _pantheon["instance"].handle_memory = False
+                workspace_services.media.connection_provider = lambda: getattr(_pantheon['instance'], 'config', {})
+                _pantheon['instance'].hermes.attachment_processor = workspace_services.media.understand
+                _pantheon['instance'].hermes.media_context_provider = workspace_services.media.agent_context
+                _pantheon['instance'].hermes.image_generator = workspace_services.media.generate_image
             chronos_role = _pantheon["instance"].get_role("chronos")
             if chronos_role is not None:
                 chronos_role.config["scheduler"] = chronos_scheduler
@@ -622,6 +654,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     )
                     client.provider_name = provider_id
                     client.usage_recorder = p.usage_store.record
+                    client.budget = workspace_services.budget
                 role.llm_client = client
             if override.get("model"):
                 role.model = override["model"]
@@ -769,6 +802,12 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         summary: dict[str, dict[str, int]] = {}
         for section, items in INTEGRATION_CATALOG.items():
             rendered_items = [dict(item) for item in items]
+            if section == 'channels':
+                rendered_items = [item for item in rendered_items if item['id'] != 'team-chat']
+                rendered_items.extend({**workspace_services.channels.status(name),
+                                       'status': 'ready' if workspace_services.channels.config(name)['enabled'] else 'not_connected',
+                                       'summary': 'Verified incoming tasks with allowlists and optional replies.',
+                                       'capabilities': ['text tasks', 'callback verification', 'deduplication', 'bot replies']} for name in CHANNELS)
             sections[section] = rendered_items
             summary[section] = {
                 "total": len(rendered_items),
@@ -783,7 +822,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 "mcp_servers": len(mcp_manager.list()),
                 "mcp_ready": sum(
                     1 for item in mcp_manager.list()
-                    if item.get("enabled", True) and item.get("last_test", {}).get("ok")
+                    if item.get("enabled", True) and (item.get("last_test") or {}).get("ok")
                 ),
                 "plugins": len(plugin_store.list()),
                 "plugins_enabled": sum(1 for item in plugin_store.list() if item.get("enabled", True)),
@@ -801,54 +840,46 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         }
 
     def process_user_memory(user_text: str) -> dict[str, list[dict[str, Any]]]:
-        detected = detect_memory_candidate(user_text)
-        if not detected:
-            return {"saved": [], "suggestions": []}
-        if detected["action"] == "save":
-            item = memory_store.add(
-                detected["content"],
-                kind=detected["kind"],
-                source=detected["source"],
-                role=detected["role"],
-            )
-            return {"saved": [item], "suggestions": []}
-        suggestion = memory_store.suggest(
-            detected["content"],
-            kind=detected["kind"],
-            source=detected["source"],
-            role=detected["role"],
-            reason=detected["reason"],
-        )
-        suggestions = [suggestion] if suggestion.get("status") == "pending" else []
-        return {"saved": [], "suggestions": suggestions}
+        return workspace_services.process_input(user_text)
 
     def maybe_auto_capture_memory(task: str, result: dict[str, Any], mode: str) -> None:
-        settings = memory_store.settings()
-        if not settings["enabled"] or not settings["auto_capture"]:
-            return
-        content = str(result.get("content") or "").strip()
-        if not task.strip() or not content:
-            return
-        if mode.startswith("role:chronos"):
-            return
-        compact_content = re.sub(r"\s+", " ", content)
-        summary = (
-            f"Task: {task.strip()[:500]}\n"
-            f"Result: {compact_content[:1000]}"
-        )
-        memory_store.add(summary, kind="task", source="auto", role=normalize_memory_role(mode))
+        workspace_services.capture_result(task, result, mode)
 
     def ask_with_memory(
         content: str,
         mode: str,
         skill: str | None = None,
         overrides: dict[str, dict[str, str]] | None = None,
+        attachments: list[str] | None = None,
     ) -> dict[str, Any]:
-        result = request_pantheon(overrides).ask(content, mode=mode, skill=skill)
+        p = request_pantheon(overrides)
+        result = p.ask(content, mode=mode, skill=skill, **({'attachments': attachments} if attachments else {}))
         result["memory_matches"] = result.get("memory_matches", [])
         result["skill_matches"] = result.get("skill_matches", [])
         maybe_auto_capture_memory(content, result, mode)
         return result
+
+    async def channel_loop():
+        def execute(content, mode):
+            p = request_pantheon()
+            p.hermes.mcp_tool_executor = workspace_services.execute_tool
+            def on_event(event, data):
+                pass
+            on_event.cancel_event = channel_cancel
+            workspace_services.process_input(content)
+            result = p.ask(content, mode=mode, on_event=on_event)
+            workspace_services.capture_result(content, result, mode)
+            return result
+        while True:
+            try:
+                handled = await asyncio.to_thread(workspace_services.channels.process_next, execute)
+                if not handled:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOGGER.warning('Channel worker paused after a local storage/configuration error')
+                await asyncio.sleep(5)
 
     # ----- Static files -----
     if STATIC_DIR.exists():
@@ -965,9 +996,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             return yaml.safe_load(f) or {}
 
     def write_yaml_config(path: Path, data: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        atomic_text(path, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
     def read_model_cache() -> dict[str, Any]:
         path = setup_model_cache_path()
@@ -1049,30 +1078,14 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         return f"{key}={rendered}"
 
     def write_env_value(path: Path, key: str, value: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-        new_line = format_env_line(key, value)
-        replaced = False
-        next_lines: list[str] = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#") and "=" in stripped:
-                current_key = stripped.split("=", 1)[0].strip()
-                if current_key == key:
-                    next_lines.append(new_line)
-                    replaced = True
-                    continue
-            next_lines.append(line)
-        if not replaced:
-            if next_lines and next_lines[-1].strip():
-                next_lines.append("")
-            next_lines.append(new_line)
-        path.write_text("\n".join(next_lines).rstrip() + "\n", encoding="utf-8")
+        store = workspace_services.credentials
+        storage = "system" if key in store.refs() else "env"
+        store.save(key, value, storage=storage)
 
     def env_value(env_var: str) -> str:
         if not env_var:
             return ""
-        return parse_env_file(setup_env_path()).get(env_var) or os.environ.get(env_var, "")
+        return workspace_services.credentials.get(env_var)
 
     def write_runtime_env(key: str, value: str) -> None:
         write_env_value(setup_env_path(), key, value)
@@ -1563,6 +1576,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         providers = config.get("llm_providers", {}) or {}
         statuses: list[dict[str, Any]] = []
         for role_name, label, purpose, counts_toward_ready in SETUP_ROLE_ORDER:
+            health = {"state": "not_applicable", "checked_at": None}
+            catalog_listed = None
             cfg = role_config(config, role_name)
             adapter = str(cfg.get("provider") or ("none" if role_name == "chronos" else ""))
             model = str(cfg.get("model") or ("none" if role_name == "chronos" else ""))
@@ -1603,6 +1618,18 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     status = "disabled"
                     status_label = "disabled"
 
+                endpoint = str(llm_cfg.get("base_url") or preset.get("base_url") or "")
+                key = str(raw_api_key) if raw_api_key and "${" not in str(raw_api_key) else env_value(env_var)
+                key = normalized_provider_api_key(provider_key, key)
+                health = readiness.health(provider_key, model, endpoint, key)
+                catalog = cached_model_catalog(provider_key, endpoint, key)
+                if catalog and time.time() - int(catalog.get("fetched_at") or 0) < MODEL_CACHE_TTL_SECONDS:
+                    catalog_listed = any(entry.get("id") == model for entry in catalog.get("models", []))
+                if key_configured and enabled:
+                    status = health["state"]
+                    status_label = {"verified": "API verified", "failed": "API test failed",
+                                    "expired": "test expired", "untested": "configured · untested"}[status]
+
             statuses.append({
                 "role": role_name,
                 "label": label,
@@ -1618,6 +1645,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 "status": status,
                 "status_label": status_label,
                 "counts_toward_ready": counts_toward_ready,
+                "api_health": health,
+                "catalog_listed": catalog_listed,
             })
         return statuses
 
@@ -1647,6 +1676,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             else next(iter(provider_labels), preset["label"])
         )
         setup_ready = bool(role_count and ready_count == role_count)
+        verified_count = sum(item["api_health"]["state"] == "verified" for item in counted_roles)
         return {
             "message": message,
             "provider": provider_key,
@@ -1665,8 +1695,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "setup_ready": setup_ready,
             "ready_count": ready_count,
             "role_count": role_count,
-            "summary_title": f"{summary_provider} · {ready_count}/{role_count} ready",
-            "summary_state": "ready" if setup_ready else "needs attention",
+            "summary_title": f"{summary_provider} · {ready_count}/{role_count} configured · {verified_count} verified",
+            "summary_state": "verified" if verified_count == role_count and setup_ready else "configured" if setup_ready else "needs attention",
+            "verified_count": verified_count,
+            "credentials": workspace_services.credentials.status(),
+            "onboarding": onboarding_status(setup_ready, verified_count > 0),
             "role_statuses": role_statuses,
             "providers": [
                 provider_status_payload(
@@ -1678,6 +1711,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 for key in SETUP_PROVIDER_PRESETS
             ],
         }
+
+    def onboarding_status(configured: bool, verified: bool) -> dict:
+        dismissed = readiness.preference("guide_dismissed", initially_configured)
+        return {"show": not dismissed, "workspace": str(workspace_root),
+                "steps": {"workspace": bool(readiness.preference("workspace_confirmed", False)),
+                          "configured": configured, "verified": verified,
+                          "first_task": any(item["status"] == "completed" for item in task_store.list())}}
 
     def sse(event: str, data: dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
@@ -1698,7 +1738,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         if (request.url.hostname or "").lower() not in allowed_hosts:
             return JSONResponse({"detail": "Host is not allowed"}, status_code=400)
         origin = request.headers.get("origin")
-        if origin and request.url.path != "/api/channels/webhook":
+        callback_paths = {f'/api/channels/{name}/callback' for name in CHANNELS} | {'/api/channels/webhook'}
+        if origin and request.url.path not in callback_paths:
             parsed = urlsplit(origin)
             if parsed.scheme not in {"http", "https"} or parsed.netloc != request.headers.get("host"):
                 return JSONResponse({"detail": "Cross-origin access is not allowed"}, status_code=403)
@@ -1716,7 +1757,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "/api/health",
             "/api/channels/webhook",
         }
-        if path in public_paths or path.startswith("/static/"):
+        if path in public_paths | callback_paths or path.startswith("/static/"):
             return await call_next(request)
         if request_is_authenticated(request):
             return await call_next(request)
@@ -1953,6 +1994,21 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             raise HTTPException(status_code=404, detail="Task not found")
         return result
 
+    @app.get('/api/tasks/{task_id}/archive')
+    async def task_archive(task_id: str):
+        path = task_store.archive_path(task_id)
+        if task_store.get(task_id) is None or not path.is_file():
+            raise HTTPException(404, 'Complete archive is unavailable for this older task')
+        return FileResponse(path, media_type='application/json', filename='pantheon-task-' + path.name)
+
+    @app.post('/api/tasks/{task_id}/resume')
+    async def resume_task(task_id: str, req: ResumeRequest):
+        try:
+            result = await asyncio.to_thread(request_pantheon().resume, task_id, acknowledge_effects=req.acknowledge_effects)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {'task_id': result['task_id'], 'status': result.get('status'), 'content': result.get('content'), 'resumed_from': task_id}
+
     @app.get("/api/runtime")
     async def runtime_info() -> dict[str, Any]:
         return {"workspace": str(workspace_root), "data_directory": str(data_paths.state),
@@ -2172,7 +2228,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
 
     @app.get("/api/channels")
     async def channels_list() -> dict[str, Any]:
-        return {"items": [webhook_payload()], "path": str(setup_env_path())}
+        return {'items': [webhook_payload(), *(workspace_services.channels.status(name) for name in CHANNELS)],
+                'events': workspace_services.channels.history(), 'path': str(setup_env_path())}
 
     @app.post("/api/channels/webhook/config")
     async def webhook_config_save(req: WebhookConfigRequest) -> dict[str, Any]:
@@ -2186,6 +2243,31 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         if token:
             write_runtime_env("PANTHEON_WEBHOOK_TOKEN", token)
         return webhook_payload(token, reveal_token=True)
+
+    @app.post('/api/channels/{platform}/config')
+    async def channel_config(platform: str, value: dict):
+        try:
+            return workspace_services.channels.save(platform, value.get('config') or {}, value.get('secrets') or {}, storage=str(value.get('storage') or 'env'))
+        except (ValueError, CredentialError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post('/api/channels/{platform}/callback')
+    async def channel_callback(platform: str, request: Request):
+        if platform not in CHANNELS:
+            raise HTTPException(404, 'Unknown platform')
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > 65536:
+                raise HTTPException(413, 'Callback exceeds 64 KiB')
+        try:
+            return workspace_services.channels.receive(platform, request.headers, bytes(data))
+        except ChannelAuthError as exc:
+            raise HTTPException(401, str(exc)) from exc
+        except ChannelQueueFullError as exc:
+            raise HTTPException(429, str(exc)) from exc
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(400, 'Invalid chat callback payload') from exc
 
     @app.post("/api/channels/webhook")
     async def webhook_receive(request: Request) -> JSONResponse:
@@ -2253,7 +2335,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             problems.append(str(e))
         return {
             **setup_status_payload(
-                "Config looks ready." if not problems else "Config needs attention."
+                "Local configuration is valid. Use Test API to check provider access." if not problems else "Config needs attention."
             ),
             "ok": not problems,
             "problems": problems,
@@ -2291,6 +2373,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 api_key=api_key,
                 base_url=base_url,
             )
+            client.budget = workspace_services.budget
+            client.provider_name = provider_id
+            client.usage_recorder = usage_store.record
             return client.complete(
                 [{"role": "user", "content": "Reply with exactly: ok"}],
                 model=model,
@@ -2306,15 +2391,19 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 timeout=25,
             )
         except Exception as e:
+            tested = not isinstance(e, BudgetExceededError)
+            if tested:
+                readiness.record(provider_id, model, base_url, api_key, False)
             return {
                 **setup_status_payload("API test failed."),
                 "ok": False,
-                "tested": True,
+                "tested": tested,
                 "problem": sanitize_error(str(e), [api_key]),
                 "tested_provider": provider_id,
                 "tested_model": model,
             }
 
+        readiness.record(provider_id, model, base_url, api_key, True)
         return {
             **setup_status_payload("API connection works."),
             "ok": True,
@@ -2324,6 +2413,103 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "duration_ms": int((time.monotonic() - started) * 1000),
             "response_preview": sanitize_error(response_text[:120], [api_key]),
         }
+
+    @app.post("/api/onboarding")
+    async def update_onboarding(req: OnboardingRequest) -> dict:
+        if req.action == "confirm_workspace":
+            readiness.set_preference("workspace_confirmed", True)
+        elif req.action in {"skip", "reopen"}:
+            readiness.set_preference("guide_dismissed", req.action == "skip")
+        else:
+            raise HTTPException(400, "unknown guide action")
+        return setup_status_payload()
+
+    @app.post("/api/credentials/migrate")
+    async def migrate_credentials() -> dict:
+        try:
+            migrated = workspace_services.credentials.migrate()
+        except CredentialError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        reset_pantheon()
+        return {**setup_status_payload("Credentials migrated to system storage."), "migrated": migrated}
+
+    @app.get("/api/budgets")
+    async def budget_status() -> dict:
+        return workspace_services.budget.summary()
+
+    @app.get('/api/media')
+    async def media_status():
+        get_pantheon()
+        return workspace_services.media.status()
+
+    @app.post('/api/media/settings')
+    async def save_media_settings(value: dict):
+        try:
+            return workspace_services.media.save_settings(value)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post('/api/media/upload')
+    async def upload_media(request: Request, filename: str):
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > MAX_INPUT_BYTES:
+                raise HTTPException(413, 'File exceeds 24 MiB')
+        try:
+            return workspace_services.media.upload(filename, bytes(data))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.get('/api/media/{media_id}/file')
+    async def media_file(media_id: str, download: bool = False):
+        try:
+            meta, path = workspace_services.media.get(media_id)
+            return FileResponse(path, media_type=meta['type'], filename=meta['name'] if download else None,
+                                headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @app.post('/api/media/generate')
+    async def generate_media(value: dict):
+        get_pantheon()
+        try:
+            return await asyncio.to_thread(workspace_services.media.generate_image, str(value.get('prompt') or ''), size=str(value.get('size') or '1024x1024'))
+        except (ValueError, BudgetExceededError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(502, 'Image provider request failed. Check the API key, model access and provider status.') from exc
+
+    @app.post('/api/media/transcribe')
+    async def transcribe_media(value: dict):
+        get_pantheon()
+        try:
+            return await asyncio.to_thread(workspace_services.media.transcribe, str(value.get('id') or ''))
+        except (ValueError, BudgetExceededError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(502, 'Audio provider request failed. Check the API key, model access and provider status.') from exc
+
+    @app.get('/api/workflow')
+    async def workflow_status():
+        return workspace_services.workflow_policy()
+
+    @app.post('/api/workflow')
+    async def save_workflow(req: WorkflowRequest):
+        try:
+            value = workspace_services.save_workflow_policy(req.parallel_workers, req.replan_attempts)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        reset_pantheon()
+        return value
+
+    @app.post("/api/budgets")
+    async def save_budgets(policy: dict) -> dict:
+        try:
+            workspace_services.budget.save_policy(policy)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return workspace_services.budget.summary()
 
     @app.post("/api/setup/save")
     async def setup_save(req: SetupSaveRequest) -> dict[str, Any]:
@@ -2337,12 +2523,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         model = req.model.strip() if req.model else str(preset["model"])
         base_url = (req.base_url or str(preset["base_url"])).strip()
         api_key = normalized_provider_api_key(provider_id, req.api_key or "")
-        env_file = setup_env_path()
 
         if env_var:
             if api_key:
-                write_env_value(env_file, env_var, api_key)
-                os.environ[env_var] = api_key
+                try:
+                    workspace_services.credentials.save(env_var, api_key, storage=req.credential_storage)
+                except CredentialError as exc:
+                    raise HTTPException(400, str(exc)) from exc
             else:
                 existing_key = env_value(env_var)
                 if preset["requires_key"] and not existing_key:
@@ -2350,8 +2537,6 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                         status_code=400,
                         detail=f"{env_var} is required. Paste the key once, then save.",
                     )
-                if existing_key:
-                    os.environ[env_var] = existing_key
 
         config_file = setup_config_path()
         config = read_yaml_config(config_file)
@@ -2580,7 +2765,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
 
         try:
             result = await asyncio.to_thread(
-                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides
+                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides, attachments=req.attachments
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"ask failed: {e}") from e
@@ -2681,7 +2866,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 """Run Hermes dispatch with streaming instrumentation."""
                 try:
                     from pantheon.core.base import Task
-                    task = Task(content=req.task, mode=mode, skill=req.skill)
+                    workspace_services.media.validate_attachments(req.attachments)
+                    task = Task(content=req.task, mode=mode, skill=req.skill, attachments=req.attachments)
                     emit("start", {
                         "task_id": task.task_id,
                         "task": req.task,
@@ -2714,6 +2900,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             streamed["step"] = True
                             emit("phase", {
                                 "stage": "executing",
+                                "task_id": payload.get("task_id"),
                                 "role": payload.get("role", ""),
                                 "detail": payload.get("task") or payload.get("description") or "Working",
                                 "index": payload.get("index", 0),
@@ -2748,7 +2935,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             emit(event, payload)
 
                     stream_event.cancel_event = p.hermes.cancel_event
-                    result = hermes.dispatch(task, on_event=stream_event)
+                    result = (p.resume(req.resume_task_id, acknowledge_effects=req.acknowledge_effects, on_event=stream_event)
+                              if req.resume_task_id else hermes.dispatch(task, on_event=stream_event))
                     memory_matches = result.get("memory_matches", [])
                     maybe_auto_capture_memory(req.task, result, mode)
 
@@ -3004,6 +3192,15 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             raise HTTPException(status_code=400, detail="cwd is not a directory")
         timeout = max(1, min(req.timeout_seconds, 600))
 
+        if os.name == 'nt':
+            from pantheon.web.windows_terminal import command_events
+            async def windows_generator():
+                async for event, payload in command_events(command, cwd, timeout):
+                    payload['cwd'] = relative_workspace_path(cwd)
+                    yield sse(event, payload)
+            return StreamingResponse(windows_generator(), media_type='text/event-stream',
+                                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
         async def event_generator():
             queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
             proc: asyncio.subprocess.Process | None = None
@@ -3147,6 +3344,6 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     # ----- Health -----
     @app.get("/api/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": __version__}
 
     return app
