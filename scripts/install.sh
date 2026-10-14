@@ -17,8 +17,12 @@ done
 [ -n "$python_cmd" ] || fail 'Install Python 3.10–3.12 first (macOS: brew install python@3.12; Ubuntu: sudo apt install python3 python3-venv).'
 bootstrap=$(mktemp)
 trap 'rm -f "$bootstrap"' EXIT
-local_bootstrap="$(dirname "${BASH_SOURCE[0]}")/../pantheon/installer.py"
-if [ -f "${BASH_SOURCE[0]}" ] && [ -f "$local_bootstrap" ]; then
+script_source=${BASH_SOURCE[0]:-}
+local_bootstrap=''
+if [ -n "$script_source" ]; then
+  local_bootstrap="$(dirname "$script_source")/../pantheon/installer.py"
+fi
+if [ -n "$script_source" ] && [ -f "$script_source" ] && [ -f "$local_bootstrap" ]; then
   cp "$local_bootstrap" "$bootstrap"
 elif [ -n "${PANTHEON_REPO_URL:-}" ] && [ -f "$PANTHEON_REPO_URL/pantheon/installer.py" ]; then
   cp "$PANTHEON_REPO_URL/pantheon/installer.py" "$bootstrap"

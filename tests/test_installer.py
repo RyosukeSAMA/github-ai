@@ -86,3 +86,17 @@ def test_dirty_checkout_is_not_modified(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match='local source changes'):
         installer.install(root, 'repo', 'v0.3.0', update=True)
     assert (root / 'version.txt').read_text() == 'old'
+
+
+def test_bootstrap_supports_piped_stdin_without_bash_source():
+    import os
+    import shutil
+    import subprocess
+    if os.name == 'nt' or not shutil.which('bash') or hasattr(os, 'getuid') and os.getuid() == 0:
+        pytest.skip('POSIX bootstrap runs as a regular user; Windows uses PowerShell')
+    root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(['bash', '-s', '--', '--help'], input=(root / 'scripts/install.sh').read_text(),
+                               text=True, capture_output=True, env={**os.environ, 'PANTHEON_REPO_URL': str(root)}, timeout=20)
+    assert completed.returncode == 0, completed.stderr
+    assert 'Install or update Pantheon transactionally' in completed.stdout
+    assert 'unbound variable' not in completed.stderr

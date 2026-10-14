@@ -41,7 +41,7 @@ jobs:
         run: |
           git tag -f v0.3.0
           install_dir="$(mktemp -d)/github-ai"
-          PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
+          cat scripts/install.sh | PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash
           "$install_dir/.venv/bin/pantheon" --version
 
       - name: Upload coverage
@@ -121,7 +121,7 @@ jobs:
           $env:PANTHEON_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'Pantheon app'
           $env:PANTHEON_DATA_DIR = Join-Path $env:RUNNER_TEMP 'Pantheon data'
           $env:PANTHEON_SKIP_PATH = '1'
-          & ./scripts/install.ps1
+          Get-Content -Raw ./scripts/install.ps1 | Invoke-Expression
           $python = Join-Path $env:PANTHEON_INSTALL_DIR '.venv/Scripts/python.exe'
           & $python -m pantheon.cli --version
           $env:PANTHEON_UPDATE = '1'
