@@ -2,6 +2,10 @@
 
 Finish [installation](setup.md), then save a chat provider in Settings → Setup. Workspace settings are shared by Web, CLI and SDK; model overrides in one conversation do not change other chats or global defaults.
 
+Web follow-ups include recent text from the active chat: up to 16 user/assistant messages and 24,000 characters, with individual messages limited to 12,000 characters. Long text uses labelled head/tail excerpts; full messages remain in the chat. Council runs include the final reply from each earlier turn, rather than repeating every intermediate step. This adds input tokens to the next request but makes no extra summarization call. This history is separate from workspace memory, is preserved on task resume, and never automatically includes other chats. The SDK accepts the same explicit `history=[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]` argument to `ask()`.
+
+Prompt enhancement uses the Hermes model assigned to the current chat. Models supports saved custom model IDs and optional exact-ID entry for one role or all AI roles. A model being absent from a supplier catalog does not prove it is unusable; use Test this role to check access. Reply model labels record the execution model and survive model changes and reloads. Older messages without that record display “Model not recorded.”
+
 ## Images and PDFs
 
 1. Save OpenAI or Anthropic credentials in Setup, even if your ordinary chat provider is DeepSeek.

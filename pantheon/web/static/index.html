@@ -600,6 +600,9 @@
           <strong>Use one model for all AI roles</strong>
           <label>Provider <select class="setting-select" id="models-shared-provider"></select></label>
           <label>Model <select class="setting-select" id="models-shared-model"></select></label>
+          <details><summary>Use a custom model ID</summary>
+            <label>Custom model ID (optional)<input class="setting-input" id="models-shared-custom-model" maxlength="200" placeholder="Overrides the model selected above"></label>
+          </details>
           <button class="ghost-btn" id="models-apply-all" type="button">Apply to all AI roles</button>
         </div>
         <div class="setup-status"><div><span class="setup-kicker" id="models-status-scope">Current chat</span><strong id="models-status-title">Loading...</strong></div></div>

@@ -333,7 +333,7 @@ On Windows set `$env:PANTHEON_UPDATE='1'` before running the native installer. D
 
 The Web UI checks published GitHub Releases about every six hours and displays an upgrade banner. Settings → Info includes Check now, a Release link and the update command. Merged code without a Release does not trigger an alert; the page never installs a version automatically.
 
-`pantheon doctor` shows real workspace, state, config and credential paths. `pantheon backup export /path/to/backup.zip` exports an offline workspace backup after stopping the service and waiting for CLI tasks. `pantheon backup restore /path/to/backup.zip` restores it and retains a rollback copy. System keyring secrets are not in ordinary backups; configure credentials again on another computer. Info's Export backup/Import backup controls export conversation JSON, not the entire workspace.
+`pantheon doctor` shows real workspace, state, config and credential paths. `pantheon backup /path/to/backup.zip` exports an offline workspace backup after stopping the service and waiting for CLI tasks. `pantheon restore /path/to/backup.zip` restores it and retains a rollback copy. System keyring secrets are not in ordinary backups; configure credentials again on another computer. Info's Export backup/Import backup controls export conversation JSON, not the entire workspace.
 
 Info's API usage shows provider-reported tokens. Budgets limit task and rolling 24-hour attempts and output tokens; 0 disables a limit. Optional model rates enable local cost estimates; unpriced calls have unknown cost. CLI uses `pantheon budgets` and SDK uses `p.services.budget`. Estimates are not provider invoices.
 

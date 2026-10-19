@@ -52,7 +52,7 @@ def probe_role_provider(
         role = runtime.get_role(normalized_role)
         if role is None:
             raise ProviderProbeError(f"Unknown or disabled role: {normalized_role}")
-        client = getattr(role, "llm", None)
+        client = getattr(role, "llm_client", None)
         model = str(getattr(role, "model", "") or getattr(client, "default_model", ""))
 
     if client is None:

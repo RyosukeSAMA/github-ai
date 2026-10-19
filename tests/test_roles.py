@@ -104,3 +104,12 @@ def test_role_temperature_default():
 def test_role_can_override_temperature():
     h = Hephaestus(llm_client=MockLLMClient(), temperature=0.5)
     assert h.temperature == 0.5
+
+
+def test_result_provenance_uses_execution_client_for_every_role():
+    for cls in (Hephaestus, Athena, Apollo):
+        client = MockLLMClient(provider_name='deepseek')
+        role = cls(llm_client=client, model='private-model')
+        task = Task('hello')
+        result = role.run(task)
+        assert result.metadata == {'provider': 'deepseek', 'model': 'private-model', 'task_id': task.task_id}

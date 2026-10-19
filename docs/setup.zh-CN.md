@@ -333,7 +333,7 @@ Windows 使用原生安装命令前设置 `$env:PANTHEON_UPDATE='1'`。开发分
 
 Web 约每六小时检查 GitHub 正式 Release，有新版时显示升级提示。Settings → Info 提供手动检查、Release 链接和 `pantheon update` 提示。仅合并代码、没有发布 Release 时不会提示；页面不会在后台自动安装版本。
 
-`pantheon doctor` 显示实际工作区、状态、配置与凭据路径。`pantheon backup export /path/to/backup.zip` 导出离线工作区备份（先停止服务并等待 CLI 任务完成）；`pantheon backup restore /path/to/backup.zip` 恢复并保留回退副本。系统钥匙串中的密钥不包含在普通备份中，换电脑需重新配置。Info 页的 Export backup/Import backup 导出的是会话 JSON，不等同于完整工作区备份。
+`pantheon doctor` 显示实际工作区、状态、配置与凭据路径。`pantheon backup /path/to/backup.zip` 导出离线工作区备份（先停止服务并等待 CLI 任务完成）；`pantheon restore /path/to/backup.zip` 恢复并保留回退副本。系统钥匙串中的密钥不包含在普通备份中，换电脑需重新配置。Info 页的 Export backup/Import backup 导出的是会话 JSON，不等同于完整工作区备份。
 
 Settings → Info 的 API usage 显示服务商报告的 token。Budgets 设置每任务、24 小时请求数和输出 token 限制；0 表示不限。填写当前模型单价后可限制本地费用估算；未定价调用显示未知，不冒充账单。CLI 使用 `pantheon budgets`，SDK 使用 `p.services.budget`。
 

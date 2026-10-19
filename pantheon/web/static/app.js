@@ -927,38 +927,27 @@
     return entry ? entry.label : id;
   }
 
-  function roleModelInfo(roleName) {
-    if (!roleName || roleName === 'user' || roleName === 'error') return null;
-    const override = roleOverrides[roleName];
-    if (override?.model) {
-      return {
-        provider: override.provider || '',
-        model: override.model,
-        label: modelLabel(override.provider || '', override.model),
-        overridden: true,
-      };
-    }
-    const role = roles.find((item) => item.name === roleName);
-    if (!role?.model) return null;
-    return {
-      provider: role.provider || '',
-      model: role.model,
-      label: modelLabel(role.provider || '', role.model),
-      overridden: false,
-    };
-  }
-
   function messageKindLabel(roleName) {
     if (roleName === 'user') return 'Task';
     if (roleName === 'error') return 'Error';
     return roleKind(roleName);
   }
 
-  function messageModelHtml(roleName) {
-    const modelInfo = roleModelInfo(roleName);
-    if (!modelInfo) return '';
-    const label = `${modelInfo.label}${modelInfo.overridden ? ' · override' : ''}`;
-    return `<span class="msg-model" title="${escapeHtml(modelInfo.model)}">${escapeHtml(label)}</span>`;
+  function messageModelHtml(info) {
+    const label = info?.model ? modelLabel(info.provider || '', info.model) : 'Model not recorded';
+    return `<span class="msg-model" title="${escapeHtml(info?.model || 'unknown')}">${escapeHtml(label)}</span>`;
+  }
+
+  function recordMessageModel(msg, info = {}) {
+    if (!msg) return;
+    if (typeof info.model === 'string') msg.dataset.model = info.model;
+    if (typeof info.provider === 'string') msg.dataset.provider = info.provider;
+    if (info.task_id) msg.dataset.taskId = info.task_id;
+    const pill = msg.querySelector('.msg-model');
+    if (pill) {
+      pill.title = msg.dataset.model || 'unknown';
+      pill.textContent = msg.dataset.model ? modelLabel(msg.dataset.provider || '', msg.dataset.model) : 'Model not recorded';
+    }
   }
 
   function formatDuration(ms) {
@@ -1099,6 +1088,7 @@
           ${knownProviders.map(p => `<option value="${escapeHtml(p)}" ${p === choice.provider ? 'selected' : ''}>${escapeHtml(setupProviders.get(p)?.label || p)}</option>`).join('')}</select></label>
         <label class="settings-role-row"><span class="sr-key">Model</span><select class="sr-model" ${isChronos ? 'disabled' : ''}>
           ${knownModels.map(id => `<option value="${escapeHtml(id)}" ${id === choice.model ? 'selected' : ''}>${escapeHtml(modelLabel(choice.provider,id))}</option>`).join('')}</select></label>
+        ${isChronos ? '' : '<details class="sr-custom"><summary>Use a custom model ID</summary><label class="setup-muted">Custom model ID<input class="setting-input sr-custom-model" maxlength="200" placeholder="Exact model ID from your provider"></label><button type="button" class="ghost-btn sr-use-custom">Use ID for this role</button></details>'}
         ${isChronos ? '' : '<span class="sr-connection-status setup-role-status">Checking connection…</span><div class="setup-actions"><button class="ghost-btn sr-test" type="button">Test this role</button><button class="ghost-btn sr-edit-key" type="button">Configure connection</button></div><small class="sr-feedback setup-muted" role="status"></small>'}`;
       settingsRoles.appendChild(card);
       if (isChronos) continue;
@@ -1108,6 +1098,10 @@
         updateRoleChoice(r.name, {provider,model});
       });
       card.querySelector('.sr-model').addEventListener('change', event => updateRoleChoice(r.name, {provider:choice.provider,model:event.target.value}));
+      card.querySelector('.sr-use-custom').addEventListener('click', () => {
+        const model = card.querySelector('.sr-custom-model').value.trim();
+        if (model) updateRoleChoice(r.name, {provider:choice.provider, model});
+      });
       card.querySelector('.sr-edit-key').addEventListener('click', () => editProviderConnection(choice.provider));
       card.querySelector('.sr-test').addEventListener('click', event => void testRoleModel(r.name,event.target));
     }
@@ -1131,14 +1125,18 @@
     if (providerModelIds(provider).includes(selected)) $('#models-shared-model').value = selected;
   }
 
-  $('#models-shared-provider').addEventListener('change', renderSharedModels);
+  $('#models-shared-provider').addEventListener('change', () => {
+    $('#models-shared-custom-model').value = '';
+    renderSharedModels();
+  });
+  $('#models-shared-model').addEventListener('change', () => { $('#models-shared-custom-model').value = ''; });
   $('#models-scope').addEventListener('change', event => {
     modelScope = event.target.value;
     if (modelScope === 'defaults') defaultModelDraft = cloneJSON(defaultRoleChoices(), {});
     renderSettingsModels();
   });
   $('#models-apply-all').addEventListener('click', () => {
-    const choice = {provider:$('#models-shared-provider').value, model:$('#models-shared-model').value};
+    const choice = {provider:$('#models-shared-provider').value, model:$('#models-shared-custom-model').value.trim() || $('#models-shared-model').value};
     if (!choice.model) return;
     for (const name of ['hermes','hephaestus','athena','apollo']) {
       if (modelScope === 'defaults') defaultModelDraft[name] = {...choice};
@@ -5783,7 +5781,12 @@
 
 
   function mergeConversations(local, remote) {
-    function isPrefix(a, b) { return a.length <= b.length && a.every((item, i) => JSON.stringify(item) === JSON.stringify(b[i])); }
+    // Adding optional provenance/status fields to legacy messages is not a
+    // transcript conflict. Compare content and attachments, not schema shape.
+    function messageContent(item) {
+      return JSON.stringify({role:item.role, text:item.text, attachments:item.attachments || []});
+    }
+    function isPrefix(a, b) { return a.length <= b.length && a.every((item, i) => messageContent(item) === messageContent(b[i])); }
     function conflictId(session) {
       let hash = 0;
       for (const char of JSON.stringify(session.messages)) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
@@ -5818,8 +5821,13 @@
       if (!resp.ok || data.schema_version !== 1 || !Array.isArray(data.sessions)) throw data;
       absorbDeleted(data);
       conversationRevision = data.revision;
+      const defaults = defaultRoleChoices();
+      const untouchedModels = sessions.length === 1 && Object.entries(sessions[0].overrides || {})
+        .every(([name, choice]) => defaults[name]?.provider === choice.provider && defaults[name]?.model === choice.model);
+      // Do not discard an empty draft whose models or mode the user configured.
       const browserSessions = data.sessions.length && sessions.length === 1 &&
-        sessions[0].title === 'New chat' && !sessions[0].messages.length ? [] : sessions;
+        sessions[0].title === 'New chat' && sessions[0].mode === 'auto' &&
+        !sessions[0].messages.length && untouchedModels ? [] : sessions;
       const merged = mergeConversations(browserSessions, data.sessions);
       const needsSave = JSON.stringify(merged) !== JSON.stringify(data.sessions);
       sessions = merged;
@@ -6126,6 +6134,10 @@
           label: metaFor(item.role).label,
           roleColor: metaFor(item.role).color,
           rawText: item.text,
+          model: item.model || '',
+          provider: item.provider || '',
+          taskId: item.taskId || '',
+          status: item.status || 'ready',
         });
       }
       const last = chatEl.lastElementChild;
@@ -6250,14 +6262,18 @@
     const meta = metaFor(role);
     const msg = document.createElement('div');
     const isAssistantRole = role !== 'user' && role !== 'error';
-    const modelInfo = roleModelInfo(role);
+    const modelInfo = {model: opts.model || '', provider: opts.provider || ''};
     const status = opts.status || (isAssistantRole ? 'ready' : role === 'error' ? 'error' : 'sent');
     const duration = formatDuration(opts.durationMs);
     msg.className = isAssistantRole ? `msg assistant ${role}` : `msg ${role}`;
     msg.dataset.role = role;
     msg.dataset.label = opts.label || meta.label;
     msg.dataset.status = status;
-    if (modelInfo?.model) msg.dataset.model = modelInfo.model;
+    if (isAssistantRole) {
+      msg.dataset.model = modelInfo.model;
+      msg.dataset.provider = modelInfo.provider;
+      if (opts.taskId) msg.dataset.taskId = opts.taskId;
+    }
     if (opts.rawText != null) msg.dataset.rawText = String(opts.rawText);
     msg.style.setProperty('--god-color', opts.roleColor || meta.color);
     msg.innerHTML = `
@@ -6269,7 +6285,7 @@
             <span class="msg-kind">${escapeHtml(opts.kind || messageKindLabel(role))}</span>
           </div>
           <div class="msg-meta-side">
-            ${messageModelHtml(role)}
+            ${isAssistantRole ? messageModelHtml(modelInfo) : ''}
             <span class="msg-duration" ${duration ? '' : 'hidden'}>${escapeHtml(duration)}</span>
             <span class="msg-status" data-status="${escapeHtml(status)}">${escapeHtml(status)}</span>
             <span class="msg-time">${new Date().toLocaleTimeString()}</span>
@@ -6453,15 +6469,13 @@
     if (!root) return;
     root.querySelectorAll('.msg.assistant').forEach((msgEl) => {
       if (msgEl.querySelector('.msg-model')) return;
-      const roleName = msgEl.dataset.role || '';
-      const modelInfo = roleModelInfo(roleName);
-      if (!modelInfo) return;
+      const modelInfo = {model: msgEl.dataset.model || '', provider: msgEl.dataset.provider || ''};
       const side = msgEl.querySelector('.msg-meta-side');
       if (!side) return;
       const modelEl = document.createElement('span');
       modelEl.className = 'msg-model';
-      modelEl.title = modelInfo.model;
-      modelEl.textContent = `${modelInfo.label}${modelInfo.overridden ? ' · override' : ''}`;
+      modelEl.title = modelInfo.model || 'unknown';
+      modelEl.textContent = modelInfo.model ? modelLabel(modelInfo.provider, modelInfo.model) : 'Model not recorded';
       const before = side.querySelector('.msg-duration') || side.querySelector('.msg-status') || side.firstChild;
       side.insertBefore(modelEl, before);
       msgEl.dataset.model = modelInfo.model;
@@ -6550,7 +6564,7 @@
       const response = await fetch('/api/prompt/enhance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: sourcePrompt, mode: currentMode }),
+        body: JSON.stringify({ prompt: sourcePrompt, mode: currentMode, overrides: roleOverrides }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
@@ -6567,7 +6581,7 @@
       autoResize();
       inputEl.focus();
       inputEl.setSelectionRange(enhanced.length, enhanced.length);
-      setComposerStatus('Prompt enhanced · click the wand to undo', 'ok', true);
+      setComposerStatus(`Prompt enhanced${data.model ? ` · ${data.provider || 'Hermes'} / ${data.model}` : ''} · click the wand to undo`, 'ok', true);
     } catch (error) {
       setComposerStatus(error.message || 'Could not enhance prompt', 'error', true);
     } finally {
@@ -6583,6 +6597,7 @@
 
   async function sendAsk(task, opts = {}) {
     if (isStreaming) return;
+    const history = conversationHistory();
     const agentTask = opts.agentTask || task;
     const attachments = opts.attachments || [];
     isStreaming = true;
@@ -6645,6 +6660,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task: agentTask,
+          history: opts.resumeTaskId ? undefined : history,
           user_task: task,
           mode: currentMode,
           skill: opts.skill || undefined,
@@ -6849,6 +6865,7 @@
           }
           case 'step_done': {
             const elements = stepElements(data);
+            recordMessageModel(elements.message, data);
             finalizeStep(elements.message, data.content);
             updateMessageStatus(elements.message, 'done', data.duration_ms || 0);
             if (!streamedSteps.has(elements.index) && data.content) appendWorkspaceStream(data.content);
@@ -6868,6 +6885,7 @@
           case 'step_error': {
             const elements = stepElements(data);
             {
+              recordMessageModel(elements.message, data);
               finalizeStep(elements.message, data.content || '❌ ' + (data.error || 'unknown'));
               updateMessageStatus(elements.message, 'error');
               const s = elements.message.querySelector('.step-status');
@@ -6902,6 +6920,7 @@
             }
             break;
           case 'summary_done':
+            recordMessageModel(currentMsg, data);
             if (currentMsg) finalizeStep(currentMsg, data.content);
             if (currentMsg) updateMessageStatus(currentMsg, 'done', data.duration_ms || 0);
             if (!currentStepStreamed && data.content) appendWorkspaceStream(data.content);
@@ -8083,10 +8102,45 @@
           attachments = [];
         }
       }
-      items.push({ role, text, ...(attachments.length ? { attachments } : {}) });
+      items.push({ role, text, ...(attachments.length ? { attachments } : {}),
+        ...(!isUser && !isError ? {model: msg.dataset.model || '', provider: msg.dataset.provider || '',
+          taskId: msg.dataset.taskId || '', status: msg.dataset.status || 'ready'} : {}) });
     });
     return items;
   }
+  // Snapshot only this chat before inserting the new user message. Retain the
+  // final assistant reply per turn rather than repeating every council step.
+  function conversationHistory() {
+    const history = [];
+    let answer = null;
+    for (const item of snapshotChat()) {
+      if (item.role === 'user') {
+        if (answer) history.push({role:'assistant', content:answer});
+        answer = null;
+        history.push({role:'user', content:item.text});
+      } else if (item.role !== 'error' && ['done', 'ready'].includes(item.status || 'ready')) {
+        answer = item.text;
+      }
+    }
+    if (answer) history.push({role:'assistant', content:answer});
+    let remaining = 24000;
+    const bounded = [];
+    for (const item of history.slice(-16).reverse()) {
+      if (remaining < 128) break;
+      const limit = Math.min(12000, remaining);
+      let content = item.content;
+      const characters = Array.from(content); // Count code points without splitting emoji.
+      if (characters.length > limit) {
+        const marker = '\n[Excerpt: middle omitted; full message remains in chat]\n';
+        const size = Math.floor((limit - marker.length) / 2);
+        content = characters.slice(0, size).join('') + marker + characters.slice(-size).join('');
+      }
+      bounded.push({role:item.role, content});
+      remaining -= Array.from(content).length;
+    }
+    return bounded.reverse();
+  }
+
   function saveHistory() {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(snapshotChat())); } catch (_) {}
   }
@@ -8114,6 +8168,10 @@
           label: metaFor(item.role).label,
           roleColor: metaFor(item.role).color,
           rawText: item.text,
+          model: item.model || '',
+          provider: item.provider || '',
+          taskId: item.taskId || '',
+          status: item.status || 'ready',
         });
       }
       const last = chatEl.lastElementChild;
