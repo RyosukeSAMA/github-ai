@@ -543,3 +543,135 @@ def test_chat_platform_configuration_and_empty_allowlists(page: Page, live_serve
     assert 'test-token' not in page.locator('#integration-list').inner_text()
     assert page.locator('[data-chat-channel="slack"]').count() == 1
     assert page.locator('[data-chat-channel="discord"]').count() == 1
+
+
+def test_followup_context_and_reply_provenance_survive_model_switch_and_reload(page: Page, live_server_url: str):
+    requests = []
+
+    def ask(route):
+        requests.append(route.request.post_data_json)
+        events = [('step_start', {'index': 0, 'role': 'hephaestus'}),
+                  ('step_done', {'index': 0, 'role': 'hephaestus', 'task_id': 'original-task',
+                                 'provider': 'deepseek', 'model': 'deepseek-flash',
+                                 'content': 'INTERMEDIATE_DO_NOT_REPEAT', 'success': True}),
+                  ('summary_start', {'role': 'hermes'}),
+                  ('summary_done', {'role': 'hermes', 'provider': 'openai', 'model': 'summary-model',
+                                    'content': 'def ORCHID_917(a, b): return a + b'}),
+                  ('done', {'status': 'completed', 'success': True})]
+        route.fulfill(content_type='text/event-stream', body=''.join(
+            f'event: {event}\ndata: {json.dumps(data)}\n\n' for event, data in events))
+
+    page.route('**/api/ask/stream', ask)
+    page.goto(live_server_url)
+    page.locator('#input').fill('Write function ORCHID_917 to add integers')
+    page.locator('#send-btn').click()
+    answer = page.locator('#chat [data-role="hephaestus"]').first
+    expect(answer).to_have_attribute('data-status', 'done')
+    expect(page.locator('#send-btn')).to_contain_text('Send')
+    assert requests[0]['history'] == []
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="models"]').click()
+    role = page.locator('.settings-role[data-role="hephaestus"]')
+    role.locator('.sr-provider').select_option('openai')
+    role.locator('.sr-model').select_option('gpt-6.1-sol')
+    page.reload()
+    expect(answer.locator('.msg-model')).to_have_attribute('title', 'deepseek-flash')
+    expect(answer).to_have_attribute('data-provider', 'deepseek')
+    expect(answer).to_have_attribute('data-task-id', 'original-task')
+    page.locator('#input').fill('Change the previous function to subtract')
+    page.locator('#send-btn').click()
+    expect(page.locator('#chat [data-role="hephaestus"]')).to_have_count(2)
+    expect(page.locator('#send-btn')).to_contain_text('Send')
+    assert requests[1]['history'] == [
+        {'role': 'user', 'content': 'Write function ORCHID_917 to add integers'},
+        {'role': 'assistant', 'content': 'def ORCHID_917(a, b): return a + b'},
+    ]
+    page.locator('#new-chat-btn').click()
+    page.locator('#input').fill('A separate chat')
+    page.locator('#send-btn').click()
+    expect(page.locator('#send-btn')).to_contain_text('Send')
+    assert requests[2]['history'] == []
+
+
+def test_enhancement_sends_current_chat_hermes_choice(page: Page, live_server_url: str):
+    requests = []
+
+    def enhance(route):
+        requests.append(route.request.post_data_json)
+        route.fulfill(json={'prompt': 'Improved draft', 'provider': 'openai', 'model': 'private-hermes'})
+
+    page.route('**/api/prompt/enhance', enhance)
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="models"]').click()
+    role = page.locator('.settings-role[data-role="hermes"]')
+    role.locator('.sr-provider').select_option('openai')
+    role.locator('.sr-custom summary').click()
+    role.locator('.sr-custom-model').fill('private-hermes')
+    role.locator('.sr-use-custom').click()
+    page.locator('#toggle-settings').click()
+    page.locator('#input').fill('Original draft')
+    page.locator('#enhance-prompt-btn').click()
+    expect(page.locator('#input')).to_have_value('Improved draft')
+    assert requests[0]['overrides']['hermes'] == {'provider': 'openai', 'model': 'private-hermes'}
+    expect(page.locator('#composer-status')).to_contain_text('openai / private-hermes')
+
+
+def test_custom_ids_available_for_role_and_bulk_assignment(page: Page, live_server_url: str):
+    result = page.request.post(live_server_url + '/api/connections/save', data={
+        'provider': 'openai', 'model': 'private-saved-model',
+        'base_url': 'https://gateway.example/v1', 'api_key': 'fake-key',
+    })
+    assert result.ok
+    page.goto(live_server_url)
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="models"]').click()
+    role = page.locator('.settings-role[data-role="hephaestus"]')
+    role.locator('.sr-provider').select_option('openai')
+    role.locator('.sr-model').select_option('private-saved-model')
+    expect(role.locator('.sr-model')).to_have_value('private-saved-model')
+    page.locator('#models-shared-provider').select_option('openai')
+    page.locator('#models-shared-custom-model').locator('..').locator('..').locator('summary').click()
+    page.locator('#models-shared-custom-model').fill('private-bulk-model')
+    page.locator('#models-apply-all').click()
+    for name in ('hermes', 'hephaestus', 'athena', 'apollo'):
+        expect(page.locator(f'.settings-role[data-role="{name}"] .sr-model')).to_have_value('private-bulk-model')
+    page.reload()
+    page.locator('#toggle-settings').click()
+    page.locator('[data-tab="models"]').click()
+    expect(role.locator('.sr-model')).to_have_value('private-bulk-model')
+
+
+def test_legacy_model_unknown_and_long_history_remains_bounded(page: Page, live_server_url: str):
+    messages = [{'role': 'user' if index % 2 == 0 else 'hephaestus', 'text': f'Old message {index}'}
+                for index in range(20)]
+    messages[-1]['text'] = 'HEAD ' + ('😀中文' * 6000) + ' TAIL'
+    chat = {'id': 'legacy-audit-chat', 'title': 'Legacy audit', 'mode': 'auto',
+            'overrides': {}, 'createdAt': 1, 'updatedAt': 1, 'messages': messages}
+    state = page.request.get(live_server_url + '/api/conversations').json()
+    assert page.request.put(live_server_url + '/api/conversations', data={
+        'schema_version': 1, 'expected_revision': state['revision'], 'sessions': [chat],
+    }).ok
+    page.add_init_script(f"localStorage.setItem('pantheon:chat-sessions', JSON.stringify([{json.dumps(chat, ensure_ascii=True)}]));")
+    requests = []
+
+    def ask(route):
+        requests.append(route.request.post_data_json)
+        route.fulfill(content_type='text/event-stream', body='event: done\ndata: {"status":"completed"}\n\n')
+
+    page.route('**/api/ask/stream', ask)
+    page.goto(live_server_url)
+    old = page.locator('#chat [data-role="hephaestus"]').last
+    expect(old.locator('.msg-model')).to_have_text('Model not recorded')
+    expect(page.locator('#info-conversation-status')).to_contain_text('conversations saved')
+    expect(page.locator('#chat-list .chat-row-title').filter(has_text='Conflict copy:')).to_have_count(0)
+    page.locator('#input').fill('Continue the previous answer')
+    page.locator('#send-btn').click()
+    expect(page.locator('#send-btn')).to_contain_text('Send')
+    history = requests[0]['history']
+    assert len(history) <= 16
+    assert sum(len(item['content']) for item in history) <= 24000
+    assert all(len(item['content']) <= 12000 for item in history)
+    assert 'HEAD' in history[-1]['content'] and 'TAIL' in history[-1]['content']
+    assert '[Excerpt:' in history[-1]['content']
+    assert not any(0xD800 <= ord(char) <= 0xDFFF for char in history[-1]['content'])

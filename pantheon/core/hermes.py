@@ -12,7 +12,8 @@ from contextvars import ContextVar
 from dataclasses import asdict, replace
 from typing import Any
 
-from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult
+from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult, model_identity
+from pantheon.core.context import bounded_history, conversation_task
 from pantheon.core.router import Router
 
 CURRENT_STEP: ContextVar[int] = ContextVar('pantheon_step', default=1)
@@ -53,13 +54,14 @@ class Hermes:
 
     def dispatch(self, task: Task, on_event=None, *, resume_checkpoint: dict | None = None) -> dict[str, Any]:
         from pantheon.core.budgets import TASK_ID
+        task = replace(task, history=bounded_history(task.history))
         budget_token = TASK_ID.set(task.task_id)
         store = self.task_store
         self.active_task_id = task.task_id
         try:
             if store is not None:
                 store.start(task.task_id, task.content, task.mode)
-                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill, 'attachments': task.attachments},
+                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill, 'attachments': task.attachments, 'history': task.history},
                                         steps=(resume_checkpoint or {}).get('steps', {}), phase='planning')
         except Exception:
             self.active_task_id = None
@@ -174,7 +176,7 @@ class Hermes:
                 "hermes",
             )
             plan = self.router.plan(
-                planning_task.content,
+                conversation_task(planning_task.content, task.history),
                 available,
                 requested_skill=task.skill or "",
             )
@@ -225,7 +227,7 @@ class Hermes:
             "hermes",
         )
         plan = self.router.plan(
-            planning_task.content,
+            conversation_task(planning_task.content, task.history),
             available,
             requested_skill=task.skill or "",
         )
@@ -288,6 +290,7 @@ class Hermes:
             mode=task.mode,
             skill=selected_skill,
             context=list(task.context),
+            history=list(task.history),
             task_id=task.task_id,
         )
         role_task, memories, skills = self._task_with_memory(execution_task, role_name)
@@ -327,6 +330,7 @@ class Hermes:
             "duration_ms": result.duration_ms,
             "success": result.success,
             "error": result.error,
+            **{key: result.metadata.get(key, "") for key in ("provider", "model")},
         }
         self._emit(
             on_event,
@@ -370,7 +374,8 @@ class Hermes:
             self._emit(on_event, 'step_done' if result.success else 'step_error',
                        {'index': index, 'total': total, 'role': step.role, 'content': result.content,
                         'success': result.success, 'error': result.error, 'duration_ms': result.duration_ms,
-                        'reused': reused})
+                        'reused': reused,
+                        **{key: result.metadata.get(key, '') for key in ('provider', 'model')}})
             if result.success and not reused:
                 message(self._completion_message(step_index=index + 1, step=step, result=result,
                         incoming_messages=result.metadata.get('incoming_messages', [])).to_dict())
@@ -416,7 +421,7 @@ class Hermes:
                 sub_task = Task(content=self._multi_step_content(original_task=task.content, assigned_task=step.task,
                     step_index=index + 1, total_steps=total, step_kind=step.kind, deliverable=step.deliverable,
                     acceptance_criteria=step.acceptance_criteria, incoming_messages=[item.to_dict() for item in incoming]),
-                    mode='role:' + step.role, skill=step.skill or task.skill, context=context)
+                    mode='role:' + step.role, skill=step.skill or task.skill, context=context, history=list(task.history), task_id=task.task_id)
                 role_task, memories, skills = self._task_with_memory(sub_task, step.role)
                 self._emit(on_event, 'step_start', {'index': index, 'total': total, **asdict(step), 'skills': skills})
                 if self.task_store and self.active_task_id:
@@ -548,11 +553,12 @@ class Hermes:
                                               'description': 'Preparing the final answer', 'total': total})
         self._checkpoint()
         successful = [item for item in context if item.get('success')]
-        summary = self.router.summarize(task.content, successful) if successful else 'No steps completed successfully.'
+        summary = self.router.summarize(conversation_task(task.content, task.history), successful) if successful else 'No steps completed successfully.'
         success = all(result.success for result in outputs)
         if not success:
             summary = 'Partial failure: some steps failed or were skipped.\n\n' + summary
-        self._emit(on_event, 'summary_done', {'role': 'hermes', 'content': summary, 'success': success})
+        self._emit(on_event, 'summary_done', {'role': 'hermes', 'content': summary, 'success': success,
+            **model_identity(getattr(self.router, 'llm_client', None), getattr(self.router, 'hermes_model', '') or getattr(getattr(self.router, 'llm_client', None), 'default_model', ''))})
         return {'mode': 'multi', 'plan': plan.reasoning, 'content': summary, 'success': success,
                 'status': 'completed' if success else 'partial_failure', 'steps': outputs,
                 'communications': communications,
@@ -815,6 +821,7 @@ Workflow rules:
                 mode=task.mode,
                 skill=task.skill,
                 context=list(task.context),
+                history=list(task.history),
                 task_id=task.task_id,
             ),
             memories,
@@ -923,6 +930,7 @@ Workflow rules:
                 mode=task.mode,
                 skill=task.skill,
                 context=list(task.context),
+                history=list(task.history),
                 task_id=task.task_id,
             )
             self._checkpoint()

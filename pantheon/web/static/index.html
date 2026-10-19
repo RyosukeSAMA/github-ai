@@ -11,7 +11,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 
-  <link rel="stylesheet" href="/static/app.css?v=0.3.1" />
+  <link rel="stylesheet" href="/static/app.css?v=0.3.2" />
   <style>
     html.file-open body {
       display: block;
@@ -217,7 +217,7 @@
           GitHub
         </a>
       </div>
-      <div class="sidebar-version" id="sidebar-version">UI v0.3.1</div>
+      <div class="sidebar-version" id="sidebar-version">UI v0.3.2</div>
     </div>
   </aside>
 
@@ -600,6 +600,9 @@
           <strong>Use one model for all AI roles</strong>
           <label>Provider <select class="setting-select" id="models-shared-provider"></select></label>
           <label>Model <select class="setting-select" id="models-shared-model"></select></label>
+          <details><summary>Use a custom model ID</summary>
+            <label>Custom model ID (optional)<input class="setting-input" id="models-shared-custom-model" maxlength="200" placeholder="Overrides the model selected above"></label>
+          </details>
           <button class="ghost-btn" id="models-apply-all" type="button">Apply to all AI roles</button>
         </div>
         <div class="setup-status"><div><span class="setup-kicker" id="models-status-scope">Current chat</span><strong id="models-status-title">Loading...</strong></div></div>
@@ -880,10 +883,10 @@
           <section class="info-card">
             <div class="info-card-head">
               <span class="setup-kicker">About</span>
-              <span class="setup-pill ok" id="info-version-pill">v0.3.1</span>
+              <span class="setup-pill ok" id="info-version-pill">v0.3.2</span>
             </div>
             <dl class="config-list info-list">
-              <dt>UI</dt><dd id="info-ui-version">v0.3.1</dd>
+              <dt>UI</dt><dd id="info-ui-version">v0.3.2</dd>
               <dt>Backend</dt><dd id="info-backend-version">—</dd>
               <dt>Python</dt><dd id="info-python-version">—</dd>
             </dl>
@@ -1028,7 +1031,7 @@
           </ul>
         </div>
         <div class="modal-footer">
-          <code>v0.3.1 · MIT License · © 2024 RyosukeSAMA</code>
+          <code>v0.3.2 · MIT License · © 2024 RyosukeSAMA</code>
         </div>
       </div>
     </div>
@@ -1066,6 +1069,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=0.3.1"></script>
+  <script src="/static/app.js?v=0.3.2"></script>
 </body>
 </html>

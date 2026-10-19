@@ -152,3 +152,23 @@ def test_hermes_provider_override_isolated_and_uses_independent_profile(tmp_path
     assert default.json()['content'] == 'deepseek-flash|https://api.deepseek.com'
     assert base.router.llm_client is original_client
     assert base.router.hermes_model == original_model
+
+
+def test_saved_custom_model_remains_assignable_after_catalog_refresh(tmp_path, monkeypatch):
+    _path, client = setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(web_app, 'get_llm_client', lambda **kwargs: SimpleNamespace(complete=lambda *a, **kw: 'ok'))
+    custom = {'provider': 'openai', 'model': 'private-custom-model',
+              'base_url': 'https://gateway.example/v1', 'api_key': 'fake-key'}
+    assert client.post('/api/setup/test', json=custom).json()['ok']
+    assert client.post('/api/connections/save', json=custom).status_code == 200
+    async def discover(*args):
+        return [{'id': 'listed-model', 'label': 'Listed'}]
+    monkeypatch.setattr(web_app, 'discover_provider_models', discover)
+    assert client.post('/api/setup/models', json={'provider': 'openai', 'base_url': custom['base_url']}).status_code == 200
+    data = client.get('/api/setup/status').json()
+    provider = next(item for item in data['providers'] if item['id'] == 'openai')
+    model = next(item for item in provider['models'] if item['id'] == custom['model'])
+    assert model['source'] == 'saved' and model['available'] is None
+    names = ['hermes', 'hephaestus', 'athena', 'apollo']
+    assignments = {name: {'provider': 'openai', 'model': custom['model']} for name in names}
+    assert client.post('/api/models/defaults', json={'models': assignments}).status_code == 200

@@ -2,6 +2,17 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.3.2] - 2026-10-19
+
+### Fixed
+
+- Include bounded history from the active Web chat in follow-up requests, planning, role execution and synthesis. Preserve it in task checkpoints and resumed work; keep workspace memory and other chats separate. History uses at most 16 messages / 24,000 characters without an extra model call.
+- Enhance prompts with the current chat's Hermes provider/model and report the model used, without retargeting saved defaults or requiring unrelated role connections.
+- Keep saved custom connection models assignable after catalog refresh; accept exact custom IDs for individual roles and bulk model assignment. Retain configured empty drafts on reload.
+- Test specialist CLI connections through their actual `llm_client` rather than an absent role attribute.
+- Record execution providers/models in results and stream events, and persist reply provenance across reloads and model changes. Older replies without recorded metadata show that their model was not recorded; adding optional metadata does not create transcript conflict copies.
+- Correct the English and Chinese setup guides to use `pantheon backup <path>` and `pantheon restore <path>`.
+
 ## [0.3.1] - 2026-10-14
 
 - Save provider connections independently of role models; keep legacy configuration and credential storage usable without a mandatory migration.

@@ -24,6 +24,7 @@ class Task:
     context: list[dict[str, Any]] = field(default_factory=list)
     task_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     attachments: list[str] = field(default_factory=list)
+    history: list[dict[str, str]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.mode not in ("auto", "multi") and not self.mode.startswith("role:"):
@@ -184,6 +185,10 @@ class Role(abc.ABC):
             temperature=self.temperature,
         )
 
+    def invocation_metadata(self, task: Task) -> dict[str, str]:
+        """Record the execution client, never the role class's suggested default."""
+        return {**model_identity(self.llm_client, self.model), "task_id": task.task_id}
+
     def _format_context(self, context: list[dict[str, Any]] | None) -> str:
         """Format prior steps' context as a string."""
         if not context:
@@ -211,3 +216,9 @@ class Role(abc.ABC):
 def time_ms() -> int:
     """Current time in milliseconds."""
     return int(time.time() * 1000)
+
+
+def model_identity(client: Any, model: str) -> dict[str, str]:
+    provider = getattr(client, "provider_name", None)
+    return {"provider": provider if isinstance(provider, str) and provider else "unknown",
+            "model": model or ""}

@@ -5261,3 +5261,9 @@ body.font-lg .msg-content pre code { font-size: 15px; }
 .conversation-save-notice { padding: 10px; color: #c78536; font-size: 12px; line-height: 1.5; }
 
 .media-chat-image { display: block; max-width: 100%; max-height: 680px; border-radius: var(--radius); margin: 12px 0; object-fit: contain; }
+
+/* Optional custom IDs use the existing settings controls without widening cards. */
+.sr-custom { margin-top: 8px; color: var(--text-dim); font-size: 11px; }
+.sr-custom summary, .models-shared-controls summary { cursor: pointer; }
+.sr-custom label { display: block; margin-top: 8px; }
+.sr-custom .sr-custom-model { display: block; width: 100%; min-width: 0; box-sizing: border-box; margin: 6px 0; }

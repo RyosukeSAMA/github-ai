@@ -18,14 +18,14 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pantheon import __version__
 from pantheon.core.budgets import BudgetExceededError
@@ -36,6 +36,7 @@ from pantheon.core.connections import (
     provider_identity,
     resolve_connection,
 )
+from pantheon.core.context import HISTORY_MESSAGE_CHARACTERS, HISTORY_MESSAGES
 from pantheon.core.credentials import CredentialError, atomic_text
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
@@ -86,6 +87,11 @@ OFFICIAL_MODEL_CATALOG_BASE_URLS = {
 LOGGER = logging.getLogger(__name__)
 
 
+class ConversationMessage(BaseModel):
+    role: Literal['user', 'assistant']
+    content: str = Field(max_length=HISTORY_MESSAGE_CHARACTERS)
+
+
 class AskRequest(BaseModel):
     task: str
     user_task: str | None = None
@@ -96,11 +102,13 @@ class AskRequest(BaseModel):
     resume_task_id: str | None = None
     acknowledge_effects: bool = False
     attachments: list[str] = []
+    history: list[ConversationMessage] = Field(default_factory=list, max_length=HISTORY_MESSAGES)
 
 
 class PromptEnhanceRequest(BaseModel):
     prompt: str
     mode: str = "auto"
+    overrides: dict[str, dict[str, str]] | None = None
 
 
 class TerminalRequest(BaseModel):
@@ -882,9 +890,12 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         skill: str | None = None,
         overrides: dict[str, dict[str, str]] | None = None,
         attachments: list[str] | None = None,
+        history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         p = request_pantheon(overrides)
-        result = p.ask(content, mode=mode, skill=skill, **({'attachments': attachments} if attachments else {}))
+        result = p.ask(content, mode=mode, skill=skill,
+                       **({'attachments': attachments} if attachments else {}),
+                       **({'history': history} if history else {}))
         result["memory_matches"] = result.get("memory_matches", [])
         result["skill_matches"] = result.get("skill_matches", [])
         maybe_auto_capture_memory(content, result, mode)
@@ -1369,11 +1380,18 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 not preset["requires_key"]
                 or bool(env_value(str(preset.get("env_var") or "")))
             )
+        models = merged_model_catalog(provider_id, discovered, current_model)
+        # Catalog omission is not an API failure. Keep the saved custom test ID
+        # assignable in both full status and explicit catalog refresh responses.
+        saved_model = str(connection_config(read_yaml_config(setup_config_path()), provider_id).get('test_model') or '').strip()
+        if saved_model and not any(item['id'] == saved_model for item in models):
+            models.append({'id': saved_model, 'label': saved_model,
+                           'source': 'saved', 'available': None})
         return {
             "id": provider_id,
             "label": preset["label"],
             "model": preset["model"],
-            "models": merged_model_catalog(provider_id, discovered, current_model),
+            "models": models,
             "base_url": base_url or preset["base_url"],
             "env_var": preset["env_var"],
             "requires_key": preset["requires_key"],
@@ -2864,7 +2882,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             )
 
         try:
-            p = get_pantheon()
+            # Enhancing a draft calls Hermes only. An unrelated role with a
+            # missing connection must not block the selected Hermes client.
+            overrides = {'hermes': req.overrides['hermes']} if req.overrides and 'hermes' in req.overrides else None
+            p = request_pantheon(overrides)
             enhanced = await asyncio.to_thread(p.router.enhance_prompt, prompt, req.mode)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2877,7 +2898,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     "Check Setup or Test API, then try again."
                 ),
             ) from exc
-        return {"prompt": enhanced}
+        return {"prompt": enhanced,
+                "provider": str(getattr(getattr(p.router, 'llm_client', None), 'provider_name', '') or ''),
+                "model": str(getattr(p.router, 'hermes_model', '') or getattr(getattr(p.router, 'llm_client', None), 'default_model', '') or '')}
 
     # ----- Non-streaming ask (kept for backwards compatibility) -----
     @app.post("/api/ask")
@@ -2894,7 +2917,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
 
         try:
             result = await asyncio.to_thread(
-                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides, attachments=req.attachments
+                ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides,
+                attachments=req.attachments, history=[item.model_dump() for item in req.history]
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"ask failed: {e}") from e
@@ -2909,6 +2933,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 "success": getattr(s, "success", True),
                 "error": getattr(s, "error", None),
                 "duration_ms": getattr(s, "duration_ms", 0),
+                "provider": metadata.get("provider", ""),
+                "model": metadata.get("model", ""),
                 "skills": metadata.get("skill_matches", []),
                 "kind": metadata.get("kind", "work"),
                 "deliverable": metadata.get("deliverable", ""),
@@ -2996,7 +3022,8 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 try:
                     from pantheon.core.base import Task
                     workspace_services.media.validate_attachments(req.attachments)
-                    task = Task(content=req.task, mode=mode, skill=req.skill, attachments=req.attachments)
+                    task = Task(content=req.task, mode=mode, skill=req.skill, attachments=req.attachments,
+                                history=[item.model_dump() for item in req.history])
                     emit("start", {
                         "task_id": task.task_id,
                         "task": req.task,

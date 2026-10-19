@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from pantheon.core.base import Role, Task, TaskResult, time_ms
+from pantheon.core.context import conversation_task
 
 log = logging.getLogger(__name__)
 
@@ -44,11 +45,12 @@ class Hephaestus(Role):
     def run(self, task: Task, context: list[dict] | None = None) -> TaskResult:
         start = time_ms()
         context_block = self._format_context(context)
+        content = conversation_task(task.content, task.history)
 
         user_prompt = (
-            f"Task:\n{task.content}\n\n{context_block}"
+            f"Task:\n{content}\n\n{context_block}"
             if context_block
-            else f"Task:\n{task.content}"
+            else f"Task:\n{content}"
         )
 
         try:
@@ -60,7 +62,7 @@ class Hephaestus(Role):
                 content=content,
                 success=True,
                 duration_ms=time_ms() - start,
-                metadata={"model": self.model, "provider": self.default_provider},
+                metadata=self.invocation_metadata(task),
             )
         except Exception as e:
             log.exception("Hephaestus run failed")
@@ -69,5 +71,6 @@ class Hephaestus(Role):
                 content=f"[Hephaestus] Error: {e}",
                 success=False,
                 error=str(e),
+                metadata=self.invocation_metadata(task),
                 duration_ms=time_ms() - start,
             )

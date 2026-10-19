@@ -37,7 +37,7 @@ class FakePantheon:
             {"llm_client": client, "hermes_model": "gpt-5.5"},
         )()
         self.roles = {
-            "athena": type("Role", (), {"llm": client, "model": "gpt-5.4-mini"})(),
+            "athena": type("Role", (), {"llm_client": client, "model": "gpt-5.4-mini"})(),
         }
 
     def get_role(self, name: str):
@@ -102,3 +102,15 @@ def test_probe_labels_deepseek_compatible_endpoint() -> None:
     result = probe_role_provider("hermes", pantheon=FakePantheon(client))
 
     assert result["provider"] == "deepseek"
+
+
+@pytest.mark.parametrize('name', ['hephaestus', 'athena', 'apollo'])
+def test_probe_uses_real_role_client_attribute(name):
+    from pantheon.roles import register_default_roles
+
+    client = FakeClient()
+    runtime = FakePantheon(client)
+    runtime.roles[name] = register_default_roles()[name](llm_client=client, model='actual-model')
+    result = probe_role_provider(name, pantheon=runtime)
+    assert result['ok'] and result['model'] == 'actual-model'
+    assert client.calls[-1]['model'] == 'actual-model'

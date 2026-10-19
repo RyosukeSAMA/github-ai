@@ -36,9 +36,7 @@ def test_prompt_enhance_endpoint_uses_hermes_without_sending(tmp_path, monkeypat
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "prompt": "Build a responsive profile page with semantic HTML.",
-    }
+    assert response.json()["prompt"] == "Build a responsive profile page with semantic HTML."
     assert FakePantheon.instance.router.calls == [("make profile page", "multi")]
 
 

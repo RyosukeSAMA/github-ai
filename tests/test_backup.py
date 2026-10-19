@@ -125,3 +125,24 @@ def test_backup_disables_callbacks_and_never_replays_saved_messages(tmp_path):
     assert not services.channels.config('telegram')['enabled']
     assert services.channels.history()[0]['state'] == 'interrupted'
     assert not services.channels.process_next(lambda *args: pytest.fail('A restored event must not execute'))
+
+
+def test_documented_cli_backup_and_restore_work_in_a_new_workspace(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from pantheon.cli import app
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    paths = DataPaths.for_workspace(tmp_path)
+    paths.state.mkdir(parents=True)
+    data = paths.state / 'conversations.json'
+    data.write_text('before backup')
+    archive = tmp_path / 'backup.zip'
+    runner = CliRunner()
+    exported = runner.invoke(app, ['backup', str(archive)])
+    assert exported.exit_code == 0, exported.output
+    data.write_text('after backup')
+    restored = runner.invoke(app, ['restore', str(archive)])
+    assert restored.exit_code == 0, restored.output
+    assert data.read_text() == 'before backup'
