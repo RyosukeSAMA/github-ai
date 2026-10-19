@@ -53,6 +53,7 @@ from pantheon.core.memory import (
 )
 from pantheon.core.pantheon import Pantheon
 from pantheon.core.paths import DataPaths
+from pantheon.core.results import result_payload
 from pantheon.core.runtime import RuntimeLease, file_mutex
 from pantheon.core.scheduler import ScheduleParseError, parse_schedule_request
 from pantheon.core.services import WorkspaceServices
@@ -2339,18 +2340,23 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             task,
             f"role:{role}" if role else mode,
         )
+        result = result_payload(result)
         steps = [
             {
-                "role": getattr(step, "role", "?"),
-                "content": getattr(step, "content", ""),
-                "success": getattr(step, "success", True),
-                "error": getattr(step, "error", None),
-                "duration_ms": getattr(step, "duration_ms", 0),
+                "role": step.get("role", "?"),
+                "content": step.get("content", ""),
+                "success": step.get("success", True),
+                "error": step.get("error", None),
+                "duration_ms": step.get("duration_ms", 0),
             }
             for step in result.get("steps", [])
         ]
         return JSONResponse({
-            "ok": True,
+            "ok": result["success"],
+            "task_id": result["task_id"],
+            "success": result["success"],
+            "status": result["status"],
+            "error": result["error"],
             "mode": result.get("mode", "single"),
             "content": result.get("content", ""),
             "plan": result.get("plan", ""),
@@ -2923,16 +2929,17 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"ask failed: {e}") from e
 
-        # Serialize TaskResult objects
+        result = result_payload(result)
+        # Preserve the public step metadata fields.
         steps = []
         for s in result.get("steps", []):
-            metadata = getattr(s, "metadata", {}) or {}
+            metadata = s.get("metadata", {}) or {}
             steps.append({
-                "role": getattr(s, "role", "?"),
-                "content": getattr(s, "content", ""),
-                "success": getattr(s, "success", True),
-                "error": getattr(s, "error", None),
-                "duration_ms": getattr(s, "duration_ms", 0),
+                "role": s.get("role", "?"),
+                "content": s.get("content", ""),
+                "success": s.get("success", True),
+                "error": s.get("error", None),
+                "duration_ms": s.get("duration_ms", 0),
                 "provider": metadata.get("provider", ""),
                 "model": metadata.get("model", ""),
                 "skills": metadata.get("skill_matches", []),
@@ -2943,7 +2950,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             })
 
         return JSONResponse({
-            "task_id": result.get("task_id"),
+            "task_id": result["task_id"],
+            "success": result["success"],
+            "status": result["status"],
+            "error": result["error"],
             "mode": result.get("mode", "single"),
             "content": result.get("content", ""),
             "plan": result.get("plan", ""),
@@ -3025,13 +3035,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     task = Task(content=req.task, mode=mode, skill=req.skill, attachments=req.attachments,
                                 history=[item.model_dump() for item in req.history])
                     emit("start", {
-                        "task_id": task.task_id,
+                        "task_id": None if req.resume_task_id else task.task_id,
                         "task": req.task,
                         "mode": mode,
                         "requested_skill": req.skill or "",
                     })
                     emit("phase", {
-                        "task_id": task.task_id,
+                        "task_id": None if req.resume_task_id else task.task_id,
                         "stage": "preparing",
                         "role": "hermes",
                         "detail": "Preparing memory, Skills, and task context",
@@ -3095,6 +3105,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                               if req.resume_task_id else hermes.dispatch(task, on_event=stream_event))
                     memory_matches = result.get("memory_matches", [])
                     maybe_auto_capture_memory(req.task, result, mode)
+                    result = result_payload(result)
 
                     # Validation failures and custom Hermes implementations may not
                     # emit callbacks. Keep the stream useful in that case.
@@ -3118,7 +3129,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             "task": req.task,
                             "content": result.get("content", ""),
                             "duration_ms": 0,
-                            "success": True,
+                            "success": result["success"],
+                            "error": result["error"],
+                            "task_id": result["task_id"] or task.task_id,
                             "skills": result.get("skill_matches", []),
                         }
                         emit("step_start", fallback)
@@ -3127,9 +3140,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             "role": fallback_role,
                             "text": result.get("content", ""),
                         })
-                        emit("step_done", fallback)
+                        emit("step_done" if result["success"] else "step_error", fallback)
 
                     emit("done", {
+                        "task_id": result["task_id"] or task.task_id,
+                        "error": result["error"],
                         "mode": result.get("mode", "single"),
                         "content": result.get("content", ""),
                         "success": result.get("success", True),

@@ -131,3 +131,53 @@ def test_resume_keeps_original_history_once(chat_runtime, monkeypatch):
     saved = runtime.services.tasks.get(resumed['task_id'])['data']['checkpoint']['task']
     assert saved['history'] == history
     assert saved['content'] == 'Change the previous function to subtract'
+
+
+@pytest.mark.parametrize('missing_skill', [True, False])
+def test_failure_contract_matches_http_sse_webhook_and_task_history(chat_runtime, monkeypatch, missing_skill):
+    from pantheon.core.base import TaskResult
+    runtime, client, _ = chat_runtime
+    if not missing_skill:
+        monkeypatch.setattr(runtime.roles['hephaestus'], 'run', lambda task, context=None: TaskResult(
+            'hephaestus', 'Partial output', False, 'Simulated provider refusal'))
+    payload = {'task': 'Run this request', 'mode': 'role:hephaestus'}
+    if missing_skill:
+        payload['skill'] = 'not-installed-xyz'
+    response = client.post('/api/ask', json=payload)
+    result = response.json()
+    assert response.status_code == 200
+    assert result['success'] is False
+    assert result['status'] == 'failed'
+    assert result['error']
+    stored = runtime.services.tasks.get(result['task_id'])
+    assert stored['status'] == 'failed'
+    assert isinstance(runtime.services.tasks.get(result['task_id'])['data']['result'], str)
+    stream = client.post('/api/ask/stream', json=payload)
+    events = [(frame.splitlines()[0][7:], json.loads(frame.splitlines()[1][6:]))
+              for frame in stream.text.strip().split('\n\n') if frame.startswith('event:')]
+    done = next(data for event, data in events if event == 'done')
+    assert done['success'] is False and done['status'] == 'failed' and done['task_id']
+    assert not any(event == 'step_done' and data.get('success') is True for event, data in events)
+    assert any(event == 'step_error' for event, data in events)
+    # Webhooks have no explicit-skill parameter, so test the real failing role path.
+    if not missing_skill:
+        monkeypatch.setenv('PANTHEON_WEBHOOK_ENABLED', 'true')
+        monkeypatch.setenv('PANTHEON_WEBHOOK_TOKEN', 'fake-contract-token')
+        webhook = client.post('/api/channels/webhook', json=payload,
+                              headers={'Authorization': 'Bearer fake-contract-token'}).json()
+        assert webhook['ok'] is False
+        assert webhook['success'] is False and webhook['status'] == 'failed' and webhook['error']
+
+
+def test_resume_stream_reports_the_new_durable_task_id(chat_runtime):
+    runtime, client, _ = chat_runtime
+    original = client.post('/api/ask', json={'task': 'Validate skill', 'skill': 'missing-skill'}).json()
+    response = client.post('/api/ask/stream', json={'task': 'Resume', 'resume_task_id': original['task_id']})
+    events = [(frame.splitlines()[0][7:], json.loads(frame.splitlines()[1][6:]))
+              for frame in response.text.strip().split('\n\n') if frame.startswith('event:')]
+    start = next(data for name, data in events if name == 'start')
+    assert start['task_id'] is None  # Do not advertise an unrelated provisional ID.
+    done = next(data for name, data in events if name == 'done')
+    assert done['task_id'] != original['task_id']
+    assert runtime.services.tasks.get(done['task_id'])['status'] == 'failed'
+    assert all(data['task_id'] == done['task_id'] for name, data in events if name == 'step_error')

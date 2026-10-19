@@ -1,5 +1,7 @@
 # Media, workflow and task recovery
 
+Task success flags, CLI exit codes and Web interruption recovery are described in [Task outcomes and recovery](task-results.md).
+
 Finish [installation](setup.md), then save a chat provider in Settings → Setup. Workspace settings are shared by Web, CLI and SDK; model overrides in one conversation do not change other chats or global defaults.
 
 Web follow-ups include recent text from the active chat: up to 16 user/assistant messages and 24,000 characters, with individual messages limited to 12,000 characters. Long text uses labelled head/tail excerpts; full messages remain in the chat. Council runs include the final reply from each earlier turn, rather than repeating every intermediate step. This adds input tokens to the next request but makes no extra summarization call. This history is separate from workspace memory, is preserved on task resume, and never automatically includes other chats. The SDK accepts the same explicit `history=[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]` argument to `ask()`.

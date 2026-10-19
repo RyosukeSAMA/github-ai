@@ -225,6 +225,9 @@
   let promptEnhancing = false;
   let promptBeforeEnhance = '';
   let enhancedPromptValue = '';
+  let promptDraftRevision = 0;
+  let enhancementGeneration = 0;
+  let enhancementController = null;
   let abortCtrl = null;
   let activeTaskId = null;
   let turns = [];   // conversation history (in-memory only)
@@ -592,6 +595,7 @@
   }
 
   function setMode(mode) {
+    if (currentMode !== mode) invalidatePromptEnhancement();
     currentMode = mode;
     modeChips.forEach((chip) => {
       chip.classList.toggle('active', chip.dataset.mode === mode);
@@ -960,6 +964,9 @@
   let modelScope = 'chat';
   let defaultModelDraft = null;
   let modelStatusRevision = 0;
+  const customModelDrafts = new Map();
+  const sharedModelDrafts = new Map();
+  let renderedModelContext = null;
 
   function defaultRoleChoices() {
     return Object.fromEntries((latestSetupStatus?.role_statuses || [])
@@ -988,6 +995,7 @@
   }
 
   function updateRoleChoice(name, choice) {
+    if (name === 'hermes' && modelScope === 'chat') invalidatePromptEnhancement();
     if (modelScope === 'defaults') {
       defaultModelDraft = {...(defaultModelDraft || defaultRoleChoices()), [name]:choice};
     } else {
@@ -1069,6 +1077,17 @@
 
   function renderSettingsModels() {
     if (!settingsRoles) return;
+    const context = modelScope === 'defaults' ? 'defaults' : `chat:${activeSessionId}`;
+    const focused = document.activeElement;
+    const focusedCard = focused?.closest('.settings-role');
+    const focusState = focused?.matches('.sr-custom-model') ? {
+      key: focusedCard.dataset.draftKey, start: focused.selectionStart, end: focused.selectionEnd,
+    } : null;
+    if (renderedModelContext) sharedModelDrafts.set(renderedModelContext, {
+      provider: $('#models-shared-provider').value, model: $('#models-shared-model').value,
+      custom: $('#models-shared-custom-model').value,
+    });
+    renderedModelContext = context;
     settingsRoles.innerHTML = '';
     const choices = selectedRoleChoices();
     const modelRoles = [{name:'hermes', description:'Orchestrator'}, ...roles];
@@ -1082,6 +1101,7 @@
       const card = document.createElement('div');
       card.className = 'settings-role';
       card.dataset.role = r.name;
+      card.dataset.draftKey = JSON.stringify([context, r.name, choice.provider]);
       card.innerHTML = `<div class="settings-role-head">${avatarHtml(meta, 'sr-avatar')}<span class="sr-name">${escapeHtml(meta.label)}</span></div>
         ${isChronos ? '<p class="setup-muted">Local scheduling · no model or API key required.</p>' : ''}
         <label class="settings-role-row"><span class="sr-key">Provider</span><select class="sr-provider" ${isChronos ? 'disabled' : ''}>
@@ -1092,6 +1112,20 @@
         ${isChronos ? '' : '<span class="sr-connection-status setup-role-status">Checking connection…</span><div class="setup-actions"><button class="ghost-btn sr-test" type="button">Test this role</button><button class="ghost-btn sr-edit-key" type="button">Configure connection</button></div><small class="sr-feedback setup-muted" role="status"></small>'}`;
       settingsRoles.appendChild(card);
       if (isChronos) continue;
+      const customInput = card.querySelector('.sr-custom-model');
+      const customDetails = card.querySelector('.sr-custom');
+      const draft = customModelDrafts.get(card.dataset.draftKey) || {};
+      customInput.value = draft.value || '';
+      customDetails.open = Boolean(draft.open);
+      const saveDraft = () => customModelDrafts.set(card.dataset.draftKey, {
+        value: customInput.value, open: customDetails.open,
+      });
+      customInput.addEventListener('input', saveDraft);
+      customDetails.addEventListener('toggle', saveDraft);
+      if (focusState?.key === card.dataset.draftKey) {
+        customInput.focus({preventScroll:true});
+        customInput.setSelectionRange(focusState.start, focusState.end);
+      }
       card.querySelector('.sr-provider').addEventListener('change', event => {
         const provider = event.target.value;
         const model = providerModelIds(provider)[0] || setupProviders.get(provider)?.model || '';
@@ -1106,10 +1140,13 @@
       card.querySelector('.sr-test').addEventListener('click', event => void testRoleModel(r.name,event.target));
     }
     const sharedProvider = $('#models-shared-provider');
-    const existingProvider = sharedProvider.value;
+    const sharedDraft = sharedModelDrafts.get(context);
+    const existingProvider = sharedDraft?.provider || '';
     sharedProvider.innerHTML = [...setupProviders.values()].map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`).join('');
     sharedProvider.value = setupProviders.has(existingProvider) ? existingProvider : choices.hermes?.provider || 'deepseek';
     renderSharedModels();
+    if (sharedDraft?.model && providerModelIds(sharedProvider.value).includes(sharedDraft.model)) $('#models-shared-model').value = sharedDraft.model;
+    $('#models-shared-custom-model').value = sharedDraft?.custom || '';
     $('#models-save-defaults').hidden = modelScope !== 'defaults';
     $('#models-scope-note').textContent = modelScope === 'defaults'
       ? 'Save below to use these choices for new chats. Existing chats retain their assigned models.'
@@ -1136,6 +1173,7 @@
     renderSettingsModels();
   });
   $('#models-apply-all').addEventListener('click', () => {
+    if (modelScope === 'chat') invalidatePromptEnhancement();
     const choice = {provider:$('#models-shared-provider').value, model:$('#models-shared-custom-model').value.trim() || $('#models-shared-model').value};
     if (!choice.model) return;
     for (const name of ['hermes','hephaestus','athena','apollo']) {
@@ -6153,6 +6191,7 @@
     if (!force) saveActiveSession();
     const session = sessions.find((item) => item.id === sessionId);
     if (!session) return;
+    invalidatePromptEnhancement();
     activeSessionId = session.id;
     modelScope = 'chat';
     $('#models-scope').value = 'chat';
@@ -6174,6 +6213,7 @@
     if (sessions.length >= 200) { showSaveNotice('200 conversation limit reached. Export a backup and delete older chats.'); return; }
     const session = createSession('New chat');
     sessions.unshift(session);
+    invalidatePromptEnhancement();
     activeSessionId = session.id;
     modelScope = 'chat';
     $('#models-scope').value = 'chat';
@@ -6537,6 +6577,20 @@
     if (clearStatus && hadEnhancement) setComposerStatus('');
   }
 
+  function invalidatePromptEnhancement() {
+    enhancementGeneration++;
+    enhancementController?.abort();
+    enhancementController = null;
+    promptEnhancing = false;
+    clearPromptEnhancement({clearStatus:true});
+    setComposerStatus('');
+  }
+
+  function enhancementContext() {
+    return JSON.stringify([activeSessionId, currentMode,
+      roleOverrides.hermes || defaultRoleChoices().hermes || {}]);
+  }
+
   async function enhanceCurrentPrompt() {
     if (isStreaming || promptEnhancing) return;
     if (promptBeforeEnhance && inputEl.value === enhancedPromptValue) {
@@ -6557,20 +6611,27 @@
       return;
     }
 
+    const generation = ++enhancementGeneration;
+    const revision = promptDraftRevision;
+    const context = enhancementContext();
+    const controller = new AbortController();
+    enhancementController = controller;
     promptEnhancing = true;
     updatePromptEnhanceButton();
     setComposerStatus('Enhancing prompt with Hermes…', '', true);
     try {
       const response = await fetch('/api/prompt/enhance', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: sourcePrompt, mode: currentMode, overrides: roleOverrides }),
       });
       const data = await response.json().catch(() => ({}));
+      if (generation !== enhancementGeneration || context !== enhancementContext()) return;
       if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
       const enhanced = String(data.prompt || '').trim();
       if (!enhanced) throw new Error('The model returned an empty prompt');
-      if (inputEl.value !== sourcePrompt) {
+      if (revision !== promptDraftRevision || inputEl.value !== sourcePrompt) {
         setComposerStatus('Draft changed; enhancement was not applied', 'warn');
         return;
       }
@@ -6583,10 +6644,13 @@
       inputEl.setSelectionRange(enhanced.length, enhanced.length);
       setComposerStatus(`Prompt enhanced${data.model ? ` · ${data.provider || 'Hermes'} / ${data.model}` : ''} · click the wand to undo`, 'ok', true);
     } catch (error) {
-      setComposerStatus(error.message || 'Could not enhance prompt', 'error', true);
+      if (generation === enhancementGeneration && context === enhancementContext() && error.name !== 'AbortError') setComposerStatus(error.message || 'Could not enhance prompt', 'error', true);
     } finally {
-      promptEnhancing = false;
-      updatePromptEnhanceButton();
+      if (generation === enhancementGeneration) {
+        enhancementController = null;
+        promptEnhancing = false;
+        updatePromptEnhanceButton();
+      }
     }
   }
 
@@ -6597,6 +6661,7 @@
 
   async function sendAsk(task, opts = {}) {
     if (isStreaming) return;
+    invalidatePromptEnhancement();
     const history = conversationHistory();
     const agentTask = opts.agentTask || task;
     const attachments = opts.attachments || [];
@@ -6640,6 +6705,72 @@
     const stepWorkspace = new Map();
     const streamedSteps = new Set();
     const activeSteps = new Map();
+    let terminalReceived = false;
+    let streamConnected = false;
+    let streamTaskId = null;
+    function finishPendingMessages(status) {
+      const pending = new Set([...stepMessages.values(), currentMsg]);
+      for (const message of pending) {
+        if (!message || message.dataset.status !== 'running') continue;
+        const body = message.querySelector('[data-step-body]');
+        finalizeStep(message, body?.dataset.markdown || message.dataset.rawText || '');
+        updateMessageStatus(message, status);
+        const label = message.querySelector('.step-status');
+        if (label) { label.textContent = status; label.style.color = status === 'done' ? 'var(--accent-3)' : 'var(--accent-err)'; }
+      }
+    }
+    async function reconcileStream() {
+      // A transport failure does not prove the server task failed. Query only;
+      // never submit or resume a task automatically (it may incur another charge).
+      finishPendingMessages('interrupted');
+      finishRunningWorkspaceSteps('stopped');
+      setWorkspaceState('Connection interrupted', 'error');
+      stopWorkspaceTaskTimer('interrupted');
+      if (streamTaskId) {
+        try {
+          const response = await fetch(`/api/tasks/${encodeURIComponent(streamTaskId)}`, {signal:AbortSignal.timeout(5000)});
+          if (!response.ok) throw Error('Task status unavailable');
+          const saved = await response.json();
+          const terminal = ['completed','failed','partial_failure','stopped','interrupted'].includes(saved.status);
+          if (terminal) {
+            let archive = null;
+            if (saved.data?.archive_available) {
+              const archived = await fetch(`/api/tasks/${encodeURIComponent(streamTaskId)}/archive`, {signal:AbortSignal.timeout(5000)});
+              if (archived.ok) archive = await archived.json();
+            }
+            for (const [index, step] of (archive?.steps || []).entries()) {
+              const elements = stepElements({...step, index});
+              finalizeStep(elements.message, step.content || step.error || '');
+              recordMessageModel(elements.message, {...step.metadata, task_id:streamTaskId});
+              const status = step.success === false ? 'error' : 'done';
+              updateMessageStatus(elements.message, status, step.duration_ms);
+              const label = elements.message.querySelector('.step-status');
+              if (label) label.textContent = status;
+              updateWorkspaceStepElement(elements.workspace, status, step.duration_ms);
+            }
+            const content = archive?.content || saved.data?.result;
+            if (content && ![...stepMessages.values()].some(message => message.dataset.rawText === content)) {
+              if (!currentMsg || [...stepMessages.values()].includes(currentMsg)) currentMsg = createStepBlock('hermes');
+              finalizeStep(currentMsg, content);
+              updateMessageStatus(currentMsg, saved.status === 'completed' ? 'done' : 'error');
+              recordMessageModel(currentMsg, {task_id:streamTaskId});
+            }
+            const completed = saved.status === 'completed';
+            stopWorkspaceTaskTimer(completed ? 'done' : saved.status);
+            setWorkspaceState(completed ? 'Ready' : 'Needs attention', completed ? 'ready' : 'error');
+            pushWorkspaceLine(`Connection interrupted. Saved task status: ${saved.status}.`);
+            setComposerStatus(`Recovered saved task ${streamTaskId}: ${saved.status}`, completed ? 'ok' : 'warn', true);
+            void loadTasks();
+            return;
+          }
+        } catch (_) { /* Retain partial output and the durable task ID below. */ }
+      }
+      const message = `Connection interrupted; task status is not confirmed.${streamTaskId ? ` Task ID: ${streamTaskId}. Check Task history before retrying.` : ''} Your partial output is retained. No task was resent.`;
+      addErrorMessage(message);
+      setComposerStatus(message, 'warn', true);
+      pushWorkspaceLine(message);
+      void loadTasks();
+    }
     function updateActiveGods() {
       const running = new Set(activeSteps.values());
       $$('.god-row').forEach(el => el.classList.toggle('active', running.has(el.dataset.role)));
@@ -6649,6 +6780,7 @@
       const index = Number(data.index || 0);
       if (fresh || !stepMessages.has(index)) {
         stepMessages.set(index, createStepBlock(data.role || 'hermes', data.skills || []));
+        recordMessageModel(stepMessages.get(index), {task_id:streamTaskId});
         stepWorkspace.set(index, addWorkspaceStep(data.role || 'hermes', data.task || data.description || '', data.skills || []));
       }
       return {index, message: stepMessages.get(index), workspace: stepWorkspace.get(index)};
@@ -6677,13 +6809,18 @@
         throw new Error(err.detail || `HTTP ${resp.status}`);
       }
 
+      streamConnected = true;
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          buffer += decoder.decode();
+          if (buffer.trim()) handleFrame(buffer);
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         let sep;
         while ((sep = buffer.indexOf('\n\n')) !== -1) {
@@ -6692,6 +6829,8 @@
           handleFrame(frame);
         }
       }
+
+      if (!terminalReceived) await reconcileStream();
 
       function handleFrame(frame) {
         if (!frame.trim()) return;
@@ -6709,6 +6848,7 @@
       }
 
       function handleEvent(event, data) {
+        if (data.task_id) streamTaskId = activeTaskId = data.task_id;
         switch (event) {
           case 'start':
             pushWorkspaceLine('Stream connected');
@@ -6725,7 +6865,6 @@
             }
             break;
           case 'phase': {
-            if (data.task_id) activeTaskId = data.task_id;
             const stage = data.stage || 'running';
             const labels = {
               preparing: 'Preparing',
@@ -6864,6 +7003,7 @@
             break;
           }
           case 'step_done': {
+            if (data.success === false) { handleEvent('step_error', data); break; }
             const elements = stepElements(data);
             recordMessageModel(elements.message, data);
             finalizeStep(elements.message, data.content);
@@ -6903,6 +7043,7 @@
           case 'summary_start':
             if (currentMsg) finalizeStep(currentMsg, null);
             currentMsg = createStepBlock('hermes', data.skills || []);
+            recordMessageModel(currentMsg, {task_id:streamTaskId});
             currentStepStreamed = false;
             currentWorkspaceStep = addWorkspaceStep(
               'hermes',
@@ -6933,11 +7074,13 @@
             syncWorkspaceArtifacts();
             break;
           case 'done': {
+            terminalReceived = true;
+            finishPendingMessages(data.success === false || (data.status && data.status !== 'completed') ? 'error' : 'done');
             void loadBudgets({preserveForm: true});
             void loadTasks();
             pinChatModels();
-    renderSettingsModels();
-    if (latestSetupStatus?.onboarding?.show) void loadSetupStatus({quiet: true, preserveForm: true});
+            renderSettingsModels();
+            if (latestSetupStatus?.onboarding?.show) void loadSetupStatus({quiet: true, preserveForm: true});
             providerDot.classList.remove('connecting');
             providerDot.classList.add('online');
             const failed = data.success === false || (data.status && data.status !== 'completed');
@@ -6959,6 +7102,8 @@
             break;
           }
           case 'error':
+            terminalReceived = true;
+            finishPendingMessages('error');
             addErrorMessage(data.message || 'Unknown error');
             pushWorkspaceLine(`Request failed: ${data.message || 'Unknown error'}`);
             finishRunningWorkspaceSteps('error');
@@ -6969,17 +7114,22 @@
       }
     } catch (e) {
       if (e.name === 'AbortError') {
+        finishPendingMessages('stopped');
         pushWorkspaceLine('Task stopped');
         finishRunningWorkspaceSteps('stopped');
         setWorkspaceState('Stopped', 'idle');
         stopWorkspaceTaskTimer('stopped');
-      } else {
+      } else if (!terminalReceived) {
         console.error(e);
-        addErrorMessage(String(e.message || e));
-        pushWorkspaceLine(`Request failed: ${e.message || e}`);
-        finishRunningWorkspaceSteps('error');
-        setWorkspaceState('Error', 'error');
-        stopWorkspaceTaskTimer('error');
+        if (streamConnected) await reconcileStream();
+        else {
+          addErrorMessage(String(e.message || e));
+          finishPendingMessages('error');
+          finishRunningWorkspaceSteps('error');
+          setWorkspaceState('Error', 'error');
+          stopWorkspaceTaskTimer('error');
+          pushWorkspaceLine(`Request failed: ${e.message || e}`);
+        }
       }
     } finally {
       if (pendingMcpApproval && !mcpApprovalResolving) {
@@ -6989,6 +7139,7 @@
       isStreaming = false;
       abortCtrl = null;
       activeTaskId = null;
+      saveActiveSession();
       setSendState(false);
       providerDot.classList.remove('connecting');
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -7839,6 +7990,7 @@
   });
 
   inputEl.addEventListener('input', () => {
+    promptDraftRevision++;
     autoResize();
     updateSlashCommandMenu();
   });
