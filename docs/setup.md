@@ -205,7 +205,7 @@ This manual source path applies to macOS, Ubuntu and WSL. One-line installer use
 Expected result:
 
 ```text
-pantheon 0.3.1
+pantheon 0.3.2
 ```
 
 A newer version number is also valid. Do not use `sudo pip install`.

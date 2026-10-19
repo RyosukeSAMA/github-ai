@@ -228,3 +228,41 @@ def test_ask_renders_session_steps_and_answer(monkeypatch) -> None:
     assert "Athena" in output
     assert "Recommendation" in output
     assert "2/2 steps" in output
+
+
+def test_cli_uses_saved_mixed_models_without_provider_fallback(tmp_path, monkeypatch):
+    import yaml
+    from typer.testing import CliRunner
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('PANTHEON_WORKSPACE', str(tmp_path))
+    choices = {'hephaestus': ('anthropic', 'claude-cli-test'),
+               'athena': ('openai', 'gpt-cli-test'),
+               'apollo': ('deepseek', 'deepseek-cli-test')}
+    config = tmp_path / 'pantheon.yaml'
+    config.write_text(yaml.safe_dump({
+        'pantheon': {'hermes': {'provider': 'deepseek', 'model': 'router-cli-test'},
+                     'roles': {name: {'provider': provider, 'model': model}
+                               for name, (provider, model) in choices.items()}},
+        'provider_connections': {provider: {'api_key': 'fake-' + provider,
+                                           'base_url': f'https://{provider}.example/v1'}
+                                 for provider in ('deepseek', 'openai', 'anthropic')},
+    }))
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def complete(self, messages, model, **kwargs):
+            calls.append((self.provider_name, model))
+            return 'CLI task complete'
+
+    monkeypatch.setattr('pantheon.core.pantheon.get_llm_client', lambda **kwargs: Client(**kwargs))
+    runner = CliRunner()
+    for name, expected in choices.items():
+        result = runner.invoke(cli.app, ['ask', '--role', name, '--config', str(config), '--raw', 'Independent task'])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)['content'] == 'CLI task complete'
+        assert calls[-1] == expected
+    assert len(calls) == 3

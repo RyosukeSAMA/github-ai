@@ -2,7 +2,7 @@
 
 All notable changes to Pantheon are documented in this file.
 
-## [Unreleased]
+## [0.3.2] - 2026-10-19
 
 ### Fixed
 
