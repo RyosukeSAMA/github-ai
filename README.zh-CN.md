@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.3.3-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -163,7 +163,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-最后一条命令应显示 `pantheon 0.3.3` 或更新版本。
+最后一条命令应显示 `pantheon 0.4.0` 或更新版本。
 
 ### 第三步：启动并配置 Web UI
 
@@ -415,7 +415,7 @@ for step in result["steps"]:
 
 ## 当前边界
 
-Pantheon v0.3.3 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
+Pantheon v0.4.0 仍是 Alpha 阶段的本地工作区，部署前需要了解以下限制：
 
 - 安全的独立步骤可并行，默认 3 个、最多 4 个；依赖步骤和有外部操作的步骤保持顺序。模型响应目前按完整消息返回，不是供应商逐 token 流式输出。
 - 失败恢复默认最多 1 轮，可设置 0–2 轮；仅修复原计划内失败指令，不扩大任务、不改变角色或依赖、不静默重跑外部操作。
@@ -534,3 +534,5 @@ CI 不会获取或测试真实 Provider 密钥。
 ## License
 
 MIT © 2024–2026 RyosukeSAMA
+
+连续终端会话：`pantheon chat --session my-project`。按任务/角色/阶段查看用量：`pantheon usage`。流式开关、连接管理及键盘操作见[交互增强说明](docs/interaction-upgrades.md)。

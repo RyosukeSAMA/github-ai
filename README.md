@@ -15,7 +15,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.3.3-6366f1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-6366f1.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org)
 [![CI](https://github.com/RyosukeSAMA/github-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/RyosukeSAMA/github-ai/actions)
 [![License](https://img.shields.io/badge/license-MIT-24292f.svg)](LICENSE)
@@ -164,7 +164,7 @@ python -m pip install -e .
 pantheon --version
 ```
 
-The last command should print `pantheon 0.3.3` or a newer version.
+The last command should print `pantheon 0.4.0` or a newer version.
 
 ### 3. Start and configure the Web UI
 
@@ -416,7 +416,7 @@ These repository-local state files are covered by `.gitignore` and should remain
 
 ## Current Boundaries
 
-Pantheon v0.3.3 is still an alpha local workspace. Understand these limits before deployment:
+Pantheon v0.4.0 is still an alpha local workspace. Understand these limits before deployment:
 
 - Independent safe steps run concurrently (default 3, maximum 4); dependencies and side-effecting steps retain order. Model responses arrive as complete messages, not token streams.
 - Recovery repairs failed instructions within the original plan (default 1 round, maximum 2). It cannot expand scope, change roles/dependencies or silently repeat external actions.
@@ -537,3 +537,5 @@ Contributions to roles, Skills, Integrations, tests, documentation, and accessib
 ## License
 
 MIT (c) 2024-2026 RyosukeSAMA
+
+Continuous terminal chats: `pantheon chat --session my-project`. Inspect task/role/phase usage with `pantheon usage`. See [interaction upgrades](docs/interaction-upgrades.md) for streaming controls, connection lifecycle and keyboard shortcuts.

@@ -123,6 +123,23 @@ class CredentialStore:
                         pass  # The new authoritative value is already safely saved.
             self.problem = ''
 
+    def delete(self, name: str):
+        """Explicitly remove a saved key; do not modify the parent shell's environment."""
+        if not re.fullmatch(r'[A-Z][A-Z0-9_]*', name):
+            raise CredentialError('Invalid credential name')
+        with file_mutex(self.env_path.with_name('.credentials.lock')):
+            refs = self.refs()
+            if name in refs:
+                backend = self.backend()
+                if backend is None:
+                    raise CredentialError('Unlock system credential storage before deleting this key.')
+                try:
+                    backend.delete_password(self.service, name)
+                except Exception as exc:
+                    raise CredentialError('System key deletion failed; the connection was not removed.') from exc
+                atomic_text(self.references, json.dumps([ref for ref in refs if ref != name]) + '\n')
+            self._write_env(name, None)
+
     def migrate(self) -> list[str]:
         values = dotenv_values(self.env_path) if self.env_path.exists() else {}
         names = [name for name, value in values.items() if value and

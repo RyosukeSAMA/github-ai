@@ -13,6 +13,7 @@ from dataclasses import asdict, replace
 from typing import Any
 
 from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult, model_identity
+from pantheon.core.calls import call_scope
 from pantheon.core.context import bounded_history, conversation_task
 from pantheon.core.results import result_payload
 from pantheon.core.router import Router
@@ -555,7 +556,11 @@ class Hermes:
                                               'description': 'Preparing the final answer', 'total': total})
         self._checkpoint()
         successful = [item for item in context if item.get('success')]
-        summary = self.router.summarize(conversation_task(task.content, task.history), successful) if successful else 'No steps completed successfully.'
+        def summary_delta(text):
+            self._checkpoint()
+            self._emit(on_event, 'summary_chunk', {'role':'hermes', 'text':text})
+        with call_scope('hermes', 'synthesis', sink=summary_delta if callable(on_event) else None):
+            summary = self.router.summarize(conversation_task(task.content, task.history), successful) if successful else 'No steps completed successfully.'
         success = all(result.success for result in outputs)
         if not success:
             summary = 'Partial failure: some steps failed or were skipped.\n\n' + summary
@@ -830,7 +835,15 @@ Workflow rules:
             skills,
         )
 
-    def _run_role(
+    def _run_role(self, role, task, context=None, role_name='', on_event=None):
+        def delta(text):
+            self._checkpoint()
+            self._emit(on_event, 'step_chunk', {'index': CURRENT_STEP.get() - 1,
+                       'role': role_name, 'text': text})
+        with call_scope(role_name, 'execution', sink=delta if callable(on_event) else None):
+            return self._run_role_inner(role, task, context, role_name, on_event)
+
+    def _run_role_inner(
         self,
         role: Any,
         task: Task,

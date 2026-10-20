@@ -33,9 +33,11 @@ def connection_config(config: dict, provider: str) -> dict:
     return {}
 
 
-def resolve_connection(config: dict, provider: str, env_lookup) -> tuple[str, str]:
+def resolve_connection(config: dict, provider: str, env_lookup, *, require_enabled=False) -> tuple[str, str]:
     preset = PROVIDERS[provider]
     cfg = connection_config(config, provider)
+    if require_enabled and (not cfg.get('enabled', True) or cfg.get('deleted')):
+        raise ValueError(f'{provider} connection is disabled or removed. Enable or save it in Connections first.')
     raw = str(cfg.get('api_key') or '')
     if raw.startswith('${') and raw.endswith('}'):
         key = env_lookup(raw[2:-1])
@@ -70,6 +72,6 @@ def normalized_config(config: dict) -> dict:
                                'provider_id': identity}
     for name, cfg in (config.get('provider_connections', {}) or {}).items():
         if name in PROVIDERS and isinstance(cfg, dict):
-            providers[name] = {**cfg, 'adapter': PROVIDERS[name]['adapter'], 'provider_id': name, 'enabled': True}
+            providers[name] = {**cfg, 'adapter': PROVIDERS[name]['adapter'], 'provider_id': name, 'enabled': cfg.get('enabled', True) and not cfg.get('deleted', False)}
     result['llm_providers'] = providers
     return result

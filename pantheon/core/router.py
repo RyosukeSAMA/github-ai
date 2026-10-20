@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from pantheon.core.base import PLAN_STEP_KINDS, Plan, PlanStep
+from pantheon.core.calls import stage
 from pantheon.core.context import compact_context
 
 
@@ -84,6 +85,7 @@ Rules:
         self.llm_client = llm_client
         self.hermes_model = hermes_model
 
+    @stage('hermes', 'planning', stream=False)
     def plan(
         self,
         task: str,
@@ -99,6 +101,8 @@ Rules:
         Returns:
             A Plan object.
         """
+        if self.llm_client is None:
+            raise RuntimeError('Hermes connection is unavailable. Review Connections and role models.')
         role_lines: list[str] = []
         for name, info in available_roles.items():
             skills = info.get("skills") or []
@@ -130,11 +134,13 @@ Produce a JSON plan."""
 
         return self._parse_plan(raw, available_roles, requested_skill=requested_skill)
 
+    @stage('hermes', 'context', stream=False)
     def compact_context(self, context, checkpoint=None):
         return compact_context(context, client=self.llm_client,
                                model=self.hermes_model or getattr(self.llm_client, "default_model", ""),
                                checkpoint=checkpoint)
 
+    @stage('hermes', 'synthesis', stream=True)
     def summarize(
         self,
         original_task: str,
@@ -173,6 +179,7 @@ with vague examples or an open-ended clarification request."""
             temperature=0.3,
         )
 
+    @stage('hermes', 'recovery', stream=False)
     def revise_steps(self, task: str, plan: Plan, results: list, eligible: list[int]) -> list[dict]:
         """Repair only failed step instructions; roles, dependencies and scope remain fixed."""
         payload = {'original_task': task, 'failed_steps': [
@@ -203,6 +210,7 @@ with vague examples or an open-ended clarification request."""
             repairs.append({'index': index, 'task': instruction.strip(), 'reason': str(item.get('reason') or '')[:400]})
         return repairs
 
+    @stage('hermes', 'enhancement', stream=False)
     def enhance_prompt(self, prompt: str, mode: str = "auto") -> str:
         """Rewrite a draft prompt without dispatching it to an agent."""
         clean_prompt = str(prompt or "").strip()
