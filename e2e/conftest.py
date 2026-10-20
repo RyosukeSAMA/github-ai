@@ -69,6 +69,8 @@ def live_server_url(e2e_workspace: Path) -> str:
         "PANTHEON_UI_SESSION_SECRET",
     ):
         env.pop(key, None)
+    log_path = e2e_workspace / 'server.log'
+    server_log = log_path.open('w', encoding='utf-8')
     process = subprocess.Popen(
         [
             sys.executable,
@@ -84,7 +86,7 @@ def live_server_url(e2e_workspace: Path) -> str:
         ],
         cwd=Path(__file__).resolve().parents[1],
         env=env,
-        stdout=subprocess.PIPE,
+        stdout=server_log,
         stderr=subprocess.STDOUT,
         text=True,
     )
@@ -92,7 +94,8 @@ def live_server_url(e2e_workspace: Path) -> str:
     try:
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                output = process.stdout.read() if process.stdout else ""
+                server_log.flush()
+                output = log_path.read_text(encoding="utf-8")
                 pytest.fail(f"Pantheon server exited before E2E tests:\n{output}")
             try:
                 with urllib.request.urlopen(f"{url}/api/health", timeout=0.5) as response:
@@ -110,3 +113,4 @@ def live_server_url(e2e_workspace: Path) -> str:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        server_log.close()

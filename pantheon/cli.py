@@ -22,7 +22,9 @@ from rich.status import Status
 from rich.table import Table
 from rich.text import Text
 
+from pantheon.core.hermes import ExecutionStoppedError
 from pantheon.core.pantheon import Pantheon
+from pantheon.core.results import result_exit_code, result_payload
 
 app = typer.Typer(
     name="pantheon",
@@ -500,7 +502,9 @@ def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancella
         except ValueError as error:
             raise typer.BadParameter(str(error)) from error
         console.print(result.get('content', ''), markup=False)
-        console.print(f"Task: {result['task_id']} · {result.get('status', 'completed')}")
+        console.print(f"Task: {result['task_id']} · {result_payload(result)['status']}")
+        if code := result_exit_code(result):
+            raise typer.Exit(code)
         return
     if show:
         task = store.get(show)
@@ -578,17 +582,25 @@ def ask(
     """Ask the Pantheon to do something."""
     file = file if isinstance(file, (list, tuple)) else None
     _configure_cli_logging(verbose)
+    mode = f"role:{role}" if role else "multi" if multi else "auto"
+
+    def fail(error: BaseException) -> None:
+        stopped = isinstance(error, (KeyboardInterrupt, ExecutionStoppedError))
+        message = str(error) or 'Task stopped by user'
+        if raw:
+            typer.echo(json.dumps(result_payload({'mode': mode, 'content': '', 'steps': [],
+                'success': False, 'status': 'stopped' if stopped else 'failed', 'error': message}), indent=2))
+        else:
+            console.print(Panel(Text(message, style="red"), title="Run stopped" if stopped else "Run failed",
+                                border_style="red", box=box.ROUNDED))
+            if verbose and not stopped:
+                console.print_exception()
+        raise typer.Exit(code=130 if stopped else 1)
+
     try:
         p = Pantheon(config_path=config, verbose=verbose)
-    except FileNotFoundError as e:
-        console.print(f"[red]✗[/red] {e}")
-        raise typer.Exit(code=1)
-
-    mode = "auto"
-    if role:
-        mode = f"role:{role}"
-    elif multi:
-        mode = "multi"
+    except (Exception, KeyboardInterrupt) as error:
+        fail(error)
 
     if not raw:
         console.print()
@@ -624,21 +636,15 @@ def ask(
                     on_event=_run_event_handler(run_status),
                     **({'attachments': file} if file else {}),
                 )
-    except Exception as e:
-        console.print(
-            Panel(
-                Text(str(e), style="red"),
-                title="[bold red]Run failed[/bold red]",
-                border_style="red",
-                box=box.ROUNDED,
-            )
-        )
-        if verbose:
-            console.print_exception()
-        raise typer.Exit(code=1)
+    except (Exception, KeyboardInterrupt) as error:
+        fail(error)
 
+    payload = result_payload(result)
+    exit_code = result_exit_code(payload)
     if raw:
-        typer.echo(json.dumps(result, indent=2, default=str))
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        if exit_code:
+            raise typer.Exit(exit_code)
         return
 
     if result.get("plan"):
@@ -658,19 +664,22 @@ def ask(
     console.print(
         Panel(
             Markdown(result.get("content", "(no content)")),
-            title="[bold green]Answer[/bold green]",
-            border_style="green",
+            title="[bold green]Answer[/bold green]" if payload["success"] else "[bold red]Needs attention[/bold red]",
+            border_style="green" if payload["success"] else "red",
             box=box.ROUNDED,
             padding=(1, 2),
         )
     )
     elapsed_ms = (time.perf_counter() - started_at) * 1000
-    succeeded = sum(bool(getattr(step, "success", True)) for step in steps)
+    succeeded = sum(bool(step.get("success", True)) and not step.get("error") for step in payload.get("steps", []))
     completion = Text()
-    completion.append("✓ Complete", style="bold green")
+    completion.append("✓ Complete" if payload["success"] else f"✗ {payload['status'].replace('_', ' ').title()}",
+                      style="bold green" if payload["success"] else "bold red")
     completion.append(f"  •  {succeeded}/{len(steps)} steps", style=MUTED_COLOR)
     completion.append(f"  •  {_duration_label(elapsed_ms)}", style=MUTED_COLOR)
     console.print(Panel(completion, border_style="grey37", box=box.MINIMAL, padding=(0, 1)))
+    if exit_code:
+        raise typer.Exit(exit_code)
 
 
 @app.command("roles")

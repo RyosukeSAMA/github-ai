@@ -2,6 +2,17 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Return nonzero CLI exit codes for failed, partially failed and stopped tasks, including resumed tasks; do not display a successful completion for failed work.
+- Serialize raw CLI steps as JSON objects and keep constructor/execution errors in a JSON envelope with explicit success, status and error fields.
+- Share terminal outcome rules between task history, CLI, HTTP, SSE and webhooks. Validation failures emit failed stream steps; webhook `ok` reflects execution success.
+- Detect unexpected Web stream EOF/network interruption, retain partial replies and task IDs, and query saved task status/results without automatically resubmitting work.
+- Preserve custom model drafts, expanded controls, focus and text selection during catalog refresh, with drafts isolated by chat/settings scope, role and provider.
+- Bind prompt enhancement responses and undo state to the initiating chat, draft revision and Hermes choice. Ignore stale responses after navigation, edits or model changes.
+
 ## [0.3.2] - 2026-10-19
 
 ### Fixed

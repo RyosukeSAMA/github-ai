@@ -14,6 +14,7 @@ from typing import Any
 
 from pantheon.core.base import AgentMessage, Plan, PlanStep, Task, TaskResult, model_identity
 from pantheon.core.context import bounded_history, conversation_task
+from pantheon.core.results import result_payload
 from pantheon.core.router import Router
 
 CURRENT_STEP: ContextVar[int] = ContextVar('pantheon_step', default=1)
@@ -90,9 +91,10 @@ class Hermes:
                     result = self._run_multi(task, plan, on_event, restored=resume_checkpoint.get('steps', {}))
             else:
                 result = self._dispatch(task, on_event=on_event)
+            outcome = result_payload(result)
+            result.update(task_id=task.task_id, status=outcome['status'], success=outcome['success'], error=outcome['error'])
             if store is not None:
-                store.finish(task.task_id, result.get("status", "completed"), result.get("content", ""), result=result)
-            result['task_id'] = task.task_id
+                store.finish(task.task_id, result['status'], result.get("content", ""), result=result)
             return result
         except ExecutionStoppedError as exc:
             if store is not None:

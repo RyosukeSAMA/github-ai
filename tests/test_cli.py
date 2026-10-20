@@ -141,6 +141,10 @@ def test_ask_raw_output_remains_machine_readable(monkeypatch) -> None:
         "plan": "",
         "content": "done",
         "steps": [],
+        "task_id": None,
+        "status": "completed",
+        "success": True,
+        "error": None,
     }
 
 
