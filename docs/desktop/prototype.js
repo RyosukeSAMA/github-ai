@@ -13,6 +13,7 @@ const entries = [
   ['forge','He','Hephaestus','执行路径与恢复检查','复核执行、失败状态和恢复边界，整理可操作清单。'],
   ['hermes','H','Hermes','汇总成果','把阶段输出整理成可交付的项目文档。'],
 ];
+sampleTasks.forEach(task => { task.activities = task.id === 'launch' ? entries.map(item => [...item]) : []; });
 const fileText = {
   checklist:'# 上线前检查清单（示例）\n\n- [ ] 确认安装与模型配置入口\n- [ ] 检查失败状态与任务恢复\n- [ ] 留存测试记录和验证边界\n\n此文件仅为原型展示，不代表真实验收。',
   notes:'任务：审查示例项目\n\n协作：Hermes → Athena → Hephaestus → Hermes\n\n边界：\n未读取本机工作区\n未调用供应商 API\n未执行工具或写入文件\n\n此记录仅保存在原型内存中。',
@@ -38,11 +39,14 @@ function selectTask(id) {
   const task = sampleTasks.find(item => item.id === id);
   $('#breadcrumb-task').textContent = task.title; $('#task-title').textContent = task.heading;
   $('#task-subtitle').textContent = task.prompt; $('#task-state').textContent = task.state;
-  renderTasks(); setView('work'); setTab(id === 'launch' ? 'result' : 'activity');
+  document.querySelectorAll('.route-check').forEach(item => item.textContent = task.state.startsWith('已完成') ? '✓' : '·');
+  renderTasks(); renderActivity(); updateModelTags(); setView('work'); setTab(id === 'launch' ? 'result' : 'activity');
 }
 function renderActivity() {
   $('#activity-list').replaceChildren();
-  entries.forEach(([kind, mark, name, title, description], index) => {
+  const activity = sampleTasks.find(task => task.id === selectedTask).activities || [];
+  $('#activity-tab span').textContent = activity.length;
+  activity.forEach(([kind, mark, name, title, description], index) => {
     const li = document.createElement('li');
     const avatar = document.createElement('span'); avatar.className = `role-mark ${kind}`; avatar.textContent = mark;
     const content = document.createElement('div');
@@ -52,7 +56,7 @@ function renderActivity() {
     content.append(strong, p, small); li.append(avatar, content); $('#activity-list').appendChild(li);
   });
 }
-function addActivity(title, description) { entries.push(['hermes','H','Pantheon',title,description]); renderActivity(); $('#activity-tab span').textContent = entries.length; }
+function addActivity(title, description) { const task = sampleTasks.find(item => item.id === selectedTask); (task.activities ||= []).push(['hermes','H','Pantheon',title,description]); renderActivity(); }
 function setTab(name) {
   $('#automation-pane').hidden = true;
   ['result','activity','files'].forEach(key => {
@@ -69,6 +73,7 @@ function setView(name) {
 }
 function showInspector(show) { app.classList.toggle('no-inspector', !show); app.classList.toggle('show-inspector', show); $('#inspector-toggle').setAttribute('aria-pressed', String(show)); }
 function showTerminal(show) { $('#terminal-drawer').hidden = !show; $('#terminal-toggle').setAttribute('aria-expanded', String(show)); }
+function updateModelTags() { const providers = sampleTasks.find(task => task.id === selectedTask).modelProviders || []; document.querySelectorAll('.inspector-role .text-tag').forEach((tag,index) => tag.textContent = providers[index] ? providers[index] + ' · 默认' : '默认模型'); }
 function showModels() { renderModels(); openDialog('#models-dialog'); }
 function renderModels() {
   $('#model-rows').replaceChildren();
@@ -144,7 +149,7 @@ $('#terminal-toggle').onclick = () => showTerminal($('#terminal-drawer').hidden)
 $('#terminal-close').onclick = () => showTerminal(false);
 $('#terminal-simulate').onclick = () => $('#terminal-output').textContent += '\n[示例] 检查记录已显示。没有运行 shell 命令。';
 $('#model-open').onclick = $('#inspector-model').onclick = $('#connection-open').onclick = showModels;
-$('#save-models').onclick = () => { $('#models-dialog').close(); toast('模型分配已应用到原型；没有保存真实连接。'); };
+$('#save-models').onclick = () => { sampleTasks.find(task => task.id === selectedTask).modelProviders = [...$('#model-rows').querySelectorAll('select')].map(select => select.value); updateModelTags(); $('#models-dialog').close(); toast('模型分配已应用到原型；没有保存真实连接。'); };
 $('#mock-connections').onclick = () => { $('#models-dialog').close(); info('连接管理与角色模型分开','桌面端将共用已实现的连接保存、启停、引用检查和删除能力。这个原型不收集 API Key。'); };
 $('#approval-open').onclick = () => openDialog('#approval-dialog');
 $('#allow-approval').onclick = $('#deny-approval').onclick = event => { const allowed = event.target.id === 'allow-approval'; $('#approval-dialog').close(); addActivity(allowed ? '示例审批：允许一次' : '示例审批：已拒绝','没有执行任何命令；真实应用会在工具边界完成审批。'); setTab('activity'); toast(allowed ? '已记录示例授权；不会执行命令。' : '已记录示例拒绝。'); };
