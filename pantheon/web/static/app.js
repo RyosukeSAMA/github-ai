@@ -5863,7 +5863,7 @@
       const untouchedModels = sessions.length === 1 && Object.entries(sessions[0].overrides || {})
         .every(([name, choice]) => defaults[name]?.provider === choice.provider && defaults[name]?.model === choice.model);
       // Do not discard an empty draft whose models or mode the user configured.
-      const browserSessions = data.sessions.length && sessions.length === 1 &&
+      const browserSessions = !inputEl.value.trim() && !promptEnhancing && data.sessions.length && sessions.length === 1 &&
         sessions[0].title === 'New chat' && sessions[0].mode === 'auto' &&
         !sessions[0].messages.length && untouchedModels ? [] : sessions;
       const merged = mergeConversations(browserSessions, data.sessions);
@@ -6191,7 +6191,7 @@
     if (!force) saveActiveSession();
     const session = sessions.find((item) => item.id === sessionId);
     if (!session) return;
-    invalidatePromptEnhancement();
+    if (activeSessionId !== session.id) invalidatePromptEnhancement();
     activeSessionId = session.id;
     modelScope = 'chat';
     $('#models-scope').value = 'chat';

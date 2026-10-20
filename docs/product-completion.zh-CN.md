@@ -22,7 +22,7 @@
 ## 当前验收快照（2026-10-20）
 
 - v0.3.0、v0.3.1、v0.3.2 已发布；六项可靠性修复已合并（PR #30），随 v0.3.3 交付。实际可安装版本以 [GitHub Releases](https://github.com/RyosukeSAMA/github-ai/releases) 为准。
-- 六项修复的本机验证：284 项后端测试通过，35 项 Chromium 界面测试通过；真实供应商测试和两项原生 Windows 本机检查跳过。GitHub 的九项 CI 全部通过，含 Python 3.10–3.12、三系统运行、macOS/Windows 安装与 Web 回归。
+- 六项修复的本机验证：284 项后端测试通过，36 项 Chromium 界面测试通过；真实供应商测试和两项原生 Windows 本机检查跳过。GitHub 的九项 CI 全部通过，含 Python 3.10–3.12、三系统运行、macOS/Windows 安装与 Web 回归。
 - 真实 OpenAI/Anthropic、多模态及 Telegram/Slack/Discord 账号验收仍待凭据；模拟测试通过不等于真实账号验收通过。此缺口不标记为已验证，也不在本轮消耗付费 API 或发送平台消息。
 - 桌面客户端尚未实现。下一阶段先完成已排定的交互增强，再设计独立桌面交互及应用生命周期。
 
