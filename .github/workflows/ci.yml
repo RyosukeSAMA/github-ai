@@ -39,7 +39,7 @@ jobs:
       - name: Smoke test one-line installer
         if: matrix.python-version == '3.11'
         run: |
-          git tag -f v0.3.2
+          git tag -f v0.3.3
           install_dir="$(mktemp -d)/github-ai"
           cat scripts/install.sh | PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash
           "$install_dir/.venv/bin/pantheon" --version
@@ -82,7 +82,7 @@ jobs:
           python-version: "3.12"
       - name: Install stable-tag checkout and verify CLI
         run: |
-          git tag -f v0.3.2
+          git tag -f v0.3.3
           install_dir="$(mktemp -d)/github-ai"
           PANTHEON_INSTALL_DIR="$install_dir" PANTHEON_REPO_URL="$GITHUB_WORKSPACE" bash scripts/install.sh
           "$install_dir/.venv/bin/pantheon" --version
@@ -116,7 +116,7 @@ jobs:
       - name: Native install, update and rollback without WSL
         shell: pwsh
         run: |
-          git tag -f v0.3.2
+          git tag -f v0.3.3
           $env:PANTHEON_REPO_URL = $env:GITHUB_WORKSPACE
           $env:PANTHEON_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'Pantheon app'
           $env:PANTHEON_DATA_DIR = Join-Path $env:RUNNER_TEMP 'Pantheon data'

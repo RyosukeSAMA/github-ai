@@ -205,7 +205,7 @@ py -3.12 --version
 预期结果：
 
 ```text
-pantheon 0.3.2
+pantheon 0.3.3
 ```
 
 显示更高版本也正常。不要使用 `sudo pip install`。

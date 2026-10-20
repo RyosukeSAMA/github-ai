@@ -1,6 +1,6 @@
 # Task outcomes and recovery
 
-CLI, Web HTTP/SSE, webhooks and durable task history use the same terminal outcome rules. These changes are currently unreleased.
+CLI, Web HTTP/SSE, webhooks and durable task history use the same terminal outcome rules. These rules apply from v0.3.3.
 
 | Field | Meaning |
 | --- | --- |
