@@ -3,7 +3,11 @@
   "checks": [
     "light/dark render",
     "local branding",
-    "single/mixed model selection",
+    "single/mixed model selection and per-task isolation",
+    "two simultaneous demo tasks and independent stop",
+    "artifact filtering and source task",
+    "review accept/reject",
+    "focus/professional layouts and capability center",
     "approval refusal",
     "result/files/activity tabs",
     "terminal simulation",
