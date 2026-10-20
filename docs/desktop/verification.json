@@ -1,0 +1,16 @@
+{
+  "prototype_only": true,
+  "checks": [
+    "light/dark render",
+    "local branding",
+    "single/mixed model selection",
+    "approval refusal",
+    "result/files/activity tabs",
+    "terminal simulation",
+    "new task and stop",
+    "keyboard command menu",
+    "1440/1024/760 layout"
+  ],
+  "page_errors": [],
+  "api_requests": 0
+}
