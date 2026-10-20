@@ -3,6 +3,9 @@
   "checks": [
     "light/dark render",
     "English UI and accessibility labels",
+    "SVG icon actions with accessible names",
+    "hover/focus tooltips, shortcut hints, hover persistence and Escape",
+    "state-aware action icons and labels",
     "white-first default and readable palette contrasts",
     "local branding",
     "single/mixed model selection and per-task isolation",

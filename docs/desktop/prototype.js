@@ -59,7 +59,7 @@ function paintTask() {
   $('#task-title').textContent = item.heading;
   $('#task-subtitle').textContent = item.prompt; $('#task-state').textContent = item.state;
   $('#prompt').value = item.draft || '';
-  $('#run-demo').textContent = runs.has(item.id) ? 'Stop demo ■' : 'Run demo ↑';
+  setIconButton($('#run-demo'), runs.has(item.id) ? 'stop' : 'send', runs.has(item.id) ? 'Stop demo' : 'Run demo');
   const stage = runs.get(item.id)?.stage || 0;
   document.querySelectorAll('.route-check').forEach((element, index) => {
     element.textContent = item.state.startsWith('Completed') || (runs.has(item.id) && index < stage) ? '✓' : '·';
@@ -113,15 +113,16 @@ function setView(name) {
 function showInspector(show) {
   app.classList.toggle('no-inspector', !show); app.classList.toggle('show-inspector', show);
   $('#inspector-toggle').setAttribute('aria-pressed', String(show));
+  setIconButton($('#inspector-toggle'), 'context', show ? 'Hide context' : 'Show context');
 }
 function setLayout(value) {
   layout = value; app.dataset.layout = value;
-  $('#layout-toggle').textContent = value === 'focus' ? 'Focus layout' : 'Pro workspace';
+  setIconButton($('#layout-toggle'), value === 'focus' ? 'focus' : 'layout', value === 'focus' ? 'Switch to Pro workspace' : 'Switch to Focus layout');
   $('#layout-toggle').setAttribute('aria-pressed', String(value === 'focus'));
   showInspector(value !== 'focus' && !compactLayout.matches);
   if (value === 'focus') { showTerminal(false); if (currentView === 'capabilities') setView('work'); }
 }
-function showTerminal(show) { $('#terminal-drawer').hidden = !show; $('#terminal-toggle').setAttribute('aria-expanded', String(show)); }
+function showTerminal(show) { $('#terminal-drawer').hidden = !show; $('#terminal-toggle').setAttribute('aria-expanded', String(show)); setIconButton($('#terminal-toggle'), 'terminal', show ? 'Close terminal' : 'Open terminal'); }
 function updateModelTags() {
   document.querySelectorAll('.inspector-role .text-tag').forEach((tag, index) => { tag.textContent = task().modelProviders?.[index] || 'Default model'; });
 }
@@ -146,13 +147,14 @@ function renderMissions() {
   $('#metric-running').textContent = runs.size;
   $('#metric-waiting').textContent = sampleTasks.filter(item => !runs.has(item.id) && !item.state.startsWith('Completed')).length;
   $('#metric-completed').textContent = sampleTasks.filter(item => item.state.startsWith('Completed')).length;
+  if (activeTooltipButton && $('#mission-list').contains(activeTooltipButton)) hideButtonTooltip();
   $('#mission-list').replaceChildren();
   sampleTasks.forEach(item => {
     const row = make('div', 'mission-row'); const content = make('div', 'mission-title');
     content.append(make('strong', '', item.title), make('small', '', item.prompt));
     const state = make('span', 'mission-state' + (runs.has(item.id) ? ' active' : ''), item.state);
-    const open = make('button', '', 'Open'); open.onclick = () => selectTask(item.id);
-    const run = make('button', '', runs.has(item.id) ? 'Stop demo' : 'Run demo');
+    const open = setIconButton(make('button'), 'open', 'Open task'); open.onclick = () => selectTask(item.id);
+    const run = setIconButton(make('button'), runs.has(item.id) ? 'stop' : 'play', runs.has(item.id) ? 'Stop demo' : 'Run demo');
     run.onclick = () => { if (runs.has(item.id)) endRun(item.id, true); else startRun(item.id, item.prompt); };
     row.append(make('span', 'role-mark hermes', 'H'), content, state, open, run); $('#mission-list').append(row);
   });
@@ -251,7 +253,7 @@ $('#new-form').onsubmit = event => {
   task().draft = $('#prompt').value; sampleTasks.unshift(item); $('#new-dialog').close(); $('#new-prompt').value = '';
   selectedTask = item.id; paintTask(); renderTasks(); setView('work'); setTab('activity'); $('#prompt').focus();
 };
-$('#theme-toggle').onclick = () => { app.dataset.theme = app.dataset.theme === 'dark' ? 'light' : 'dark'; $('#theme-toggle').setAttribute('aria-pressed', String(app.dataset.theme === 'dark')); };
+$('#theme-toggle').onclick = () => { app.dataset.theme = app.dataset.theme === 'dark' ? 'light' : 'dark'; $('#theme-toggle').setAttribute('aria-pressed', String(app.dataset.theme === 'dark')); setIconButton($('#theme-toggle'), app.dataset.theme === 'dark' ? 'sun' : 'moon', app.dataset.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); };
 $('#layout-toggle').onclick = $('#focus-preview').onclick = () => setLayout(layout === 'focus' ? 'professional' : 'focus');
 $('#inspector-toggle').onclick = () => showInspector($('#inspector-toggle').getAttribute('aria-pressed') !== 'true');
 $('#inspector-close').onclick = () => showInspector(false);
@@ -302,3 +304,10 @@ const compactLayout = window.matchMedia('(max-width:1150px)');
 compactLayout.addEventListener('change', event => showInspector(layout !== 'focus' && !event.matches));
 renderTasks(); paintTask();
 if (compactLayout.matches) showInspector(false);
+
+document.querySelectorAll('[data-nav-icon]').forEach(mark => {
+  mark.replaceChildren(desktopIcon(mark.dataset.navIcon));
+  const button = mark.closest('button');
+  const labels = {work: 'Workbench', tasks: 'Task center', library: 'Artifact library', files: 'Project files', automation: 'Automations', capabilities: 'Capabilities'};
+  button.dataset.tooltip = labels[button.dataset.view]; button.setAttribute('aria-label', labels[button.dataset.view]);
+});

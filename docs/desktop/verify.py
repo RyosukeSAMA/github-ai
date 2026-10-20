@@ -49,7 +49,7 @@ def check_palette(page):
     return ratios
 
 
-for name in ("index.html", "prototype.js"):
+for name in ("index.html", "prototype.js", "icons.js"):
     assert not re.search(r"[\u3400-\u9fff]", (root / "desktop" / name).read_text()), name
 
 server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(root)))
@@ -73,7 +73,33 @@ try:
             == "rgb(255, 255, 255)"
         )
         light_contrast = check_palette(page)
+        icon_buttons = page.locator(".icon-button")
+        assert icon_buttons.count() >= 20
+        assert icon_buttons.evaluate_all(
+            "buttons => buttons.every(button => button.getAttribute('aria-label') && button.querySelector('svg[aria-hidden=true]'))"
+        )
         page.screenshot(path=str(root / "desktop/preview-light.png"))
+        page.locator("#copy-result").hover()
+        tooltip = page.get_by_role("tooltip")
+        expect(tooltip).to_have_text("Copy result")
+        expect(page.locator("#copy-result")).to_have_attribute("aria-describedby", "button-tooltip")
+        page.screenshot(path=str(root / "desktop/preview-tooltip.png"))
+        tooltip.hover()
+        expect(tooltip).to_be_visible()
+        page.mouse.move(0, 0)
+        expect(tooltip).to_be_hidden()
+        page.locator("#layout-toggle").focus()
+        page.keyboard.press("Tab")
+        expect(page.locator("#palette-open")).to_be_focused()
+        expect(tooltip).to_contain_text("Command palette")
+        expect(tooltip).to_contain_text("Ctrl K")
+        page.keyboard.press("Escape")
+        expect(tooltip).to_be_hidden()
+        assert page.locator("#palette-open").get_attribute("aria-describedby") is None
+        page.locator("#theme-toggle").click()
+        expect(page.locator("#theme-toggle")).to_have_accessible_name("Switch to light theme")
+        page.locator("#theme-toggle").click()
+        expect(page.locator("#theme-toggle")).to_have_accessible_name("Switch to dark theme")
         page.locator("#model-open").click()
         page.locator('[name="model-mode"][value="mixed"]').check()
         assert page.locator("#model-rows select").count() == 4
@@ -142,7 +168,7 @@ try:
         page.get_by_role("button", name="Create demo task", exact=True).click()
         expect(page.locator("#task-list")).to_contain_text("Write delivery notes")
         page.locator("#run-demo").click()
-        expect(page.locator("#run-demo")).to_contain_text("Stop demo")
+        expect(page.locator("#run-demo")).to_have_accessible_name("Stop demo")
         page.locator("#run-demo").click()
         expect(page.locator("#task-state")).to_contain_text("Stopped")
         page.keyboard.press("Control+k")
@@ -174,6 +200,9 @@ try:
                     "checks": [
                         "light/dark render",
                         "English UI and accessibility labels",
+                        "SVG icon actions with accessible names",
+                        "hover/focus tooltips, shortcut hints, hover persistence and Escape",
+                        "state-aware action icons and labels",
                         "white-first default and readable palette contrasts",
                         "local branding",
                         "single/mixed model selection and per-task isolation",

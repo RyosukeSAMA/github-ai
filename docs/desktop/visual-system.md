@@ -30,6 +30,14 @@ Use short, natural English and sentence case. Prefer concrete labels such as “
 
 Allow enough room for English labels in task rows, tabs, dialogs, and the context panel. Task titles may show more characters than the earlier Chinese samples; the sidebar truncates them visually without shortening the underlying task prompt.
 
+## Icon actions and tooltips
+
+Toolbars, composer actions, task-row actions, and close controls use consistent 18-pixel stroke SVG icons in 32–34-pixel buttons. Navigation keeps its text for orientation; compact navigation shows the same icons. Consequential choices such as “Allow once”, “Deny”, and “Request changes” keep their visible labels.
+
+Icon buttons have English accessible names even without a tooltip. Hover or keyboard focus shows a shared tooltip with the action name and any supported shortcut. Escape dismisses it, it stays visible when hovered, and it is positioned within the viewport outside clipped panels. Closing a tooltip does not move focus. Send/stop, theme, context, terminal, and layout controls update their icon or label with their current state.
+
+The SVG set is local code. It does not rely on icon fonts, external resources, or generated images.
+
 ## Verification
 
 `verify.py` checks that the document language is English, shipped HTML/JavaScript contain no remaining Chinese interface text, the initial theme is light, and the main surface is white. It checks the primary text, secondary text, action, and status palette pairs against a 4.5:1 contrast target in both themes; the recorded ratios are in `verification.json`. This is a targeted palette check, not a full accessibility audit.
