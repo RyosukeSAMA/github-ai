@@ -1207,7 +1207,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.3.2';
+    const version = latestAppInfo?.ui_version || '0.3.3';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1254,7 +1254,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.3.2';
+    const version = info.ui_version || '0.3.3';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -5863,7 +5863,7 @@
       const untouchedModels = sessions.length === 1 && Object.entries(sessions[0].overrides || {})
         .every(([name, choice]) => defaults[name]?.provider === choice.provider && defaults[name]?.model === choice.model);
       // Do not discard an empty draft whose models or mode the user configured.
-      const browserSessions = data.sessions.length && sessions.length === 1 &&
+      const browserSessions = !inputEl.value.trim() && !promptEnhancing && data.sessions.length && sessions.length === 1 &&
         sessions[0].title === 'New chat' && sessions[0].mode === 'auto' &&
         !sessions[0].messages.length && untouchedModels ? [] : sessions;
       const merged = mergeConversations(browserSessions, data.sessions);
@@ -6191,7 +6191,7 @@
     if (!force) saveActiveSession();
     const session = sessions.find((item) => item.id === sessionId);
     if (!session) return;
-    invalidatePromptEnhancement();
+    if (activeSessionId !== session.id) invalidatePromptEnhancement();
     activeSessionId = session.id;
     modelScope = 'chat';
     $('#models-scope').value = 'chat';

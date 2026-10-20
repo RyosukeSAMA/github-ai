@@ -562,7 +562,8 @@ def test_followup_context_and_reply_provenance_survive_model_switch_and_reload(p
             f'event: {event}\ndata: {json.dumps(data)}\n\n' for event, data in events))
 
     page.route('**/api/ask/stream', ask)
-    page.goto(live_server_url)
+    page.goto(live_server_url, wait_until="networkidle")
+    page.locator("#new-chat-btn").click()
     page.locator('#input').fill('Write function ORCHID_917 to add integers')
     page.locator('#send-btn').click()
     answer = page.locator('#chat [data-role="hephaestus"]').first

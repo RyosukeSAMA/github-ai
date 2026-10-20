@@ -2,9 +2,11 @@
 
 All notable changes to Pantheon are documented in this file.
 
-## [Unreleased]
+## [0.3.3] - 2026-10-20
 
 ### Fixed
+
+- Keep prompt enhancement active when initial conversation loading refreshes the same chat; retain a draft typed before saved conversations arrive.
 
 - Return nonzero CLI exit codes for failed, partially failed and stopped tasks, including resumed tasks; do not display a successful completion for failed work.
 - Serialize raw CLI steps as JSON objects and keep constructor/execution errors in a JSON envelope with explicit success, status and error fields.
