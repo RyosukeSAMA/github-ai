@@ -181,3 +181,61 @@ def test_resume_stream_reports_the_new_durable_task_id(chat_runtime):
     assert done['task_id'] != original['task_id']
     assert runtime.services.tasks.get(done['task_id'])['status'] == 'failed'
     assert all(data['task_id'] == done['task_id'] for name, data in events if name == 'step_error')
+
+
+def test_stream_sends_actual_provider_chunks_without_full_text_duplicate(chat_runtime):
+    from types import SimpleNamespace as Ns
+
+    from pantheon.llm.openai_client import OpenAIClient
+    runtime, client, _ = chat_runtime
+    adapter = OpenAIClient('fake', 'https://compatible.example/v1')
+    adapter.provider_name = 'deepseek'
+    adapter.budget, adapter.usage_recorder = runtime.services.budget, runtime.usage_store.record
+    class Stream:
+        def __iter__(self):
+            yield Ns(usage=None, choices=[Ns(delta=Ns(content='Alpha '), finish_reason=None)])
+            yield Ns(usage=None, choices=[Ns(delta=Ns(content='Beta'), finish_reason='stop')])
+            yield Ns(usage=Ns(prompt_tokens=4,completion_tokens=2,prompt_tokens_details=None),choices=[])
+        def close(self):
+            pass
+    adapter._client = Ns(chat=Ns(completions=Ns(create=lambda **kw: Stream())))
+    runtime.roles['hephaestus'].llm_client = adapter
+    response = client.post('/api/ask/stream', json={'task':'Stream', 'mode':'role:hephaestus'})
+    events = [(frame.splitlines()[0][7:], json.loads(frame.splitlines()[1][6:]))
+              for frame in response.text.strip().split('\n\n') if frame.startswith('event:')]
+    assert [data['text'] for event,data in events if event == 'step_chunk'] == ['Alpha ', 'Beta']
+    done = next(data for event,data in events if event == 'done')
+    assert done['content'] == 'Alpha Beta'
+    usage = client.get('/api/usage/details', params={'task_id':done['task_id']}).json()
+    assert usage['calls'][0]['role'] == 'hephaestus' and usage['calls'][0]['phase'] == 'execution'
+
+
+def test_connection_disable_remove_and_reenable_do_not_retarget_roles(chat_runtime):
+    runtime, client, calls = chat_runtime
+    original = client.get('/api/setup/status').json()['role_statuses']
+    refs = client.get('/api/connections/deepseek/references').json()
+    assert set(refs['saved_roles']) == {'hermes','hephaestus','athena','apollo'}
+    assert client.post('/api/connections/deepseek/manage', json={'action':'disable'}).status_code == 409
+    assert client.post('/api/connections/deepseek/manage', json={'action':'disable','acknowledge_references':True}).status_code == 200
+    failed = client.post('/api/ask', json={'task':'blocked', 'overrides':{'hermes':{'provider':'deepseek','model':'test'}}})
+    assert failed.status_code == 500 and not calls
+    probe = client.post('/api/setup/test', json={'provider':'deepseek','model':'test'}).json()
+    assert probe['tested'] is False and not calls
+    assert client.post('/api/connections/deepseek/manage', json={'action':'enable'}).status_code == 200
+    restored = client.get('/api/setup/status').json()['role_statuses']
+    assert [(row['provider'],row['model']) for row in restored] == [(row['provider'],row['model']) for row in original]
+    assert client.post('/api/connections/deepseek/manage', json={'action':'remove','acknowledge_references':True}).status_code == 200
+    assert client.post('/api/connections/deepseek/manage', json={'action':'enable'}).status_code == 409
+    assert client.post('/api/connections/deepseek/manage', json={'action':'disable','delete_saved_key':'yes'}).status_code == 400
+
+
+def test_connection_removal_can_delete_key_and_stream_preference_is_saved(chat_runtime):
+    runtime, client, _ = chat_runtime
+    response = client.post('/api/connections/save',json={'provider':'openai','model':'test',
+        'api_key':'fake-temporary-key','streaming':False})
+    assert response.status_code == 200
+    assert next(row for row in response.json()['providers'] if row['id']=='openai')['streaming'] is False
+    assert runtime.services.credentials.get('OPENAI_API_KEY') == 'fake-temporary-key'
+    response = client.post('/api/connections/openai/manage',json={'action':'remove','acknowledge_references':True,'delete_saved_key':True})
+    assert response.status_code == 200
+    assert runtime.services.credentials.get('OPENAI_API_KEY') == ''

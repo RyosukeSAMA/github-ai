@@ -105,3 +105,52 @@ class OpenAIClient(BaseLLMClient):
         )
         self._record_usage(target_model, resp)
         return (resp.choices[0].message.content or "").strip()
+
+
+    def stream_complete(self, messages, model, system='', temperature=.3, **kwargs):
+        """Consume provider deltas once; close the stream on stop/error."""
+        from pantheon.core.calls import text_delta
+        target = model or self.default_model
+        responses = self._uses_responses_api(target)
+        if responses:
+            for key in ('max_tokens', 'temperature', 'top_p', 'top_logprobs', 'logprobs'):
+                kwargs.pop(key, None)
+            stream = self._get_client().responses.create(model=target, input=messages,
+                instructions=system or None, stream=True, **kwargs)
+        else:
+            full = ([{'role':'system', 'content':system}] if system else []) + list(messages)
+            options = kwargs.pop('stream_options', {})
+            stream = self._get_client().chat.completions.create(model=target, messages=full,
+                temperature=temperature, stream=True, stream_options={**options, 'include_usage':True}, **kwargs)
+        parts, final, completed = [], None, False
+        try:
+            for event in stream:
+                if responses:
+                    kind = getattr(event, 'type', '')
+                    if kind in {'error', 'response.failed', 'response.incomplete'}:
+                        raise RuntimeError('Provider stream failed or returned an incomplete response')
+                    if kind == 'response.output_text.delta':
+                        delta = getattr(event, 'delta', '')
+                        parts.append(delta)
+                        text_delta(delta)
+                    elif kind == 'response.completed':
+                        final, completed = event.response, True
+                else:
+                    if getattr(event, 'usage', None) is not None:
+                        final = event
+                    for choice in getattr(event, 'choices', []) or []:
+                        delta = getattr(getattr(choice, 'delta', None), 'content', '') or ''
+                        if delta:
+                            parts.append(delta)
+                            text_delta(delta)
+                        reason = getattr(choice, 'finish_reason', None)
+                        if reason in {'length', 'content_filter'}:
+                            raise RuntimeError('Provider stopped before completing the response: ' + reason)
+                        completed = completed or reason in {'stop', 'tool_calls', 'function_call'}
+            if not completed:
+                raise RuntimeError('Provider stream ended without a completion event')
+            if final is not None:
+                self._record_usage(target, final, responses_api=responses)
+            return ''.join(parts).strip()
+        finally:
+            stream.close()

@@ -2,6 +2,16 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## [0.4.0] - 2026-10-20
+
+### Added
+
+- Deliver actual incremental role/synthesis text from OpenAI Responses, OpenAI-compatible Chat and Anthropic streaming adapters. Keep planning/context/recovery output internal; close streams on cancellation/failure and retain conservative budget reservations when usage is missing. Connections can disable streaming for unsupported gateways.
+- Attribute model attempts to durable task IDs, roles and phases, including failed calls, enhancement, connection probes and media. Expose bounded usage detail in Web Info, `/api/usage/details` and `pantheon usage`; unreported usage/prices remain unknown and costs are estimates.
+- Disable, enable or remove provider connections after reviewing references from saved roles, chats and media. Keep assignments unchanged; deletion of a saved key is a separate explicit option. Disabled connections block execution, media, probes and authenticated catalog refresh.
+- Continue explicit terminal sessions with `pantheon chat --session ID`, bounded prior context, history isolation, file locking and private persistence. Existing `ask` remains independent; `ask --stream` opts into incremental terminal text.
+- Render the latest 80 saved messages and load older pages on demand without dropping transcript/history/export data. Expand long saved replies explicitly and batch streamed Markdown rendering. Add roving chat-list keyboard navigation, new-chat/composer shortcuts and settings focus restoration.
+
 ## [0.3.3] - 2026-10-20
 
 ### Fixed

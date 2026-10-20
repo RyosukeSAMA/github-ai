@@ -66,7 +66,7 @@ class Pantheon:
         # The router uses the hermes model's provider
         hermes_provider = hermes_cfg.get("provider", "anthropic")
         hermes_llm = self.llm_clients.get(hermes_provider)
-        if hermes_llm is None:
+        if hermes_llm is None and self.config.get("llm_providers", {}).get(hermes_provider, {}).get("enabled", True):
             # fall back to any available provider
             hermes_llm = next(iter(self.llm_clients.values()), None)
         if hermes_llm is not None:
@@ -230,6 +230,7 @@ class Pantheon:
                 client.provider_name = cfg.get("provider_id") or name
                 client.usage_recorder = self.usage_store.record
                 client.budget = self.services.budget
+                client.streaming_enabled = cfg.get("streaming", True)
                 clients[name] = client
             except Exception as e:
                 self.log.error("Failed to init provider '%s': %s", name, e)

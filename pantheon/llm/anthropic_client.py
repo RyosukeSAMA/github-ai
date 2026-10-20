@@ -75,3 +75,26 @@ class AnthropicClient(BaseLLMClient):
         # Concatenate all text blocks
         parts = [b.text for b in resp.content if hasattr(b, "text")]
         return "".join(parts).strip()
+
+
+    def stream_complete(self, messages, model, system='', temperature=.3, max_tokens=4096, **kwargs):
+        from pantheon.core.calls import text_delta
+        target = model or self.default_model
+        kwargs.setdefault('max_tokens', max_tokens)
+        generation = re.match(r'^claude-[a-z]+-(\d+)(?:-|$)', target.lower())
+        if generation and int(generation.group(1)) >= 5:
+            kwargs.pop('top_p', None)
+            kwargs.pop('top_k', None)
+        else:
+            kwargs['temperature'] = temperature
+        parts = []
+        with self._get_client().messages.stream(model=target, messages=messages,
+                system=system or 'You are a helpful assistant.', **kwargs) as stream:
+            for delta in stream.text_stream:
+                parts.append(delta)
+                text_delta(delta)
+            response = stream.get_final_message()
+            if response.stop_reason in {'max_tokens', 'refusal'}:
+                raise RuntimeError('Provider stopped before completing the response: ' + response.stop_reason)
+            self._record_usage(target, response)
+        return ''.join(parts).strip()

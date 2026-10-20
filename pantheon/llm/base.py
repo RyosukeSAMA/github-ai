@@ -25,30 +25,53 @@ class BaseLLMClient(abc.ABC):
 
         @wraps(complete)
         def guarded(self, messages, model='', system='', *args, **options):
-            budget = getattr(self, 'budget', None)
-            if budget is None:
-                return complete(self, messages, model, system, *args, **options)
+            from types import SimpleNamespace
+
             from pantheon.core.budgets import RESERVATION
-            bound = signature.bind(self, messages, model, system, *args, **options)
-            options = dict(bound.arguments.get(extras_name, {}))
+            from pantheon.core.calls import CALL_STATE, RECORDED, TEXT_SINK
+            budget = getattr(self, 'budget', None)
             target = model or self.default_model
-            responses = callable(getattr(self, '_uses_responses_api', None)) and self._uses_responses_api(target)
-            output = options.get('max_output_tokens', bound.arguments.get('max_tokens', options.get('max_tokens', 4096)))
-            identity, output = budget.reserve(self.provider_name, target, messages, system, int(output or 4096))
-            if responses:
-                options.pop('max_tokens', None)
-                options['max_output_tokens'] = output
-            else:
-                if 'max_tokens' in signature.parameters:
-                    bound.arguments['max_tokens'] = output
-                else:
-                    options['max_tokens'] = output
-            bound.arguments[extras_name] = options
-            token = RESERVATION.set((budget, identity))
+            bound = signature.bind(self, messages, model, system, *args, **options)
+            recorded = RECORDED.set(False)
+            reservation = None
+            sent = False
+            failed = False
             try:
-                return complete(*bound.args, **bound.kwargs)
+                if budget is not None:
+                    options = dict(bound.arguments.get(extras_name, {}))
+                    responses = callable(getattr(self, '_uses_responses_api', None)) and self._uses_responses_api(target)
+                    output = options.get('max_output_tokens', bound.arguments.get('max_tokens', options.get('max_tokens', 4096)))
+                    identity, output = budget.reserve(self.provider_name, target, messages, system, int(output or 4096))
+                    if responses:
+                        options.pop('max_tokens', None)
+                        options['max_output_tokens'] = output
+                    elif 'max_tokens' in signature.parameters:
+                        bound.arguments['max_tokens'] = output
+                    else:
+                        options['max_tokens'] = output
+                    bound.arguments[extras_name] = options
+                    reservation = RESERVATION.set((budget, identity))
+                implementation = complete
+                if self.streaming_enabled and callable(TEXT_SINK.get()) and callable(getattr(type(self), 'stream_complete', None)):
+                    implementation = type(self).stream_complete
+                sent = True
+                return implementation(*bound.args, **bound.kwargs)
+            except BaseException:
+                failed = True
+                raise
             finally:
-                RESERVATION.reset(token)
+                if sent and not RECORDED.get() and self.usage_recorder is not None:
+                    state = CALL_STATE.set('failed' if failed else 'unmetered')
+                    try:
+                        self.usage_recorder(self.provider_name, target, SimpleNamespace(usage=None))
+                    except Exception:
+                        import logging
+                        logging.getLogger(__name__).warning('Usage attempt could not be recorded')
+                    finally:
+                        CALL_STATE.reset(state)
+                if reservation is not None:
+                    RESERVATION.reset(reservation)
+                RECORDED.reset(recorded)
         cls.complete = guarded
 
     def __init__(self, api_key: str = "", base_url: str | None = None) -> None:
@@ -56,9 +79,12 @@ class BaseLLMClient(abc.ABC):
         self.base_url = base_url
         self.usage_recorder: Any = None
         self.budget: Any = None
+        self.streaming_enabled = True
 
     def _record_usage(self, model: str, response: Any, *, responses_api: bool = False) -> None:
         from pantheon.core.budgets import RESERVATION
+        from pantheon.core.calls import RECORDED
+        RECORDED.set(True)
         reservation = RESERVATION.get()
         if reservation:
             try:

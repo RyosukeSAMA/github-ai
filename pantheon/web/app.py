@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from pantheon import __version__
 from pantheon.core.budgets import BudgetExceededError
+from pantheon.core.calls import stage
 from pantheon.core.channels import CHANNELS, ChannelAuthError, ChannelQueueFullError
 from pantheon.core.connections import (
     connection_config,
@@ -134,6 +135,7 @@ class SetupSaveRequest(BaseModel):
 
 
 class ConnectionSaveRequest(BaseModel):
+    streaming: bool = True
     provider: str
     model: str = ""
     base_url: str | None = None
@@ -662,6 +664,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 continue
             provider_id = str(override.get("provider") or "").strip().lower()
             if provider_id:
+                profile = connection_config(read_yaml_config(setup_config_path()), provider_id)
+                if not profile.get("enabled", True) or profile.get("deleted"):
+                    raise ValueError(f"{provider_id} connection is disabled or removed.")
                 if provider_id not in SETUP_PROVIDER_PRESETS:
                     raise ValueError(f"Unknown provider: {provider_id}")
                 preset = SETUP_PROVIDER_PRESETS[provider_id]
@@ -678,7 +683,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 if provider_identity(provider_id, providers) == provider_id:
                     client = getattr(base, 'llm_clients', {}).get(provider_id) or client
                 if client is None:
-                    endpoint, key = resolve_connection(read_yaml_config(setup_config_path()), provider_id, env_value)
+                    endpoint, key = resolve_connection(read_yaml_config(setup_config_path()), provider_id, env_value, require_enabled=True)
                     if not key and preset['requires_key']:
                         raise ValueError(f"Add the {preset['label']} API key in Connections before using this role.")
                     client = get_llm_client(
@@ -689,6 +694,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     client.provider_name = provider_id
                     client.usage_recorder = p.usage_store.record
                     client.budget = workspace_services.budget
+                    client.streaming_enabled = profile.get("streaming", True)
                 if role_name == 'hermes':
                     p.router.llm_client = client
                 else:
@@ -1465,6 +1471,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             "connection_saved": bool(connection_config(config, provider_id)),
             "credential_storage": 'system' if preset['env_var'] in workspace_services.credentials.refs() else 'env',
         })
+        profile = connection_config(config, provider_id)
+        payload['enabled'] = profile.get('enabled', True) and not profile.get('deleted', False)
+        payload['connection_saved'] = bool(profile) and not profile.get('deleted', False)
+        payload['deleted'] = bool(profile.get('deleted'))
+        payload['streaming'] = profile.get('streaming', True)
         payload['api_health'] = readiness.health(provider_id, payload['test_model'], base_url, api_key)
         return payload
 
@@ -1515,6 +1526,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                           for adapter, value in providers.items() if isinstance(value, dict)}
         catalogs: list[dict[str, str]] = []
         for provider_id, preset in SETUP_PROVIDER_PRESETS.items():
+            profile = connection_config(config, provider_id)
+            if not profile.get('enabled', True) or profile.get('deleted'):
+                continue
             base_url, api_key = provider_catalog_connection(provider_id, config)
             if not official_catalog_base_url(provider_id, base_url):
                 continue
@@ -1649,6 +1663,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 provider_key = provider_key_from_adapter(adapter, providers)
                 preset = SETUP_PROVIDER_PRESETS.get(provider_key, {})
                 llm_cfg = (providers.get(adapter, {}) or {})
+                enabled = enabled and llm_cfg.get("enabled", True)
                 raw_api_key = llm_cfg.get("api_key", "")
                 env_var = env_var_from_api_key(raw_api_key) or str(preset.get("env_var") or "")
                 requires_key = bool(preset.get("requires_key", True))
@@ -1904,6 +1919,9 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         if provider_id not in SETUP_PROVIDER_PRESETS:
             raise HTTPException(status_code=400, detail="unsupported provider")
 
+        profile = connection_config(read_yaml_config(setup_config_path()), provider_id)
+        if not profile.get('enabled', True) or profile.get('deleted'):
+            raise HTTPException(409, 'Enable or save this connection before refreshing its models.')
         preset = SETUP_PROVIDER_PRESETS[provider_id]
         saved_url, saved_key = provider_catalog_connection(provider_id, read_yaml_config(setup_config_path()))
         base_url = (req.base_url or saved_url).strip()
@@ -2065,6 +2083,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     @app.get("/api/usage")
     async def usage_summary() -> dict[str, Any]:
         return usage_store.summary()
+
+    @app.get('/api/usage/details')
+    async def usage_details(task_id: str = '', limit: int = 200):
+        return usage_store.details(task_id, limit)
 
     @app.get("/api/integrations")
     async def integrations_status() -> dict[str, Any]:
@@ -2399,6 +2421,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         if provider_id not in SETUP_PROVIDER_PRESETS:
             raise HTTPException(status_code=400, detail="unsupported provider")
 
+        profile = connection_config(read_yaml_config(setup_config_path()), provider_id)
+        if not profile.get('enabled', True) or profile.get('deleted'):
+            return {**setup_status_payload(), 'ok':False, 'tested':False,
+                    'problem':'Enable or save this connection before testing it.'}
         preset = SETUP_PROVIDER_PRESETS[provider_id]
         adapter = str(preset["adapter"])
         env_var = str(preset["env_var"])
@@ -2420,6 +2446,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 "tested_model": model,
             }
 
+        @stage('connection', 'probe', stream=False)
         def run_test() -> str:
             client = get_llm_client(
                 provider=adapter,
@@ -2661,6 +2688,56 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         reset_pantheon()
         return setup_status_payload("Saved. Pantheon will use this config on the next request.")
 
+    def connection_references(provider):
+        config = normalized_config(read_yaml_config(setup_config_path()))
+        saved_roles = [name for name in ('hermes','hephaestus','athena','apollo') if role_config(config, name).get('provider') == provider]
+        chats = [item['id'] for item in conversation_store.get()['sessions'] if any(
+            choice.get('provider') == provider for choice in item.get('overrides', {}).values())]
+        settings = workspace_services.media.settings()
+        media = [kind for kind, selected in [('vision',settings['vision_provider']), ('image','openai'), ('audio','openai')] if selected == provider]
+        return {'saved_roles':saved_roles, 'chats':chats, 'media':media}
+
+    @app.get('/api/connections/{provider}/references')
+    async def get_connection_references(provider: str):
+        if provider not in SETUP_PROVIDER_PRESETS:
+            raise HTTPException(400, 'Unknown provider')
+        return connection_references(provider)
+
+    @app.post('/api/connections/{provider}/manage')
+    async def manage_connection(provider: str, request: Request):
+        if provider not in SETUP_PROVIDER_PRESETS:
+            raise HTTPException(400, 'Unknown provider')
+        body = await request.json()
+        if not isinstance(body, dict) or set(body) - {'action','acknowledge_references','delete_saved_key'} or body.get('action') not in {'enable','disable','remove'}:
+            raise HTTPException(400, 'Choose enable, disable or remove')
+        for field in ('acknowledge_references','delete_saved_key'):
+            if field in body and type(body[field]) is not bool:
+                raise HTTPException(400, 'Confirmation fields must be boolean')
+        refs = connection_references(provider)
+        if body['action'] != 'enable' and any(refs.values()) and not body.get('acknowledge_references'):
+            raise HTTPException(409, {'message':'This connection is referenced. Review roles, chats and media first.', 'references':refs})
+        config_path = setup_config_path()
+        with file_mutex(config_path.with_suffix('.lock')):
+            config = read_yaml_config(config_path)
+            previous = dict(connection_config(config, provider))
+            if body['action'] == 'enable' and previous.get('deleted'):
+                raise HTTPException(409, 'Save the removed connection again before enabling it.')
+            if body['action'] == 'remove':
+                if body.get('delete_saved_key') and SETUP_PROVIDER_PRESETS[provider]['env_var']:
+                    try:
+                        workspace_services.credentials.delete(SETUP_PROVIDER_PRESETS[provider]['env_var'])
+                    except CredentialError as exc:
+                        raise HTTPException(400, str(exc)) from exc
+                elif previous.get('api_key') and not str(previous['api_key']).startswith('${'):
+                    workspace_services.credentials.save(SETUP_PROVIDER_PRESETS[provider]['env_var'], previous['api_key'])
+                value = {'enabled':False, 'deleted':True}
+            else:
+                value = {**previous, 'enabled':body['action'] == 'enable'}
+            config.setdefault('provider_connections', {})[provider] = value
+            write_yaml_config(config_path, config)
+        reset_pantheon()
+        return setup_status_payload('Connection updated. Assigned models were not changed.')
+
     @app.post('/api/connections/save')
     async def save_connection(req: ConnectionSaveRequest) -> dict:
         provider = req.provider.strip().lower()
@@ -2689,7 +2766,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 except CredentialError as exc:
                     raise HTTPException(400, str(exc)) from exc
             config.setdefault('provider_connections', {})[provider] = {
-                'base_url': endpoint, 'api_key': f'${{{env_var}}}' if env_var else '', 'test_model': model,
+                'base_url': endpoint, 'api_key': f'${{{env_var}}}' if env_var else '', 'test_model': model, 'streaming':req.streaming,
             }
             write_yaml_config(config_path, config)
         reset_pantheon()
@@ -3049,8 +3126,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     memory_events = process_user_memory(req.user_task or req.task)
                     hermes = p.hermes
                     streamed = {"plan": False, "step": False, "summary": False}
+                    streamed_chunks = set()
+                    summary_has_chunks = False
 
                     def stream_event(event: str, data: dict[str, Any]) -> None:
+                        nonlocal summary_has_chunks
                         payload = dict(data)
                         if event == "plan_start":
                             emit("phase", {
@@ -3073,9 +3153,15 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                                 "total": payload.get("total", 1),
                             })
                             emit("step_start", payload)
+                        elif event == 'step_chunk':
+                            streamed_chunks.add(payload.get('index', 0))
+                            emit(event, payload)
+                        elif event == 'summary_chunk':
+                            summary_has_chunks = True
+                            emit(event, payload)
                         elif event == "step_done":
                             content = str(payload.get("content") or "")
-                            if content:
+                            if content and payload.get("index", 0) not in streamed_chunks:
                                 emit("step_chunk", {
                                     "index": payload.get("index", 0),
                                     "role": payload.get("role", ""),
@@ -3094,7 +3180,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                             emit("summary_start", payload)
                         elif event == "summary_done":
                             content = str(payload.get("content") or "")
-                            if content:
+                            if content and not summary_has_chunks:
                                 emit("summary_chunk", {"text": content})
                             emit("summary_done", payload)
                         else:

@@ -122,6 +122,11 @@ class BudgetStore:
             else:
                 db.execute('UPDATE reservations SET state=? WHERE id=?', ('unmetered', identity))
 
+    def reservation(self, identity):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM reservations WHERE id=?', (identity,)).fetchone()
+            return dict(row) if row else {}
+
     def summary(self):
         with self.connect() as db:
             row = db.execute('SELECT COUNT(*) AS requests, COALESCE(SUM(estimate), 0) AS estimated_usd, SUM(estimate IS NULL) AS unpriced, SUM(state="reserved") AS uncertain FROM reservations WHERE created > ?', (time.time() - 86400,)).fetchone()

@@ -472,6 +472,13 @@ def mcp(inspect: str | None = typer.Option(None, "--inspect")) -> None:
     console.print_json(data=manager.inspect(inspect) if inspect else {'servers': manager.list()})
 
 
+@app.command('usage')
+def usage(task_id: str = typer.Option('', '--task'), limit: int = typer.Option(100, '--limit', min=1, max=500)):
+    """Inspect model attempts by task, role and phase, with unknown prices labelled."""
+    from pantheon.core.usage import UsageStore
+    console.print_json(data=UsageStore(_workspace_services().paths.state / 'usage.sqlite').details(task_id, limit))
+
+
 @app.command("tasks")
 def tasks(stop: str | None = typer.Option(None, "--stop", help="Request cancellation of a running task ID."),
           show: str | None = typer.Option(None, "--show", help="View a stored task result by ID."),
@@ -551,6 +558,97 @@ def restore(source: Path) -> None:
     console.print(f"Restored. Previous files saved at: {previous}")
 
 
+def _text_stream_event(event, data):
+    if event in {'step_start','summary_start'}:
+        console.print(f"\n[bold]{str(data.get('role') or 'hermes').title()}[/bold]", markup=True)
+    elif event in {'step_chunk','summary_chunk'}:
+        typer.echo(data.get('text',''), nl=False)
+    elif event in {'step_done','step_error','summary_done'}:
+        typer.echo('')
+
+
+@app.command('chat')
+def chat(session: str | None = typer.Option(None, '--session', help='Explicit saved CLI session ID.'),
+         list_sessions: bool = typer.Option(False, '--list'),
+         role: str | None = typer.Option(None, '--role'),
+         multi: bool = typer.Option(False, '--multi'),
+         config: str | None = typer.Option(None, '--config'),
+         stream: bool = typer.Option(True, '--stream/--no-stream')):
+    """Continue an explicit terminal conversation. /exit, /clear, /mode, /help."""
+    from pantheon.core.cli_sessions import CliSessions
+    from pantheon.core.context import bounded_history
+    from pantheon.core.paths import DataPaths
+    store = CliSessions(DataPaths.for_workspace().state)
+    if list_sessions:
+        console.print_json(data={'sessions':store.list()})
+        return
+    identity = session or store.new_id()
+    try:
+        store.path(identity)
+        p = Pantheon(config_path=config)
+        with store.lock(identity):
+            value = store.load(identity)
+            if role or multi:
+                value['mode'] = 'role:' + role if role else 'multi'
+            store.save(value)
+        console.print(f"Pantheon chat · session {identity} · /help for commands", markup=False)
+        if sys.stdin.isatty():
+            def approve(payload):
+                console.print(Panel(Text(json.dumps(payload, ensure_ascii=False, indent=2)), title='Tool approval'))
+                return typer.confirm('Allow this tool call once?', default=False)
+            p.services.approval_handler = approve
+        while True:
+            try:
+                prompt = typer.prompt('You')
+            except (EOFError, typer.Abort):
+                break
+            if not prompt.strip():
+                continue
+            if prompt.strip() in {'/exit','/quit'}:
+                break
+            if prompt.strip() == '/help':
+                console.print('/exit · /clear (clear this CLI history) · /mode auto|multi|role:NAME', markup=False)
+                continue
+            with store.lock(identity):
+                value = store.load(identity)  # Another process may have completed a turn.
+                if prompt.strip() == '/clear':
+                    if typer.confirm('Clear this CLI session history?', default=False):
+                        value['messages'] = []
+                        store.save(value)
+                    continue
+                if prompt.startswith('/mode '):
+                    mode = prompt[6:].strip()
+                    if mode not in {'auto','multi'} and mode not in {'role:'+name for name in p.list_roles()}:
+                        console.print('Unknown mode', markup=False)
+                        continue
+                    value['mode'] = mode
+                    store.save(value)
+                    continue
+                if len(value['messages']) >= 1998:
+                    raise ValueError('This session is full. Start another --session.')
+                history = bounded_history([item for item in value['messages'] if item.get('success', True)])
+                try:
+                    result = p.ask(prompt, mode=value['mode'], history=history,
+                                   on_event=_text_stream_event if stream else None)
+                except KeyboardInterrupt:
+                    console.print('Turn interrupted. Earlier history is retained; inspect Task history before retrying.')
+                    continue
+                except Exception as error:
+                    console.print(str(error), markup=False, style='red')
+                    continue
+                payload = result_payload(result)
+                console.print(Markdown(payload.get('content') or payload.get('error') or '(no content)'))
+                value['messages'].extend([{'role':'user','content':prompt},
+                    {'role':'assistant','content':payload.get('content',''), 'success':payload['success'],
+                     'task_id':payload['task_id']}])
+                store.save(value)
+                if not payload['success']:
+                    console.print(f"Needs attention: {payload['status']}", markup=False)
+    except (ValueError, OSError) as error:
+        console.print(str(error), markup=False, style='red')
+        raise typer.Exit(1) from error
+
+
 @app.command("ask")
 def ask(
     task: str = typer.Argument(..., help="The task to send to the Pantheon."),
@@ -577,10 +675,14 @@ def ask(
     ),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON instead of formatted text."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
+    stream: bool = typer.Option(False, "--stream", help="Print incremental text as it arrives."),
     file: list[Path] | None = typer.Option(None, '--file', help='Attach an image or PDF; repeat for multiple files.', exists=True, dir_okay=False),
 ) -> None:
     """Ask the Pantheon to do something."""
     file = file if isinstance(file, (list, tuple)) else None
+    stream = stream is True
+    if raw and stream:
+        raise typer.BadParameter("Use --raw or --stream, not both.")
     _configure_cli_logging(verbose)
     mode = f"role:{role}" if role else "multi" if multi else "auto"
 
@@ -624,6 +726,8 @@ def ask(
     try:
         if raw:
             result = p.ask(task, mode=mode, skill=skill, **({'attachments': file} if file else {}))
+        elif stream:
+            result = p.ask(task, mode=mode, skill=skill, on_event=_text_stream_event, **({"attachments":file} if file else {}))
         else:
             with console.status(
                 f"[{BRAND_COLOR}]Hermes is opening the council…[/]",

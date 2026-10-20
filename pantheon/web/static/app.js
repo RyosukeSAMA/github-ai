@@ -230,6 +230,7 @@
   let enhancementController = null;
   let abortCtrl = null;
   let activeTaskId = null;
+  let hiddenChatPrefix = [];
   let turns = [];   // conversation history (in-memory only)
   let sessions = [];
   let activeSessionId = null;
@@ -819,11 +820,14 @@
   });
 
   // ---------- Settings toggle ----------
+  let settingsReturnFocus = null;
   function openSettings() {
+    if (settingsPanel.hidden) settingsReturnFocus = document.activeElement;
     if (!workspaceEl.hidden) closeWorkspace();
     settingsPanel.hidden = false;
     document.body.classList.add('settings-open');
     toggleSetBtn.classList.add('active');
+    settingsTabs.find(tab => tab.classList.contains('active'))?.focus({preventScroll:true});
     if (settingsTabs.some((tab) => tab.dataset.tab === 'setup' && tab.classList.contains('active'))) {
       void loadSetupStatus({ quiet: true, preserveForm: true });
     }
@@ -832,6 +836,7 @@
     settingsPanel.hidden = true;
     document.body.classList.remove('settings-open');
     toggleSetBtn.classList.remove('active');
+    if (settingsReturnFocus?.isConnected) settingsReturnFocus.focus({preventScroll:true});
   }
   function toggleSettings() {
     if (settingsPanel.hidden) openSettings();
@@ -1018,18 +1023,40 @@
     const list = $('#provider-connections');
     if (!list) return;
     list.innerHTML = [...setupProviders.values()].map(provider => {
-      const configured = provider.requires_key ? provider.key_configured : provider.connection_saved;
+      const configured = !provider.deleted && (provider.requires_key ? provider.key_configured : provider.connection_saved);
       const health = provider.api_health?.state;
-      const state = !configured ? (provider.requires_key ? 'Add API key' : 'Optional local connection') : health === 'verified' ? `Tested: ${provider.test_model}`
+      const state = provider.enabled === false ? (provider.deleted ? 'Removed · save to reconnect' : 'Disabled') : !configured ? (provider.requires_key ? 'Add API key' : 'Optional local connection') : health === 'verified' ? `Tested: ${provider.test_model}`
         : health === 'failed' ? 'Last test failed' : health === 'expired' ? 'Test expired' : 'Configured · test access';
       return `<div class="provider-connection-card" data-provider="${escapeHtml(provider.id)}">
         <strong>${escapeHtml(provider.label)}</strong>
-        <small class="${health === 'verified' ? 'connection-ok' : 'connection-muted'}">${escapeHtml(state)}</small>
+        <small class="${health === 'verified' && provider.enabled !== false ? 'connection-ok' : 'connection-muted'}">${escapeHtml(state)}</small>
         <small>${escapeHtml(provider.masked_key || (provider.requires_key ? 'No saved key' : 'Local · no key needed'))}</small>
         <button type="button" class="ghost-btn" data-edit-provider="${escapeHtml(provider.id)}">${configured ? 'Edit / test connection' : 'Add connection'}</button>
+        ${configured ? `<div class="setup-actions"><button class="ghost-btn" data-manage-connection="${escapeHtml(provider.id)}" data-action="${provider.enabled === false ? 'enable' : 'disable'}">${provider.enabled === false ? 'Enable' : 'Disable'}</button><button class="ghost-btn" data-manage-connection="${escapeHtml(provider.id)}" data-action="remove">Remove connection</button></div><label class="setup-muted"><input type="checkbox" data-remove-key="${escapeHtml(provider.id)}"> Also delete the saved API key when removing</label>` : ''}
       </div>`;
     }).join('');
+    list.querySelectorAll('[data-manage-connection]').forEach(button => button.addEventListener('click', () => void manageProviderConnection(button)));
     list.querySelectorAll('[data-edit-provider]').forEach(button => button.addEventListener('click', () => editProviderConnection(button.dataset.editProvider)));
+  }
+
+  async function manageProviderConnection(button) {
+    const provider = button.dataset.manageConnection, action = button.dataset.action;
+    const refsResponse = await fetch(`/api/connections/${provider}/references`);
+    if (!refsResponse.ok) { $('#models-feedback').textContent = 'Could not check connection references'; return; }
+    const refs = await refsResponse.json();
+    const deletingKey = Boolean(document.querySelector(`[data-remove-key="${provider}"]`)?.checked);
+    const note = `Saved roles: ${(refs.saved_roles || []).join(', ') || 'none'}; chats: ${(refs.chats || []).length}; media: ${(refs.media || []).join(', ') || 'none'}.`;
+    if (!window.confirm(`${action} ${setupProviders.get(provider)?.label || provider}? ${note} Assigned models will remain unchanged.${action === 'remove' && deletingKey ? ' The saved API key will also be deleted.' : ''}`)) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(`/api/connections/${provider}/manage`, {method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action, acknowledge_references:true, delete_saved_key:deletingKey})});
+      const data = await response.json();
+      if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : data.detail?.message || 'Could not update connection');
+      applySetupStatus(data, {preserveForm:true});
+      $('#models-feedback').textContent = data.message || 'Connection updated';
+    } catch(error) { $('#models-feedback').textContent = error.message; }
+    finally { button.disabled = false; }
   }
 
   async function refreshRoleModelStatus() {
@@ -1207,7 +1234,7 @@
     if (settingsStatus) settingsStatus.textContent = providerDot.classList.contains('offline') ? 'disconnected' : 'connected';
     if (settingsPy) settingsPy.textContent = latestAppInfo?.python_version || '—';
 
-    const version = latestAppInfo?.ui_version || '0.3.3';
+    const version = latestAppInfo?.ui_version || '0.4.0';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     if (infoVersionPill) infoVersionPill.textContent = renderedVersion;
     if (infoUiVersion) infoUiVersion.textContent = renderedVersion;
@@ -1254,7 +1281,7 @@
     const info = latestAppInfo || {};
     const readyCount = setup.ready_count ?? 0;
     const roleCount = setup.role_count ?? 0;
-    const version = info.ui_version || '0.3.3';
+    const version = info.ui_version || '0.4.0';
     const renderedVersion = String(version).startsWith('v') ? version : `v${version}`;
     const lines = [
       'Pantheon diagnostics',
@@ -1429,6 +1456,7 @@
       if (setupBaseUrlInput) setupBaseUrlInput.value = provider.base_url || '';
       if (setupApiKeyInput) setupApiKeyInput.value = '';
       $('#setup-credential-storage').value = provider.credential_storage || 'env';
+      $('#setup-streaming').checked = provider.streaming !== false;
     }
     if (setupProviderNote) {
       setupProviderNote.textContent = provider.note || '';
@@ -1557,6 +1585,7 @@
       if (setupBaseUrlInput) setupBaseUrlInput.value = formBaseUrl || provider?.base_url || '';
       syncSetupProviderFields({ useDefaults: false });
     } else {
+      $('#setup-streaming').checked = setupProviders.get(status.provider)?.streaming !== false;
       if (setupProviderSelect && status.provider && setupProviders.has(status.provider)) {
         setupProviderSelect.value = status.provider;
       }
@@ -1715,6 +1744,16 @@
         detail.textContent = `${row.calls} calls · ${row.input_tokens.toLocaleString()} in / ${row.output_tokens.toLocaleString()} out${row.metered_calls < row.calls ? ` · ${row.calls - row.metered_calls} unmetered` : ''}`;
         item.append(name, detail);
         infoUsageModels.appendChild(item);
+      }
+      const detailResponse = await fetch('/api/usage/details?limit=100');
+      if (detailResponse.ok) {
+        const details = await detailResponse.json();
+        for (const row of (details.groups || []).slice(0, 40)) {
+          const item = document.createElement('div'); item.className = 'usage-model';
+          const label = document.createElement('strong'); label.textContent = `${row.task_id || 'Standalone'} · ${row.role || 'Unknown role'} / ${row.phase || 'Legacy'}`;
+          const info = document.createElement('span'); info.textContent = `${row.provider}/${row.model} · ${row.calls} attempts · ${row.failed || 0} failed · ${row.input_tokens ?? '?'} in / ${row.output_tokens ?? '?'} out · ${row.estimated_usd == null ? 'cost unknown' : '$' + row.estimated_usd.toFixed(4) + ' estimated'}${row.unpriced ? ' · includes unpriced attempts' : ''}`;
+          item.append(label, info); infoUsageModels.appendChild(item);
+        }
       }
     } catch (e) {
       infoUsageTotal.textContent = 'Usage statistics unavailable.';
@@ -1986,6 +2025,7 @@
       base_url: (setupBaseUrlInput?.value || '').trim(),
       api_key: (setupApiKeyInput?.value || '').trim(),
       credential_storage: $('#setup-credential-storage')?.value || 'env',
+      streaming: $('#setup-streaming').checked,
     };
   }
 
@@ -6072,6 +6112,13 @@
       const btn = document.createElement('button');
       btn.className = 'chat-row';
       btn.type = 'button';
+      btn.tabIndex = session.id === activeSessionId ? 0 : -1;
+      btn.addEventListener('keydown', event => {
+        const rows = [...chatListEl.querySelectorAll('.chat-row')];
+        const index = rows.indexOf(btn);
+        const target = event.key === 'ArrowDown' ? rows[(index + 1) % rows.length] : event.key === 'ArrowUp' ? rows[(index + rows.length - 1) % rows.length] : event.key === 'Home' ? rows[0] : event.key === 'End' ? rows[rows.length - 1] : null;
+        if (target) { event.preventDefault(); rows.forEach(row => row.tabIndex = row === target ? 0 : -1); target.focus(); }
+      });
       btn.dataset.session = session.id;
       btn.classList.toggle('active', session.id === activeSessionId);
       btn.innerHTML = `
@@ -6155,19 +6202,29 @@
     renderSessions();
   }
 
-  function restoreMessages(messages) {
+  function restoreMessages(messages, visibleCount = 80) {
+    hiddenChatPrefix = cloneJSON((messages || []).slice(0, -visibleCount), []);
     chatEl.innerHTML = '';
     if (!messages || !messages.length) {
       recreateWelcome();
       return;
     }
-    messages.forEach((item, i) => {
+    if (hiddenChatPrefix.length) {
+      const earlier = document.createElement("button");
+      earlier.className = "ghost-btn load-earlier-messages";
+      earlier.textContent = `Show earlier messages (${hiddenChatPrefix.length})`;
+      earlier.addEventListener("click", () => { const transcript = snapshotChat(); restoreMessages(transcript, chatEl.querySelectorAll(".msg").length + 80); });
+      chatEl.appendChild(earlier);
+    }
+    messages.slice(-visibleCount).forEach((item, i) => {
       if (item.role === 'user') {
         addUserMessage(item.text, { attachments: item.attachments || [] });
       } else if (item.role === 'error') {
         addErrorMessage(item.text);
       } else {
-        addMessage(item.role, renderAssistantContent(item.text), {
+        const longReply = [...item.text].length > 12000;
+        const displayText = longReply ? [...item.text].slice(0, 12000).join('') + '\n\n[Long reply · full text retained]' : item.text;
+        const restored = addMessage(item.role, renderAssistantContent(displayText), {
           icon: metaFor(item.role).icon,
           label: metaFor(item.role).label,
           roleColor: metaFor(item.role).color,
@@ -6177,6 +6234,14 @@
           taskId: item.taskId || '',
           status: item.status || 'ready',
         });
+        if (longReply) {
+          const expand = document.createElement('button'); expand.className = 'ghost-btn load-full-message'; expand.textContent = 'Show full reply';
+          expand.addEventListener('click', () => {
+            restored.querySelector('.msg-content').innerHTML = renderAssistantContent(item.text);
+            decorateMessageHtmlPreviewBtn(restored); decorateHtmlPreviewBtns(restored); highlightCode(restored); expand.remove();
+          });
+          restored.appendChild(expand);
+        }
       }
       const last = chatEl.lastElementChild;
       if (last) last.style.setProperty('--msg-delay', `${Math.min(i, 8) * 40}ms`);
@@ -6212,6 +6277,7 @@
     saveActiveSession();
     if (sessions.length >= 200) { showSaveNotice('200 conversation limit reached. Export a backup and delete older chats.'); return; }
     const session = createSession('New chat');
+    hiddenChatPrefix = [];
     sessions.unshift(session);
     invalidatePromptEnhancement();
     activeSessionId = session.id;
@@ -6480,13 +6546,15 @@
   function appendToStep(msgEl, text) {
     const body = msgEl.querySelector('[data-step-body]');
     if (!body) return;
-    const cursor = body.querySelector('.streaming-cursor');
-    if (cursor) cursor.remove();
-    if (!body.dataset.markdown) body.dataset.markdown = '';
-    body.dataset.markdown += text;
-    body.innerHTML = renderMarkdown(body.dataset.markdown) + '<span class="streaming-cursor"></span>';
-    highlightCode(body);
-    chatEl.scrollTop = chatEl.scrollHeight;
+    body.dataset.markdown = (body.dataset.markdown || '') + text;
+    if (body._renderTimer) return;
+    body._renderTimer = setTimeout(() => {
+      body._renderTimer = null;
+      if (!msgEl.isConnected || msgEl.dataset.status !== 'running') return;
+      body.innerHTML = renderMarkdown(body.dataset.markdown) + '<span class="streaming-cursor"></span>';
+      highlightCode(body);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }, 60);
   }
 
   function updateMessageStatus(msgEl, status, durationMs = 0) {
@@ -6526,6 +6594,8 @@
     const body = msgEl.querySelector('[data-step-body]');
     const status = msgEl.querySelector('.step-status');
     if (body) {
+      clearTimeout(body._renderTimer);
+      body._renderTimer = null;
       const cursor = body.querySelector('.streaming-cursor');
       if (cursor) cursor.remove();
       if (finalContent != null) {
@@ -8227,7 +8297,7 @@
   const HISTORY_KEY = 'pantheon:chat-history';
   // Serialize the visible chat DOM into a plain-text transcript.
   function snapshotChat() {
-    const items = [];
+    const items = cloneJSON(hiddenChatPrefix, []);
     chatEl.querySelectorAll('.msg').forEach((msg) => {
       const isUser = msg.classList.contains('user');
       const isError = msg.classList.contains('error');
@@ -8351,6 +8421,8 @@
   // ---------- Keyboard shortcuts ----------
   document.addEventListener('keydown', (e) => {
     const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); startNewSession(); inputEl.focus(); return; }
+    if (mod && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); inputEl.focus(); return; }
     if (mod && e.key === ',') {
       e.preventDefault();
       toggleSettings();

@@ -8,7 +8,7 @@ Web follow-ups include recent text from the active chat: up to 16 user/assistant
 
 Prompt enhancement uses the Hermes model assigned to the current chat. Models supports saved custom model IDs and optional exact-ID entry for one role or all AI roles. A model being absent from a supplier catalog does not prove it is unusable; use Test this role to check access. Reply model labels record the execution model and survive model changes and reloads. Older messages without that record display “Model not recorded.”
 
-Each `pantheon ask` CLI command remains an independent task; it does not automatically continue a Web chat or an earlier CLI command. CLI tasks read the saved role defaults and provider connections from the same workspace. Web “Current chat only” selections do not change CLI models; saving “New chat defaults” updates the workspace defaults used by subsequent CLI tasks as well. These defaults can use one provider or different providers per role. The CLI command syntax and temple layout are unchanged in v0.3.2.
+Use `pantheon chat --session my-project` for an explicit continuous CLI conversation (see [continuous sessions](interaction-upgrades.md)). Each `pantheon ask` CLI command remains an independent task; it does not automatically continue a Web chat or an earlier CLI command. CLI tasks read the saved role defaults and provider connections from the same workspace. Web “Current chat only” selections do not change CLI models; saving “New chat defaults” updates the workspace defaults used by subsequent CLI tasks as well. These defaults can use one provider or different providers per role. The CLI command syntax and temple layout are unchanged in v0.3.2.
 
 ## Images and PDFs
 
