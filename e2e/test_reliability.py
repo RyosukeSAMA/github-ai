@@ -184,10 +184,11 @@ def test_workspace_command_stream_keeps_stdout_and_exit_status(page: Page, live_
     expect(page.locator('#ws-command-input')).to_be_enabled()
 
 
-def test_late_initial_conversations_do_not_cancel_active_prompt_enhancement(page: Page, live_server_url):
+def test_enhancement_waits_for_initial_chat_and_model_assignment(page: Page, live_server_url):
     page.add_init_script("""
       const realFetch = window.fetch;
       window.fetch = (url, options) => {
+        if (url === '/api/setup/status') return realFetch(url, options).then(response => new Promise(resolve => window.finishSetup = () => resolve(response)));
         if (url === '/api/conversations' && !options) return new Promise(resolve => window.finishConversations = () => resolve(new Response(JSON.stringify({schema_version:1,revision:'',sessions:[]}))));
         if (url === '/api/prompt/enhance') return new Promise(resolve => window.finishEnhancement = () => resolve(new Response(JSON.stringify({prompt:'Enhanced startup draft'}))));
         return realFetch(url, options);
@@ -195,9 +196,13 @@ def test_late_initial_conversations_do_not_cancel_active_prompt_enhancement(page
     """)
     page.goto(live_server_url)
     page.locator('#input').fill('Startup draft')
-    page.locator('#enhance-prompt-btn').click()
-    page.wait_for_function('Boolean(window.finishConversations && window.finishEnhancement)')
+    page.wait_for_function('Boolean(window.finishConversations && window.finishSetup)')
+    expect(page.locator('#enhance-prompt-btn')).to_be_disabled()
+    page.evaluate('window.finishSetup()')
+    expect(page.locator('#enhance-prompt-btn')).to_be_disabled()
     page.evaluate('window.finishConversations()')
-    expect(page.locator('#info-conversation-status')).to_contain_text('conversations saved')
+    expect(page.locator('#enhance-prompt-btn')).to_be_enabled()
+    page.locator('#enhance-prompt-btn').click()
+    page.wait_for_function('Boolean(window.finishEnhancement)')
     page.evaluate('window.finishEnhancement()')
     expect(page.locator('#input')).to_have_value('Enhanced startup draft')

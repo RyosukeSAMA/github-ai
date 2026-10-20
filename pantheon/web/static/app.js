@@ -222,6 +222,8 @@
   let currentMode = 'auto';
   let roles = [];
   let isStreaming = false;
+  let initialConversationsReady = false;
+  let initialSetupReady = false;
   let promptEnhancing = false;
   let promptBeforeEnhance = '';
   let enhancedPromptValue = '';
@@ -1562,6 +1564,8 @@
   function applySetupStatus(status, options = {}) {
     if (!setupForm || !status) return;
     latestSetupStatus = status;
+    initialSetupReady = Boolean(status.role_statuses?.some(item => item.role === 'hermes' && item.model));
+    updatePromptEnhanceButton();
     const preserveForm = Boolean(options.preserveForm || setupFormTouched);
     const announce = options.announce !== false;
     const formProvider = preserveForm ? setupProviderSelect?.value || '' : '';
@@ -5921,6 +5925,9 @@
       showSaveNotice('Chats are saved only in this browser. Open Settings → Info to retry or export.');
       infoConversationPill.textContent = 'browser only';
       infoConversationStatus.textContent = 'Could not save to the local server. Chats remain in this browser; export a backup.';
+    } finally {
+      initialConversationsReady = true;
+      updatePromptEnhanceButton();
     }
   }
 
@@ -6625,12 +6632,13 @@
     const canUndo = Boolean(
       promptBeforeEnhance && enhancedPromptValue && inputEl.value === enhancedPromptValue,
     );
-    enhancePromptBtn.disabled = isStreaming || promptEnhancing;
+    const initializing = !initialSetupReady || !initialConversationsReady;
+    enhancePromptBtn.disabled = initializing || isStreaming || promptEnhancing;
     enhancePromptBtn.classList.toggle('is-loading', promptEnhancing);
     enhancePromptBtn.classList.toggle('is-active', canUndo);
     enhancePromptBtn.setAttribute('aria-busy', String(promptEnhancing));
     enhancePromptBtn.setAttribute('aria-pressed', String(canUndo));
-    const label = promptEnhancing
+    const label = initializing ? 'Loading chat and Hermes configuration' : promptEnhancing
       ? 'Enhancing prompt'
       : canUndo
         ? 'Undo prompt enhancement'
