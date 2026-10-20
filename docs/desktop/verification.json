@@ -2,6 +2,8 @@
   "prototype_only": true,
   "checks": [
     "light/dark render",
+    "English UI and accessibility labels",
+    "white-first default and readable palette contrasts",
     "local branding",
     "single/mixed model selection and per-task isolation",
     "two simultaneous demo tasks and independent stop",
@@ -15,6 +17,27 @@
     "keyboard command menu",
     "1440/1024/760 layout"
   ],
+  "language": "en",
+  "light_contrast_ratios": {
+    "ink/surface": 12.72,
+    "muted/panel": 4.96,
+    "muted/accent-soft": 4.61,
+    "accent/surface": 5.55,
+    "on-accent/accent": 5.55,
+    "green/surface": 5.26,
+    "gold/surface": 5.24,
+    "red/surface": 4.99
+  },
+  "dark_contrast_ratios": {
+    "ink/surface": 11.79,
+    "muted/panel": 7.75,
+    "muted/accent-soft": 5.27,
+    "accent/surface": 7.95,
+    "on-accent/accent": 7.95,
+    "green/surface": 8.14,
+    "gold/surface": 7.7,
+    "red/surface": 7.26
+  },
   "page_errors": [],
   "api_requests": 0
 }

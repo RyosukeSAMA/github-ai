@@ -1,5 +1,6 @@
 import functools
 import json
+import re
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,6 +14,43 @@ class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+
+def contrast(foreground, background):
+    def luminance(color):
+        value = color.strip().lstrip("#")
+        if len(value) == 3:
+            value = "".join(char * 2 for char in value)
+        channels = [int(value[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+        linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in channels]
+        return sum(v * weight for v, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+    values = sorted((luminance(foreground), luminance(background)))
+    return (values[1] + 0.05) / (values[0] + 0.05)
+
+
+def check_palette(page):
+    tokens = page.evaluate("""() => {
+        const style = getComputedStyle(document.querySelector('.app'));
+        return Object.fromEntries(['surface','panel','ink','muted','accent','accent-soft',
+          'on-accent','green','gold','red'].map(key => [key, style.getPropertyValue('--'+key).trim()]));
+    }""")
+    pairs = [
+        ("ink", "surface"),
+        ("muted", "panel"),
+        ("muted", "accent-soft"),
+        ("accent", "surface"),
+        ("on-accent", "accent"),
+        ("green", "surface"),
+        ("gold", "surface"),
+        ("red", "surface"),
+    ]
+    ratios = {f"{fg}/{bg}": round(contrast(tokens[fg], tokens[bg]), 2) for fg, bg in pairs}
+    assert all(ratio >= 4.5 for ratio in ratios.values()), ratios
+    return ratios
+
+
+for name in ("index.html", "prototype.js"):
+    assert not re.search(r"[\u3400-\u9fff]", (root / "desktop" / name).read_text()), name
 
 server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(root)))
 thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -28,6 +66,13 @@ try:
         url = f"http://127.0.0.1:{server.server_port}/desktop/index.html"
         page.goto(url, wait_until="networkidle")
         assert page.locator(".brand img").evaluate("(el)=>el.naturalWidth") > 0
+        assert page.locator("html").get_attribute("lang") == "en"
+        assert page.locator(".app").get_attribute("data-theme") == "light"
+        assert (
+            page.locator(".main").evaluate("el => getComputedStyle(el).backgroundColor")
+            == "rgb(255, 255, 255)"
+        )
+        light_contrast = check_palette(page)
         page.screenshot(path=str(root / "desktop/preview-light.png"))
         page.locator("#model-open").click()
         page.locator('[name="model-mode"][value="mixed"]').check()
@@ -40,75 +85,76 @@ try:
         page.keyboard.press("Escape")
         page.locator("#review-tab").click()
         page.locator("#review-reject").click()
-        expect(page.locator("#review-state")).to_contain_text("已退回")
+        expect(page.locator("#review-state")).to_contain_text("Changes requested")
         page.locator("#review-accept").click()
-        expect(page.locator("#review-state")).to_contain_text("未写入项目")
+        expect(page.locator("#review-state")).to_contain_text("No files written")
         page.locator('[data-view="library"]').click()
         expect(page.locator(".artifact-tile")).to_have_count(3)
         page.locator('[data-kind="research"]').click()
         expect(page.locator(".artifact-tile")).to_have_count(1)
         page.locator(".artifact-tile").click()
-        expect(page.locator("#breadcrumb-task")).to_have_text("比较数据存储方案")
-        page.locator("#prompt").fill("只属于研究任务的草稿")
+        expect(page.locator("#breadcrumb-task")).to_have_text("Compare data stores")
+        page.locator("#prompt").fill("Draft for the research task only")
         page.locator('[data-mode="multi"]').click()
         page.locator("#model-open").click()
         expect(page.locator('[name="model-mode"][value="single"]')).to_be_checked()
         page.keyboard.press("Escape")
-        page.get_by_role("button", name="发布准备", exact=True).click()
+        page.get_by_role("button", name="Launch preparation", exact=True).click()
         expect(page.locator("#prompt")).to_have_value("")
         expect(page.locator('[data-mode="auto"]')).to_have_class("selected")
-        page.get_by_role("button", name="比较数据存储方案", exact=True).click()
-        expect(page.locator("#prompt")).to_have_value("只属于研究任务的草稿")
+        page.get_by_role("button", name="Compare data stores", exact=True).click()
+        expect(page.locator("#prompt")).to_have_value("Draft for the research task only")
         expect(page.locator('[data-mode="multi"]')).to_have_class("selected")
         page.locator('[data-view="tasks"]').click()
         rows = page.locator(".mission-row")
-        rows.nth(1).get_by_role("button", name="运行示例", exact=True).click()
-        rows.nth(2).get_by_role("button", name="运行示例", exact=True).click()
+        rows.nth(1).get_by_role("button", name="Run demo", exact=True).click()
+        rows.nth(2).get_by_role("button", name="Run demo", exact=True).click()
         expect(page.locator("#metric-running")).to_have_text("2")
         page.evaluate("document.querySelector('#toast').hidden = true")
         page.screenshot(path=str(root / "desktop/preview-tasks.png"))
-        rows.nth(1).get_by_role("button", name="停止示例", exact=True).click()
+        rows.nth(1).get_by_role("button", name="Stop demo", exact=True).click()
         expect(page.locator("#metric-running")).to_have_text("1")
-        expect(rows.nth(1)).to_contain_text("已停止")
-        expect(rows.nth(2).get_by_role("button", name="停止示例", exact=True)).to_be_visible()
-        rows.nth(2).get_by_role("button", name="停止示例", exact=True).click()
+        expect(rows.nth(1)).to_contain_text("Stopped")
+        expect(rows.nth(2).get_by_role("button", name="Stop demo", exact=True)).to_be_visible()
+        rows.nth(2).get_by_role("button", name="Stop demo", exact=True).click()
         page.locator('[data-view="capabilities"]').click()
         expect(page.locator(".capability-grid>button")).to_have_count(6)
         page.locator('[data-capability="desktop"]').click()
-        expect(page.locator("#info-dialog")).to_contain_text("尚未实现")
+        expect(page.locator("#info-dialog")).to_contain_text("not implemented yet")
         page.keyboard.press("Escape")
         page.locator("#focus-preview").click()
         expect(page.locator(".app")).to_have_attribute("data-layout", "focus")
         expect(page.locator('[data-view="capabilities"]')).to_be_hidden()
         page.locator("#layout-toggle").click()
         expect(page.locator(".app")).to_have_attribute("data-layout", "professional")
-        page.get_by_role("button", name="发布准备", exact=True).click()
+        page.get_by_role("button", name="Launch preparation", exact=True).click()
         page.locator("#approval-open").click()
         page.locator("#deny-approval").click()
-        expect(page.locator("#activity-list")).to_contain_text("示例审批：已拒绝")
+        expect(page.locator("#activity-list")).to_contain_text("Demo approval: denied")
         page.locator("#files-tab").click()
-        expect(page.locator("#file-content")).to_contain_text("上线前检查清单")
+        expect(page.locator("#file-content")).to_contain_text("Launch checklist")
         page.locator("#terminal-toggle").click()
         page.locator("#terminal-simulate").click()
-        expect(page.locator("#terminal-output")).to_contain_text("没有运行 shell 命令")
+        expect(page.locator("#terminal-output")).to_contain_text("No shell command was run")
         page.locator("#terminal-close").click()
         page.locator("#new-task").click()
-        page.locator("#new-prompt").fill("生成项目交付说明")
-        page.get_by_role("button", name="创建示例任务", exact=True).click()
-        expect(page.locator("#task-list")).to_contain_text("生成项目交付说明")
+        page.locator("#new-prompt").fill("Write delivery notes")
+        page.get_by_role("button", name="Create demo task", exact=True).click()
+        expect(page.locator("#task-list")).to_contain_text("Write delivery notes")
         page.locator("#run-demo").click()
-        expect(page.locator("#run-demo")).to_contain_text("停止示例")
+        expect(page.locator("#run-demo")).to_contain_text("Stop demo")
         page.locator("#run-demo").click()
-        expect(page.locator("#task-state")).to_contain_text("已停止")
+        expect(page.locator("#task-state")).to_contain_text("Stopped")
         page.keyboard.press("Control+k")
-        page.locator("#command-search").fill("分配角色")
+        page.locator("#command-search").fill("assign role")
         page.locator("#command-list button").click()
         expect(page.locator("#models-dialog")).to_be_visible()
         page.keyboard.press("Escape")
-        page.get_by_role("button", name="发布准备", exact=True).click()
+        page.get_by_role("button", name="Launch preparation", exact=True).click()
         page.locator("#result-tab").click()
         page.evaluate("document.querySelector('#toast').hidden = true")
         page.locator("#theme-toggle").click()
+        dark_contrast = check_palette(page)
         page.screenshot(path=str(root / "desktop/preview-dark.png"))
         for width in (1440, 1024, 760):
             page.set_viewport_size({"width": width, "height": 950})
@@ -127,6 +173,8 @@ try:
                     "prototype_only": True,
                     "checks": [
                         "light/dark render",
+                        "English UI and accessibility labels",
+                        "white-first default and readable palette contrasts",
                         "local branding",
                         "single/mixed model selection and per-task isolation",
                         "two simultaneous demo tasks and independent stop",
@@ -140,6 +188,9 @@ try:
                         "keyboard command menu",
                         "1440/1024/760 layout",
                     ],
+                    "language": "en",
+                    "light_contrast_ratios": light_contrast,
+                    "dark_contrast_ratios": dark_contrast,
                     "page_errors": errors,
                     "api_requests": 0,
                 },
