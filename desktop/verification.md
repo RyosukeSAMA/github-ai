@@ -2,6 +2,8 @@
 
 Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-beta.1`; shared core source is based on `v0.4.0` with the new bridge. These are separate from the already-installed stable Web/CLI service.
 
+The `0.5.0-beta.2` refresh changes only application icon assets, their reproducible SVG exporter and package metadata. It retains the verified runtime below; its macOS package is recorded separately under `dist/desktop-beta.2` with local checksums. The version increment helps distinguish the refreshed bundle from cached beta.1 icons. The rounded transparent PNG was visually inspected, macOS `iconutil` decoded every ICNS size, the built bundle contains the exact new ICNS, and its ad-hoc signature and DMG integrity checks passed.
+
 | Check | Recorded result |
 | --- | --- |
 | Python tests, including existing Web/CLI contracts | 308 passed, 3 skipped |
@@ -39,6 +41,6 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Local beta artifacts
 
-The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta`; default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
+The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.2`; the prior beta.1 proof build remains in `dist/desktop-beta`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
 
-`dist/desktop-beta/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.
+`dist/desktop-beta.2/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.

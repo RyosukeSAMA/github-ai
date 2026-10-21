@@ -58,3 +58,12 @@ npm run package --prefix desktop
 Set `PANTHEON_DESKTOP_PYTHON` to your development interpreter for `npm start --prefix desktop`. For the isolated native smoke test, use `DEBUG=pw:browser node desktop/test/native-smoke.cjs` (on PowerShell set `$env:DEBUG = "pw:browser"` first); optionally set `PANTHEON_TEST_EXECUTABLE` to the packaged executable. The test creates its own project and profile and calls a localhost model stub. It does not use saved user keys, contact paid models, send messages or modify the user's installed service.
 
 See `.github/workflows/desktop.yml` for the three-platform build, package and smoke-test pipeline. Passing a local macOS run does not establish Windows/Linux native acceptance or real provider/channel access. See [verification](verification.md) for the actual evidence and remaining validation.
+
+### Application icon
+
+`assets/icon.svg` places the existing Pantheon mark inside a rounded tile with transparent outer spacing and a soft shadow. It supplies the application PNG, macOS ICNS and Windows ICO; the Web/CLI branding stays unchanged. Regenerate the committed icon files after editing the frame or source mark:
+
+```sh
+npx --prefix desktop playwright install chromium
+node scripts/desktop/build_icons.cjs
+```
