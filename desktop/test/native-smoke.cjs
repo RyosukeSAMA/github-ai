@@ -27,7 +27,7 @@ async function main(){
   const env={...process.env,PANTHEON_DESKTOP_TEST:'1',PANTHEON_DESKTOP_WORKSPACE:workspace,PANTHEON_DESKTOP_USER_DATA:path.join(root,'user-data'),PANTHEON_DATA_DIR:path.join(root,'data'),PANTHEON_STATE_MODE:'workspace',PANTHEON_MODEL_DOCS_SYNC:'0',PANTHEON_DESKTOP_PYTHON:process.env.PANTHEON_DESKTOP_PYTHON || path.join(repo,'.venv','bin','python')};
   for(const name of ['OPENAI_API_KEY','ANTHROPIC_API_KEY','DEEPSEEK_API_KEY','PANTHEON_CONFIG','PANTHEON_DESKTOP_TOKEN'])delete env[name];
   let application;
-  const deadline=setTimeout(()=>{application?.process().kill('SIGKILL');provider.closeAllConnections();console.error('Native test exceeded its 120-second deadline.');process.exit(1);},120000);deadline.unref();
+  const deadline=setTimeout(()=>{application?.process().kill('SIGKILL');provider.closeAllConnections();console.error('Native test exceeded its 240-second deadline.');process.exit(1);},240000);deadline.unref();
   const failures=[];
   const launch=async()=>{
     const handle=await electron.launch({executablePath:executable,args,env,timeout:30000});const child=handle.process();

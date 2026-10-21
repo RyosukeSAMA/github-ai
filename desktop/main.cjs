@@ -45,7 +45,7 @@ function createWindow(backend = null, initialSession = '') {
   const win = new BrowserWindow({width:1440,height:1000,minWidth:820,minHeight:680,backgroundColor:'#ffffff',
     show:process.env.PANTHEON_DESKTOP_TEST!=='1',title:'Pantheon',icon:path.join(__dirname,'assets','icon.png'),
     ...(process.platform==='darwin'?{titleBarStyle:'hiddenInset',trafficLightPosition:{x:18,y:17}}:{}),
-    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,spellcheck:true}});
+    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,spellcheck:true,backgroundThrottling:process.env.PANTHEON_DESKTOP_TEST!=='1'}});
   const context = {win,backend,initialSession,terminal:null},windowId=win.webContents.id; windows.set(windowId,context);
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('pantheon://app/'))event.preventDefault();});

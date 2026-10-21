@@ -72,7 +72,7 @@ jobs:
       - name: Test packaged app on Linux
         if: runner.os == 'Linux'
         shell: bash
-        run: xvfb-run -a env PANTHEON_TEST_EXECUTABLE="$PWD/dist/desktop/linux-unpacked/pantheon-desktop" node desktop/test/native-smoke.cjs
+        run: dbus-run-session -- xvfb-run -a env PANTHEON_TEST_EXECUTABLE="$PWD/dist/desktop/linux-unpacked/pantheon-desktop" node desktop/test/native-smoke.cjs
       - name: Package beta installers
         run: npm run package --prefix desktop
         env:

@@ -23,7 +23,7 @@ The three Python skips are the opt-in live model check and two Windows-native ch
 
 The final package test additionally asserts that the renderer is running in the packaged app. Python and UI assets come from the bundle. Screenshots use the local fixture and are not evidence of real commercial-provider access. Native consent dialogs are substituted only through the external test driver inside its isolated fixture; production dialogs are not overridden. No diagnostic quit controls or test command bypasses are shipped.
 
-The smoke test uses Playwright's Electron driver and requires the native process to exit with code 0 within 20 seconds. A 120-second overall deadline prevents stalled CI. It also requires the final restart and shutdown to succeed before writing passing evidence. This exposed a real multi-window cleanup defect: accessing a destroyed window to retrieve its ID interrupted quit. Window IDs are now captured before destruction, and unexpected cleanup errors are recorded instead of silently disappearing.
+The smoke test uses Playwright's Electron driver and requires the native process to exit with code 0 within 20 seconds. A 240-second overall deadline prevents stalled CI. It also requires the final restart and shutdown to succeed before writing passing evidence. This exposed a real multi-window cleanup defect: accessing a destroyed window to retrieve its ID interrupted quit. Window IDs are now captured before destruction, and unexpected cleanup errors are recorded instead of silently disappearing.
 
 ## Backend checks added for Desktop
 

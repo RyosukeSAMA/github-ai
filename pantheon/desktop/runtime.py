@@ -405,7 +405,7 @@ class DesktopRuntime:
             if current != review['expected_hash']:
                 raise HTTPException(409, 'File changed since review. Prepare a new diff before saving.')
             mode = target.stat().st_mode & 0o777 if target.exists() else 0o600
-            atomic_text(target, review['content'])
+            atomic_text(target, review['content'], newline='')
             os.chmod(target, mode)
             db.execute("UPDATE reviews SET status='accepted' WHERE id=?", (review_id,))
             if review.get('artifact_id'):

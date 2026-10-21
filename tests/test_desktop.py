@@ -178,3 +178,12 @@ def test_remote_desktop_requires_web_auth_and_shares_saved_sessions(tmp_path, mo
         assert second.patch('/api/desktop/sessions/'+saved['id'],json={'expected_version':0,'draft':'from another device'}).status_code == 200
         assert first.get('/api/desktop/sessions/'+saved['id']).json()['draft'] == 'from another device'
         second.close()
+
+
+def test_review_writes_the_exact_previewed_line_endings(desktop):
+    client, runtime, root = desktop
+    content = 'one\ntwo\r\nthree\n'
+    review = client.post('/api/desktop/reviews',json={'path':'line-endings.txt','content':content}).json()
+    saved = client.post('/api/desktop/reviews/'+review['id']+'/accept')
+    assert saved.status_code == 200
+    assert (root/'line-endings.txt').read_bytes() == content.encode('utf-8')
