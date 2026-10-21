@@ -48,6 +48,7 @@ async function main(){
     await page.locator('#new-task').click();await page.locator('#mode').selectOption('role:hephaestus');await page.locator('#prompt').fill('Build native sample');await page.locator('#run').click();
     await expect(page.locator('#task-state')).toHaveText('completed',{timeout:30000});await expect(page.locator('#messages')).toContainText('Native task complete');
     assert.equal(calls,1,'No unexpected provider calls');
+    const taskLink=page.locator('#task-list').getByRole('button',{name:'Build native sample',exact:true});await taskLink.focus();await page.waitForTimeout(2200);await expect(taskLink).toBeFocused();
     await page.reload();await expect(page.locator('#messages')).toContainText('Native task complete');
     await page.locator('[data-view=library]').click();await expect(page.locator('#artifact-grid')).toContainText('Generated HTML');
     const artifact=page.locator('.artifact-card').filter({hasText:'Generated HTML'});await artifact.getByRole('button',{name:'Preview',exact:true}).click();

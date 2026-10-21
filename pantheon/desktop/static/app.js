@@ -135,11 +135,13 @@ async function patchSession(changes,id=state.selected) {
 }
 async function flushDrafts(){clearTimeout(state.draftTimer);clearTimeout(state.editorTimer);if(state.selected && state.detail){const changes={};if($('#prompt').value!==(state.detail.draft||''))changes.draft=$('#prompt').value;if(state.file && $('#file-editor').value!==(state.detail.editor_draft?.content||''))changes.editor_draft={...state.file,content:$('#file-editor').value};if(Object.keys(changes).length)await patchSession(changes);}await state.patchQueue;}
 function renderSidebar() {
-  $('#task-list').replaceChildren();
-  state.sessions.filter(item=>!item.archived).sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updatedAt-a.updatedAt).slice(0,80).forEach(item=>{
+  const visible=state.sessions.filter(item=>!item.archived).sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updatedAt-a.updatedAt).slice(0,80),target=$('#task-list');
+  $('#running-count').textContent=state.runs.filter(run=>activeStatuses.has(run.status)).length;
+  const signature=JSON.stringify([state.selected,visible.map(item=>[item.id,item.title,!!item.pinned,!!activeRun(item.id)])]);if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
+  visible.forEach(item=>{
     const row=element('div','task-row'),button=element('button',item.id===state.selected?'selected':'');button.append(element('span','status-dot'+(activeRun(item.id)?'':' neutral')),element('span','',(item.pinned?'★ ':'')+item.title));button.setAttribute('aria-current',String(item.id===state.selected));action(button,()=>selectSession(item.id));
     const menu=setIconButton(element('button'),'edit','Actions for '+item.title);action(menu,()=>taskActions(item.id));row.append(button,menu);$('#task-list').append(row);
-  });$('#running-count').textContent=state.runs.filter(run=>activeStatuses.has(run.status)).length;
+  });
 }
 function setView(view) {
   if(!state.info?.workspace){showWelcome();return;}
@@ -224,9 +226,10 @@ async function taskActions(id=state.selected) {
   info('Task actions',content);
 }
 async function renderMissions() {
-  const query=$('#task-filter').value.trim(),filter=$('#task-status').value;
+  const query=$('#task-filter').value.trim(),filter=$('#task-status').value,epoch=state.epoch;
   const found=query?new Set((await api('/api/desktop/search?query='+encodeURIComponent(query))).sessions.map(item=>item.id)):null;
-  $('#mission-list').replaceChildren();
+  const tasks=await api('/api/tasks');if(epoch!==state.epoch||query!==$('#task-filter').value.trim()||filter!==$('#task-status').value)return;state.coreTasks=tasks.tasks||[];
+  const signature=JSON.stringify([query,filter,state.sessions.map(item=>[item.id,item.title,item.pinned,item.archived,item.updatedAt,latestRun(item.id)?.status]),state.coreTasks.map(item=>[item.id,item.status,item.updated])]);const target=$('#mission-list');if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
   for(const session of state.sessions.filter(item=>filter==='archived'?item.archived:!item.archived)){
     const run=latestRun(session.id);if(found&&!found.has(session.id))continue;
     if(filter==='running'&&!activeRun(session.id))continue;if(filter==='attention'&&run?.status==='completed')continue;
@@ -236,7 +239,7 @@ async function renderMissions() {
     const menu=setIconButton(element('button'),'edit','Task actions');action(menu,()=>taskActions(session.id));row.append(menu);$('#mission-list').append(row);
   }
   if(!$('#mission-list').children.length)empty($('#mission-list'),'No tasks match this view.');
-  const tasks=await api('/api/tasks');state.coreTasks=tasks.tasks||[];const known=new Set(state.runs.map(run=>run.task_id));
+  const known=new Set(state.runs.map(run=>run.task_id));
   for(const task of state.coreTasks.filter(item=>!known.has(item.id))){const row=element('div','data-card');row.append(element('strong','',task.data?.task||task.id),element('p','',task.status+' · CLI / Web task'));const view=element('button','','View saved result');action(view,async()=>{const data=await api('/api/tasks/'+encodeURIComponent(task.id));info('Saved task',markdown(data.data?.result||JSON.stringify(data,null,2)));});row.append(view);$('#mission-list').append(row);}
 }
 async function loadArtifacts() {const query=$('#artifact-query').value;state.artifacts=(await api('/api/desktop/artifacts?query='+encodeURIComponent(query))).artifacts;$('#artifact-grid').replaceChildren();for(const item of state.artifacts.filter(value=>$('#artifact-kind').value==='all'||value.kind===$('#artifact-kind').value))$('#artifact-grid').append(artifactCard(item));if(!$('#artifact-grid').children.length)empty($('#artifact-grid'),'Completed tasks will add their outputs here.');}
