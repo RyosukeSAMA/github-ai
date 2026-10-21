@@ -80,7 +80,7 @@ class Backend {
     const response = await fetch(this.base+'/api/auth/login', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({username:value.username,password:value.password}), signal:AbortSignal.timeout(15000), redirect:'error'});
     if (!response.ok) throw new Error('Remote sign-in failed. Check server authentication and credentials.');
     this.cookie = response.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
-    this.info = await this.identity(); this.workspace = this.info.workspace; return this;
+    this.info = await this.identity(); this.workspace = this.info.workspace;this.username=value.username; return this;
   }
   async response(target, options = {}, signal, allowTerminal = false) {
     const safePath = apiPath(target, allowTerminal), method = options.method || 'GET';

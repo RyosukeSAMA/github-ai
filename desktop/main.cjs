@@ -29,7 +29,7 @@ function senderContext(event, requireBackend = true) {
 }
 function publicInfo(context) {
   return {version:app.getVersion(),platform:process.platform,workspace:context.backend?.info || null,
-          remote:!!context.backend?.remote, owned:!!context.backend?.owned, preferences,recent,
+          remote:!!context.backend?.remote,remoteOrigin:context.backend?.remote?context.backend.base:'', owned:!!context.backend?.owned, preferences,recent,
           savedRemote: savedRemote ? {url:savedRemote.url,username:savedRemote.username} : null,
           initialSession:context.initialSession || '', startupError:context.startupError || '', packaged:app.isPackaged};
 }
@@ -103,11 +103,11 @@ function installIPC() {
     if(value.remember){
       if(!safeStorage.isEncryptionAvailable() || (process.platform==='linux' && safeStorage.getSelectedStorageBackend()==='basic_text'))throw new Error('Secure storage is unavailable. Connect without remembering the password.');
       savedRemote={url:backend.base,username:value.username,password:safeStorage.encryptString(value.password).toString('base64')};await savePreferences();
-    }
+    }else if(savedRemote?.url===backend.base&&savedRemote.username===value.username){savedRemote=null;await savePreferences();}
     return publicInfo(context);
   });
   ipcMain.handle('desktop:remote-reconnect',async event=>{
-    const context=senderContext(event,false);if(!savedRemote || !safeStorage.isEncryptionAvailable())throw new Error('Sign in to the remote server again.');
+    const context=senderContext(event,false);if(!savedRemote || !safeStorage.isEncryptionAvailable() || context.backend?.remote&&(context.backend.base!==savedRemote.url||context.backend.username!==savedRemote.username))throw new Error('Sign in to the current remote server again. Saved credentials belong to a different server or account.');
     context.backend=await new Backend(coreCommand()).connectRemote({...savedRemote,password:safeStorage.decryptString(Buffer.from(savedRemote.password,'base64'))});
     backends.set('remote:'+context.backend.base+':'+savedRemote.username,Promise.resolve(context.backend));return publicInfo(context);
   });
