@@ -4,7 +4,7 @@ Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-be
 
 | Check | Recorded result |
 | --- | --- |
-| Python tests, including existing Web/CLI contracts | 307 passed, 3 skipped |
+| Python tests, including existing Web/CLI contracts | 308 passed, 3 skipped |
 | Existing Web browser regression | 40 passed |
 | Native proxy and release policy tests | 6 passed |
 | Ruff and JavaScript syntax | Passed |
@@ -13,13 +13,14 @@ Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-be
 | Bundled Python | Frozen runtime starts without a system Python installation |
 | macOS application integrity | Ad-hoc signature passed `codesign --verify --deep --strict` |
 | macOS DMG integrity | `hdiutil verify` passed |
-| Windows/Linux native packaging | CI added; not established by this macOS run |
+| Windows/macOS native packaging | CI build, packaged smoke and installer packaging passed at `7e4ee10` |
+| Linux native packaging | Packaged smoke and AppImage passed at `7e4ee10`; Debian metadata fixed after that run. Final CI results are linked in PR #34. |
 
 The three Python skips are the opt-in live model check and two Windows-native checks on a non-Windows host. The FastAPI TestClient emits an upstream deprecation warning; no test failure is hidden by it.
 
 ## What the native smoke test exercises
 
-`desktop/test/native-smoke.cjs` creates a temporary project and app profile. It saves a provider connection to a localhost model fixture, updates new-task defaults, runs a specialist through the real shared core, reloads the page, saves a generated HTML output through a real diff, rejects an external-file conflict, reloads and saves a fresh edit, searches actual message content, opens another window, resolves conflicting drafts, configures three dummy connections without making paid calls, checks role-model isolation across conversations, opens the capability pages and messaging form, verifies that direct terminal proxy requests cannot bypass native confirmation, executes a harmless confirmed `echo` command, saves an unsent draft, quits and restarts.
+`desktop/test/native-smoke.cjs` creates a temporary project and app profile. It saves a provider connection to a localhost model fixture, updates new-task defaults, runs a specialist through the real shared core, reloads the page, saves a generated HTML output through a real diff, rejects an external-file conflict, reloads and saves a fresh edit, searches actual message content, checks that task focus survives unchanged polling and that attention filtering excludes ready/completed tasks, opens another window, resolves conflicting drafts, configures three dummy connections without making paid calls, checks role-model isolation across conversations, opens the capability pages and messaging form, verifies that direct terminal proxy requests cannot bypass native confirmation, executes a harmless confirmed `echo` command, saves an unsent draft, quits and restarts.
 
 The final package test additionally asserts that the renderer is running in the packaged app. Python and UI assets come from the bundle. Screenshots use the local fixture and are not evidence of real commercial-provider access. Native consent dialogs are substituted only through the external test driver inside its isolated fixture; production dialogs are not overridden. No diagnostic quit controls or test command bypasses are shipped.
 
@@ -31,7 +32,7 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Validation still required for public release
 
-- Windows and Linux native CI results and hands-on acceptance on supported desktop environments.
+- Final three-platform CI packaging results and hands-on acceptance on supported desktop environments. CI status and installer downloads are linked in PR #34.
 - Real OpenAI/Anthropic/DeepSeek media/account access and Telegram/Slack/Discord callbacks and replies. No real platform messages were sent in this work.
 - An operator-managed real HTTPS remote server and a second physical device. Shared-session authentication is tested locally; this does not establish real TLS deployment or offline synchronization.
 - OS notifications, tray behavior, global shortcuts, real OS drag-and-drop and credential prompts across the target platforms. The code and opt-in controls exist; automated fixture checks do not establish every OS permission behavior.
@@ -39,11 +40,6 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Local beta artifacts
 
-The macOS Apple Silicon app, DMG and ZIP are in `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
+The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta`; default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
 
-SHA-256 of this build:
-
-```text
-181b3dbbbab29cf98388a1719c8259da5386f2457f8165b1b458b287b91a97f8  Pantheon-0.5.0-beta.1-mac-arm64.dmg
-9600a2450cb0a3717d79267a42ee974d61de0db694b64ed6caeae8e8089745e2  Pantheon-0.5.0-beta.1-mac-arm64.zip
-```
+`dist/desktop-beta/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.

@@ -229,10 +229,10 @@ async function renderMissions() {
   const query=$('#task-filter').value.trim(),filter=$('#task-status').value,epoch=state.epoch;
   const found=query?new Set((await api('/api/desktop/search?query='+encodeURIComponent(query))).sessions.map(item=>item.id)):null;
   const tasks=await api('/api/tasks');if(epoch!==state.epoch||query!==$('#task-filter').value.trim()||filter!==$('#task-status').value)return;state.coreTasks=tasks.tasks||[];
-  const signature=JSON.stringify([query,filter,state.sessions.map(item=>[item.id,item.title,item.pinned,item.archived,item.updatedAt,latestRun(item.id)?.status]),state.coreTasks.map(item=>[item.id,item.status,item.updated])]);const target=$('#mission-list');if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
+  const signature=JSON.stringify([query,filter,found?[...found].sort():null,[...state.approvals.keys()].sort(),state.sessions.map(item=>[item.id,item.title,item.pinned,item.archived,item.updatedAt,latestRun(item.id)?.status]),state.coreTasks.map(item=>[item.id,item.status,item.updated])]);const target=$('#mission-list');if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
   for(const session of state.sessions.filter(item=>filter==='archived'?item.archived:!item.archived)){
     const run=latestRun(session.id);if(found&&!found.has(session.id))continue;
-    if(filter==='running'&&!activeRun(session.id))continue;if(filter==='attention'&&run?.status==='completed')continue;
+    if(filter==='running'&&!activeRun(session.id))continue;if(filter==='attention'&&!(['failed','partial_failure','stopped','interrupted'].includes(run?.status)||(state.eventCache.get(run?.id)||[]).some(event=>event.event==='mcp_approval_required'&&state.approvals.has(event.data.approval_id))))continue;
     const row=element('div','mission-row'),title=element('div','mission-title');title.append(element('strong','',(session.pinned?'★ ':'')+session.title),element('small','',new Date(session.updatedAt).toLocaleString()));row.append(title,element('span','mission-state',run?.status||'Ready'));
     const open=setIconButton(element('button'),'open','Open task');action(open,()=>selectSession(session.id));row.append(open);
     if(activeRun(session.id)){const stop=setIconButton(element('button'),'stop','Stop task');action(stop,async()=>{await api('/api/desktop/runs/'+activeRun(session.id).id+'/stop',{});await refresh();});row.append(stop);}
