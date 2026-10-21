@@ -8,13 +8,15 @@ The `0.5.0-beta.3` desktop update adds project-opening progress, persistent path
 
 The `0.5.0-beta.4` update adds an illustrated welcome page and a named project folder tile. Its macOS packaged smoke passed with one localhost fixture call, zero paid calls and zero page errors. The test verifies local illustration loading, a long folder name containing spaces and `&`, visible canonical paths, a sidebar folder icon, light/dark screenshots, native windows at 1440/1024/820 pixels without horizontal overflow, and a folder click opening files that remain visible across polling. It also checks that the inspector cannot cover the welcome page in a narrow window. The existing task/file/restart flow, six proxy/release checks, syntax/diff checks, ad-hoc signature and DMG integrity passed. No shared Python core or Web/CLI behavior changed.
 
+The latest `0.5.0-beta.5` adds persistent connection result cards inside the modal. Both development and final macOS packaged smoke passed with four localhost fixture calls (three explicit API probes and one task), zero paid calls and zero page errors. Tests cover pending/disabled controls, green API/model/timing confirmation, persistence beyond the old toast lifetime, invalidation after model edits, a rejected-model error and successful retry, restoring saved verification after reopening, save-first guidance, refresh preserving a typed key, and visible new-task defaults with all four AI roles and the existing-task scope. Light/dark screenshots were inspected. The existing task/file/restart flow and two normal process exits, six proxy/release checks, syntax/diff checks, ad-hoc signature and DMG integrity passed. The shared Python core and installed Web/CLI are unchanged.
+
 | Check | Recorded result |
 | --- | --- |
 | Python tests, including existing Web/CLI contracts | 308 passed, 3 skipped |
 | Existing Web browser regression | 40 passed |
 | Native proxy and release policy tests | 6 passed |
 | Ruff and JavaScript syntax | Passed |
-| Development native app, macOS arm64 | Full smoke flow passed with one localhost model call and zero paid calls |
+| Development native app, macOS arm64 | Latest beta.5 smoke passed with four localhost model calls and zero paid calls |
 | Final packaged native app | Passed the complete smoke flow and two normal exits (code 0); evidence in `dist/desktop-evidence/native-smoke.json` |
 | Bundled Python | Frozen runtime starts without a system Python installation |
 | macOS application integrity | Ad-hoc signature passed `codesign --verify --deep --strict` |
@@ -25,7 +27,7 @@ The three Python skips are the opt-in live model check and two Windows-native ch
 
 ## What the native smoke test exercises
 
-`desktop/test/native-smoke.cjs` creates a temporary project and app profile. It begins without a project and exercises native folder selection, cancellation, an unavailable folder, persistent failure, retry, full path confirmation and the next-step guide. It then saves a provider connection to a localhost model fixture, updates new-task defaults, runs a specialist through the real shared core, reloads the page, saves a generated HTML output through a real diff, rejects an external-file conflict, reloads and saves a fresh edit, searches actual message content, checks that task focus survives unchanged polling and that attention filtering excludes ready/completed tasks, opens another window, resolves conflicting drafts, configures three dummy connections without making paid calls, checks role-model isolation across conversations, opens the capability pages and messaging form, verifies that canceling project selection keeps the current task/draft, verifies that direct terminal proxy requests cannot bypass native confirmation, executes a harmless confirmed `echo` command, saves an unsent draft, quits and restarts.
+`desktop/test/native-smoke.cjs` creates a temporary project and app profile. It begins without a project and exercises native folder selection, cancellation, an unavailable folder, persistent failure, retry, full path confirmation and the next-step guide. It then saves a provider connection to a localhost model fixture, checks API success/failure/retry and modal status persistence, updates new-task defaults with a visible scope confirmation, runs a specialist through the real shared core, reloads the page, saves a generated HTML output through a real diff, rejects an external-file conflict, reloads and saves a fresh edit, searches actual message content, checks that task focus survives unchanged polling and that attention filtering excludes ready/completed tasks, opens another window, resolves conflicting drafts, configures three dummy connections without making paid calls, checks role-model isolation across conversations, opens the capability pages and messaging form, verifies that canceling project selection keeps the current task/draft, verifies that direct terminal proxy requests cannot bypass native confirmation, executes a harmless confirmed `echo` command, saves an unsent draft, quits and restarts.
 
 The final package test additionally asserts that the renderer is running in the packaged app. Python and UI assets come from the bundle. Screenshots use the local fixture and are not evidence of real commercial-provider access. Native consent dialogs are substituted only through the external test driver inside its isolated fixture; production dialogs are not overridden. No diagnostic quit controls or test command bypasses are shipped.
 
@@ -45,6 +47,6 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Local beta artifacts
 
-The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.4`; prior builds remain in `dist/desktop-beta`, `dist/desktop-beta.2` and `dist/desktop-beta.3`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
+The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.5`; prior builds remain in `dist/desktop-beta`, `dist/desktop-beta.2`, `dist/desktop-beta.3` and `dist/desktop-beta.4`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
 
-`dist/desktop-beta.4/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.
+`dist/desktop-beta.5/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.

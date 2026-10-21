@@ -4,6 +4,7 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Show persistent connection status cards inside Models & connections: pending, green API/save/default confirmations and actionable failures. Include the tested model, response time, affected roles and future-task scope. Invalidate edited API settings, prevent duplicate submissions and retain typed keys when refreshing models.
 - Give the native welcome page a quiet architectural illustration, soft sky/sand colors and a council overview. Show the actual project name on a folder tile and retain its full path; open project files without losing the view during status polling.
 - Show persistent project-opening progress, selected folder paths, actionable failures and setup-aware next steps. Keep the current task and draft when the folder picker is canceled; reload model readiness when changing projects.
 - Use a rounded native application icon with transparent spacing, a soft shadow and the unchanged Pantheon mark; include an editable SVG frame and reproducible PNG/ICNS/ICO export.
