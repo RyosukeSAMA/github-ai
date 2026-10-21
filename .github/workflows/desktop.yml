@@ -1,0 +1,91 @@
+name: Desktop beta
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'scripts/desktop/**'
+      - 'pantheon/**'
+      - 'tests/test_desktop.py'
+      - 'tests/test_backup.py'
+      - '.github/workflows/desktop.yml'
+      - 'requirements.lock'
+      - 'pyproject.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Native build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DEBUG: pw:browser
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install core and native build tools
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install -e ".[dev]" pyinstaller==6.22.3
+          python -m pip check
+          npm ci --prefix desktop
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: npx --prefix desktop playwright install-deps chromium
+      - name: Test shared contracts and proxy
+        run: |
+          python -m pytest tests/test_desktop.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
+          npm test --prefix desktop
+      - name: Freeze the Python runtime
+        run: python scripts/desktop/build_runtime.py
+      - name: Build native directory
+        run: npm run build --prefix desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Test packaged app on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app_path=$(find "$PWD/dist/desktop" -path '*/Pantheon.app/Contents/MacOS/Pantheon' -type f -print -quit)
+          PANTHEON_TEST_EXECUTABLE="$app_path" node desktop/test/native-smoke.cjs
+      - name: Test packaged app on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PANTHEON_TEST_EXECUTABLE = (Resolve-Path 'dist/desktop/win-unpacked/Pantheon.exe').Path
+          node desktop/test/native-smoke.cjs
+      - name: Test packaged app on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: xvfb-run -a env PANTHEON_TEST_EXECUTABLE="$PWD/dist/desktop/linux-unpacked/pantheon-desktop" node desktop/test/native-smoke.cjs
+      - name: Package beta installers
+        run: npm run package --prefix desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pantheon-desktop-${{ runner.os }}-${{ runner.arch }}
+          if-no-files-found: warn
+          path: |
+            dist/desktop/Pantheon-*.dmg
+            dist/desktop/Pantheon-*.zip
+            dist/desktop/Pantheon-*.exe
+            dist/desktop/Pantheon-*.AppImage
+            dist/desktop/Pantheon-*.deb
+            dist/desktop-evidence/**

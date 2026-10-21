@@ -1,6 +1,12 @@
-# Pantheon Desktop：交互设计
+# Pantheon Desktop：原生 Beta 与交互设计
 
-这是一版可操作的桌面交互原型，尚不是安装包。完整定位、参考取舍、Web/桌面能力对照与分期验收见[产品方向与能力规划](product-direction.zh-CN.md)。打开 `index.html` 可体验；预览图与 `verification.json` 记录了本轮视觉和交互检查。原型不连接任何 API，不读取本机项目，不执行命令，也不接收凭据。
+原生 Beta 已在 `desktop/` 实现，使用 Electron 界面和内置 Python 核心，独立于本目录的浏览器原型。启动、构建、数据路径、远程连接和验证边界见[原生客户端说明](../../desktop/README.md)与[验证记录](../../desktop/verification.md)。
+
+下图来自原生 Beta 的隔离测试，供应商响应来自本地模拟服务，不代表真实商业账号已验证。
+
+![原生 Beta 浅色工作台](native-light.png)
+
+本目录保留可操作的交互设计原型。完整定位、参考取舍、Web/桌面能力对照与分期验收见[产品方向与能力规划](product-direction.zh-CN.md)。打开 `index.html` 可体验；预览图与 `verification.json` 记录了本轮视觉和交互检查。原型不连接任何 API，不读取本机项目，不执行命令，也不接收凭据。
 
 ![浅色工作台](preview-light.png)
 

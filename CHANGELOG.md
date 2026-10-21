@@ -2,6 +2,15 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Desktop beta
+
+- Add a separate English Electron workbench with bundled Python, light/dark themes, icon tooltips, Focus layout, adjustable text/context sizing, native file selection, tray mode, optional notifications and a global shortcut.
+- Reuse the shared Web/CLI core through a private desktop bridge. Persist detached runs, incremental events, drafts, attachment IDs and artifacts; reconcile completed core archives after restart without replaying a task. Restore the last viewed conversation and detect conflicting window edits.
+- Review real file diffs and recheck disk hashes before writing. Add artifact search, source-task navigation, full task archive export, task rename/pin/archive/filter, model assignment isolation and confirmed terminal commands.
+- Expose shared connections, budgets, usage, memory, skills/plugins, MCP tool policies and approvals, schedules, media and Telegram/Slack/Discord callback configuration.
+- Add multiple windows, explicit Git worktrees and authenticated HTTPS remote-server access to shared sessions. Reuse compatible local services and stop only owned services on exit. Exclude transient desktop capabilities from every backup.
+- Add macOS/Windows/Linux packaging CI and an isolated native smoke test using a localhost model fixture. Native validation is recorded separately from paid-provider, platform callback and signed-installer acceptance.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
