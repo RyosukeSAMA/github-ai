@@ -10,7 +10,7 @@ const repo = path.resolve(__dirname,'../..');
 async function main(){
   await fs.mkdir(path.join(repo,'dist','desktop-evidence'),{recursive:true});await fs.rm(path.join(repo,'dist','desktop-evidence','native-smoke.json'),{force:true});
   const root = await fs.mkdtemp(path.join(os.tmpdir(),'pantheon-native-'));
-  const project=path.join(root,'project');await fs.mkdir(project);const workspace=await fs.realpath(project);await fs.writeFile(path.join(workspace,'notes.txt'),'Original project note.\n');
+  const project=path.join(root,'Research & product ideas - Pantheon');await fs.mkdir(project);const workspace=await fs.realpath(project);await fs.writeFile(path.join(workspace,'notes.txt'),'Original project note.\n');
   let calls=0;
   const provider=http.createServer((req,res)=>{
     let body='';req.on('data',data=>body+=data);req.on('end',()=>{
@@ -36,7 +36,7 @@ async function main(){
       const choices=onboarding?[{canceled:true,filePaths:[]},{canceled:false,filePaths:[workspace+'-missing']},{canceled:false,filePaths:[workspace]}]:[];
       dialog.showOpenDialog=async()=>{await new Promise(resolve=>setTimeout(resolve,350));return choices.shift()||{canceled:true,filePaths:[]};};
     },{workspace,onboarding});
-    application={process:()=>child,windows:()=>handle.windows(),close:async()=>{let timer;try{await Promise.race([handle.close(),new Promise((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('Native quit exceeded 20 seconds.'));},20000);})]);assert.equal(child.exitCode,0,'Native application must exit normally');}finally{clearTimeout(timer);}}};
+    application={process:()=>child,windows:()=>handle.windows(),resize:(width,height)=>handle.evaluate(({BrowserWindow},{width,height})=>BrowserWindow.getAllWindows()[0].setSize(width,height),{width,height}),close:async()=>{let timer;try{await Promise.race([handle.close(),new Promise((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('Native quit exceeded 20 seconds.'));},20000);})]);assert.equal(child.exitCode,0,'Native application must exit normally');}finally{clearTimeout(timer);}}};
     const page=await handle.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',error=>failures.push(String(error)));
     if(!onboarding)await page.waitForFunction(()=>document.querySelector('#connection-state').textContent==='Local connected');if(process.env.PANTHEON_TEST_EXECUTABLE)assert.equal((await page.evaluate(()=>window.pantheonDesktop.info())).packaged,true,'Must exercise the packaged application');
     return page;
@@ -44,12 +44,18 @@ async function main(){
   try {
     let page=await launch(true);
     await expect(page.locator('#welcome-workspace')).toHaveText('Choose project');await expect(page.locator('#welcome-connections')).toBeDisabled();
+    await page.waitForFunction(()=>[...document.querySelectorAll('#welcome img')].every(image=>image.complete&&image.naturalWidth>0));await page.screenshot({path:path.join(repo,'dist','desktop-evidence','welcome-art.png')});
     await page.locator('#welcome-workspace').click();await expect(page.locator('#welcome-workspace')).toBeDisabled();await expect(page.locator('#toast')).toContainText('Project selection canceled');await expect(page.locator('#connection-state')).toHaveText('Not connected');
     await page.locator('#welcome-workspace').click();await expect(page.locator('#project-feedback-title')).toHaveText('Could not open project');await expect(page.locator('#project-feedback-detail')).toContainText('folder is no longer available');await expect(page.locator('#connection-state')).toHaveText('Not connected');
     await page.waitForTimeout(4500);await expect(page.locator('#project-feedback')).toBeVisible();await page.screenshot({path:path.join(repo,'dist','desktop-evidence','project-error.png')});
     await page.evaluate(()=>{window.workspaceProgress=[];window.pantheonDesktop.onWorkspaceStatus(value=>window.workspaceProgress.push(value.phase));});
     await page.locator('#project-retry').click();await expect(page.locator('#connection-state')).toHaveText('Local connected',{timeout:30000});await expect(page.locator('#project-feedback-title')).toHaveText('Project connected');await expect(page.locator('#project-feedback-path')).toHaveText(workspace);await expect(page.locator('#project-path')).toHaveText(workspace);await expect(page.locator('#onboarding-project')).toHaveAttribute('data-state','complete');await expect(page.locator('#welcome-connections')).toHaveClass(/primary/);assert.ok((await page.evaluate(()=>window.workspaceProgress)).includes('opening'));
-    await page.screenshot({path:path.join(repo,'dist','desktop-evidence','project-connected.png')});await page.locator('#welcome-connections').click();
+    await expect(page.locator('#workspace-folder-name')).toHaveText(path.basename(workspace));await expect(page.locator('#workspace-card-path')).toHaveText(workspace);await expect(page.locator('#workspace-card-path')).toBeVisible();await expect(page.locator('#workspace-card-badge')).toContainText('connected');await expect(page.locator('#project-glyph svg')).toBeVisible();
+    await page.screenshot({path:path.join(repo,'dist','desktop-evidence','project-connected.png')});
+    await page.locator('#theme-toggle').click();await page.screenshot({path:path.join(repo,'dist','desktop-evidence','welcome-dark.png')});await page.locator('#theme-toggle').click();
+    for(const [width,height] of [[1024,800],[820,720]]){await application.resize(width,height);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Welcome must fit the native window');await expect(page.locator('#workspace-folder-name')).toBeVisible();await expect(page.locator('#inspector')).not.toBeVisible();}
+    await page.screenshot({path:path.join(repo,'dist','desktop-evidence','welcome-narrow.png')});await application.resize(1440,1000);
+    await page.locator('#workspace-folder').click();await expect(page.locator('#file-tree')).toContainText('notes.txt');await page.waitForTimeout(2200);await expect(page.locator('#files-pane')).toBeVisible();await page.locator('[data-view=work]').click();await page.locator('#welcome-connections').click();
     await page.locator('#provider').selectOption('deepseek');await page.locator('#base-url').fill(url);await page.locator('#test-model').fill('test-chat');await page.locator('#api-key').fill('local-test-only');
     await page.getByRole('button',{name:'Save connection',exact:true}).click();
     await expect(page.locator('#connection-message')).toContainText('Connection saved');

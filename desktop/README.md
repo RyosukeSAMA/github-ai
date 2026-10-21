@@ -4,13 +4,15 @@ The native app is an English, white-first workbench built on the same Python cor
 
 ## First run
 
-1. Open Pantheon and choose your project folder. **Opening project…** shows progress; **Project connected** confirms its full path. The first setup step gets a checkmark and **Configure models** becomes the next action. If opening fails, its reason and **Choose another folder** remain visible. Canceling the picker keeps your current task and draft. The app bundles Python; installing Python or Node is unnecessary for a packaged app.
+1. Open Pantheon and choose your project folder. **Opening project…** shows progress; the connected project appears as a folder tile with its actual name and full path. The first setup step gets a checkmark and **Configure models** becomes the next action. Click the folder to browse project files; use **Change project** or the sidebar chevron to choose another folder. If opening fails, its reason and **Choose another folder** remain visible. Canceling the picker keeps your current task and draft. The app bundles Python; installing Python or Node is unnecessary for a packaged app.
 2. Open **Models & connections**. Save one provider connection, then choose **Use this provider for new tasks**. DeepSeek alone is sufficient for text tasks. Testing access sends a small, potentially billable request only when you confirm it.
 3. Create a task and choose Auto route, Multi-role council, or a specialist. **Assign role models** can use one provider for all roles or different providers per role. Connections are saved once; assignments stay with each conversation.
 4. Run the task. Conversation, Result and Activity show actual shared-core results and events. Usage reports missing prices and missing provider usage as unknown.
 5. Preview outputs in Result or Artifact library. **Review and save** prepares a real diff; accepting checks the file hash again before writing. The project editor also keeps a draft separately from the file on disk.
 
 Windows and Linux use their native window controls. The default light theme, optional dark theme, Focus layout, text size and context width are saved per installation. Icon tooltips work with hover and keyboard focus. Ctrl/Cmd+K opens search and commands; Ctrl/Cmd+N starts a task; Ctrl/Cmd+Enter sends it.
+
+The welcome page pairs the white interface with a quiet architectural illustration, sky/sand colors and an overview of the five council roles. Both illustrations are local vector assets; task reading and execution keep their plain workspace. Long folder names retain their full title/path even when the folder face or sidebar label needs truncation.
 
 ## Task and project lifecycle
 

@@ -88,12 +88,25 @@ function renderOnboarding() {
   $('#welcome-connections').disabled=!connected||state.projectOpening;
   $('#welcome-connections').classList.toggle('primary',connected&&!ready);
   $('#welcome-task').hidden=!ready;$('#welcome-task').disabled=state.projectOpening;$('#welcome-task').classList.toggle('primary',ready);
+  $('#workspace-card').dataset.connected=String(connected);
+  $('#workspace-card-badge').textContent=connected?(state.info.remote?'Remote project · connected':'Local folder · connected'):'No folder selected';
+  $('#workspace-folder-name').textContent=connected?state.info.workspace.workspace_name:'Your project';
+  $('#workspace-folder-name').title=connected?state.info.workspace.workspace_name:'';
+  $('#workspace-folder').setAttribute('aria-label',connected?'Open project files in '+state.info.workspace.workspace_name:'Choose project folder');
+  $('#workspace-folder').dataset.tooltip=connected?state.info.workspace.workspace:'Choose project folder';
+  $('#workspace-card-name').textContent=connected?state.info.workspace.workspace_name:'A home for your work.';
+  $('#workspace-card-path').hidden=!connected;$('#workspace-card-path').textContent=connected?state.info.workspace.workspace:'';
+  $('#workspace-card-description').textContent=connected?(ready?'Your project is connected. Create a task whenever you are ready.':'Your project is connected. Configure a model to start your first task.'):'Choose a folder for your tasks, files, and ideas.';
+  $('#workspace-card-files').hidden=!connected;$('#workspace-card-files').disabled=state.projectOpening;
+  $('#welcome-step-count').textContent=ready?'Ready to start':connected?'Next: model setup':'Start with a folder';
   if($('#project-feedback').dataset.phase==='connected')$('#project-feedback-detail').textContent=ready?'Ready to create a task.':'Next: configure a model connection to start your first task.';
 }
 function workspaceUI() {
   const connected=!!state.info?.workspace;document.body.dataset.platform=state.info?.platform||'';
   $('#host-label').textContent=connected?(state.info.remote?'Remote · ':'Local · ')+state.info.workspace.workspace_name:'Choose a workspace';
-  $('#project-name').textContent=connected?state.info.workspace.workspace_name:'Choose project…';
+  $('#project-label').textContent=connected?state.info.workspace.workspace_name:'Choose project…';
+  $('#project-glyph').replaceChildren(desktopIcon('folder'));
+  $('#project-name').setAttribute('aria-label',connected?'Open project files in '+state.info.workspace.workspace_name:'Choose a project');
   $('#project-name').title=connected?state.info.workspace.workspace:'';
   $('#project-path').hidden=!connected;$('#project-path').textContent=connected?state.info.workspace.workspace:'';
   $('#project-path').title=connected?state.info.workspace.workspace:'';
@@ -171,7 +184,7 @@ async function refresh() {
     renderTask();
   }
   renderSidebar();if(state.view==='tasks')renderMissions().catch(error=>toast(errorText(error)));
-  if(!state.selected)showWelcome();
+  if(!state.selected&&state.view==='work')showWelcome();
 }
 async function newTask() {
   if(state.projectOpening)return;
@@ -348,7 +361,9 @@ function bind() {
   document.querySelectorAll('[data-close]').forEach(button=>{button.onclick=()=>button.closest('dialog').close();});
   document.querySelectorAll('[data-view]').forEach(button=>{const mark=button.querySelector('[data-nav-icon]');if(mark)mark.replaceChildren(desktopIcon(mark.dataset.navIcon));button.dataset.tooltip=button.textContent.trim();action(button,()=>setView(button.dataset.view));});
   document.querySelectorAll('[data-tab]').forEach(button=>{button.onclick=()=>setTab(button.dataset.tab);});
-  action($('#new-task'),newTask);action($('#project-open'),connectWorkspace);action($('#project-name'),connectWorkspace);action($('#welcome-workspace'),connectWorkspace);
+  const openProjectFiles=()=>state.info?.workspace?setView('files'):connectWorkspace();
+  action($('#new-task'),newTask);action($('#project-open'),connectWorkspace);action($('#project-name'),openProjectFiles);action($('#welcome-workspace'),connectWorkspace);
+  action($('#workspace-folder'),openProjectFiles);action($('#workspace-card-files'),openProjectFiles);
   action($('#project-retry'),connectWorkspace);action($('#project-feedback-close'),()=>{$('#project-feedback').hidden=true;});action($('#welcome-task'),newTask);
   native.onWorkspaceStatus?.(value=>{state.projectTarget=value.path;if(value.phase==='opening'){projectFeedback('opening','Opening project…',value.path,'Opening your folder and loading saved tasks. This can take a few seconds.');$('#connection-state').textContent='Opening project…';}if(value.phase==='error'){workspaceUI();projectFailure(value.message);}});
   action($('#welcome-connections'),openConnections);action($('#connections-open'),openConnections);action($('#welcome-remote'),()=>showDialog('#remote-dialog'));

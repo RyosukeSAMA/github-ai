@@ -29,3 +29,57 @@
 @keyframes project-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.project-feedback .project-feedback-mark:after{animation:none!important}}
 @media(max-width:850px){.project-feedback{margin:16px 20px 0;padding:16px}#welcome{padding:30px 25px}}
+
+/* The illustrated welcome stays separate from reading and task execution. */
+.main:has(#welcome:not([hidden])){background-color:var(--surface);background-image:radial-gradient(ellipse at 91% 8%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 45%),radial-gradient(ellipse at 70% 56%,color-mix(in srgb,var(--gold) 4%,transparent),transparent 60%)}
+.main:has(#welcome:not([hidden]))>.content-scroll{display:none}
+.main:has(#welcome:not([hidden])) #project-feedback[data-phase=connected]{display:none}
+.main:has(#welcome:not([hidden])) #task-menu,.main:has(#welcome:not([hidden])) #inspector-toggle{display:none}
+.app.welcome-state.show-inspector .inspector{display:none}
+#welcome{flex:1;max-width:1240px;width:100%;margin:0 auto;padding:30px 38px 28px;overflow:auto}
+.welcome-hero{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(260px,1fr);gap:20px;align-items:center;min-height:330px}
+.welcome-copy{padding:12px 0 22px;min-width:0}
+#welcome h1{font:500 40px/1.17 ui-serif,Georgia,"Times New Roman",serif;letter-spacing:-1.15px;max-width:490px;margin-top:18px}
+#welcome .welcome-copy>p{max-width:450px;font-size:13px;line-height:1.85;margin:18px 0 24px}
+.welcome-actions{gap:8px;align-items:center}
+.welcome-actions button{font-size:12px;padding:10px 13px}
+.welcome-art{margin:0;max-width:455px;justify-self:end;pointer-events:none;user-select:none}
+.welcome-art img{display:block;width:100%;height:auto}
+.welcome-art figcaption{text-align:center;font:italic 13px/1.8 ui-serif,Georgia,serif;letter-spacing:.2px;color:var(--muted);margin-top:-13px}
+.welcome-details{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin-top:20px}
+.workspace-card,.setup-card{min-width:0;border:1px solid var(--line);border-radius:15px;background:color-mix(in srgb,var(--surface) 92%,transparent);box-shadow:0 3px 18px color-mix(in srgb,var(--ink) 2%,transparent)}
+.workspace-card>header,.setup-card>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 19px 0}
+.workspace-card .document-kicker,.setup-card .document-kicker{font-size:9px;letter-spacing:1.8px}
+#workspace-card-badge,#welcome-step-count{font-size:10px;color:var(--muted);text-align:right}
+.workspace-card[data-connected=true] #workspace-card-badge{color:var(--green)}
+.workspace-card-body{display:grid;grid-template-columns:155px minmax(0,1fr);align-items:center;gap:16px;padding:16px 18px 20px;min-height:180px}
+.workspace-folder{position:relative;display:grid;place-items:center;width:155px;height:132px;padding:0;border-radius:13px;flex-shrink:0;transition:transform .16s ease,background .16s ease}
+.workspace-folder:hover{background:var(--accent-soft);transform:translateY(-2px)}
+.workspace-folder img{width:175px;height:auto;max-width:none;pointer-events:none}
+.workspace-folder strong{position:absolute;top:78px;left:24px;right:24px;text-align:center;color:#345775;font:600 11px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;pointer-events:none}
+.workspace-card[data-connected=false] .workspace-folder img{opacity:.68}
+.workspace-card-copy{min-width:0}
+#workspace-card-name{font-size:16px;line-height:1.45;letter-spacing:-.2px;overflow-wrap:anywhere}
+#workspace-card-path{display:block;font:10px/1.7 ui-monospace,monospace;color:var(--muted);overflow-wrap:anywhere;margin-top:7px}
+#workspace-card-path[hidden]{display:none}
+#welcome .workspace-card-copy p{font-size:11px;line-height:1.7;margin:9px 0;color:var(--muted)}
+#workspace-card-files{padding:0;color:var(--accent);font-size:11px;text-align:left;line-height:1.6}
+#workspace-card-files:hover{text-decoration:underline;background:transparent}
+.setup-card #onboarding-steps{margin:15px 18px 18px;padding-left:23px;gap:7px}
+#welcome .setup-card #onboarding-steps li{font-size:12px;line-height:1.7;padding-left:4px}
+#welcome .setup-card #onboarding-steps [data-state=optional]{font-size:11px}
+.welcome-council{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}
+.welcome-council>div{position:relative;padding-left:17px;min-width:0}
+.welcome-council strong{font-size:11px;font-weight:600}
+.welcome-council small{display:block;font-size:10px;line-height:1.6;margin-top:4px;color:var(--muted)}
+.welcome-role-dot{position:absolute;width:6px;height:6px;left:0;top:5px;border-radius:50%;background:var(--gold)}
+.welcome-role-dot.hephaestus{background:#b58c72}.welcome-role-dot.athena{background:var(--green)}.welcome-role-dot.apollo{background:#a18bb5}.welcome-role-dot.chronos{background:#7b9eb1}
+#project-name{padding:9px 8px;gap:9px;background:color-mix(in srgb,var(--accent-soft) 40%,transparent);border:1px solid color-mix(in srgb,var(--line) 70%,transparent);border-radius:9px}
+#project-name:hover{background:var(--accent-soft)}
+#project-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:500}
+.project-glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;color:var(--accent);background:var(--accent-soft);flex-shrink:0}
+.project-glyph .ui-icon{width:18px;height:18px}
+.app[data-theme=dark] .welcome-art img{opacity:.78;filter:saturate(.75)}
+@media(max-width:1150px){#welcome{padding:26px}.welcome-hero{grid-template-columns:minmax(0,1.15fr) minmax(220px,1fr);min-height:300px}#welcome h1{font-size:35px}.welcome-details{grid-template-columns:1fr}.workspace-card-body{grid-template-columns:155px minmax(0,1fr);padding-top:5px;min-height:155px}.setup-card #onboarding-steps{grid-template-columns:1fr 1fr;column-gap:28px}.welcome-council{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}}
+@media(max-width:850px){.welcome-hero{grid-template-columns:1fr;min-height:0}.welcome-art{display:none}.welcome-copy{padding:9px 0 15px}#welcome h1{font-size:34px}.welcome-details{margin-top:10px}.setup-card #onboarding-steps{grid-template-columns:1fr}.workspace-card-body{grid-template-columns:135px minmax(0,1fr);padding:12px}.workspace-folder{width:135px}.workspace-folder img{width:160px}.workspace-folder strong{left:20px;right:20px;top:77px}}
+@media(prefers-reduced-motion:reduce){.workspace-folder{transition:none}.workspace-folder:hover{transform:none}}

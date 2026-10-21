@@ -6,6 +6,8 @@ The `0.5.0-beta.2` refresh changes only application icon assets, their reproduci
 
 The `0.5.0-beta.3` desktop update adds project-opening progress, persistent path confirmation, setup-aware next steps, and actionable errors. Its development and packaged macOS smoke tests passed, including canceling the picker before/after opening a project, retaining the current draft, retrying an unavailable folder, seeing actual native opening events, following Configure models → Create first task, and the existing task/file/restart flow. One localhost fixture call was made, with zero paid calls or renderer errors. The six proxy/release tests, JavaScript syntax, ad-hoc signature and DMG integrity checks also passed. The shared Python core is unchanged; the three-platform baseline below remains historical evidence, while the updated workflow reruns the expanded smoke test.
 
+The `0.5.0-beta.4` update adds an illustrated welcome page and a named project folder tile. Its macOS packaged smoke passed with one localhost fixture call, zero paid calls and zero page errors. The test verifies local illustration loading, a long folder name containing spaces and `&`, visible canonical paths, a sidebar folder icon, light/dark screenshots, native windows at 1440/1024/820 pixels without horizontal overflow, and a folder click opening files that remain visible across polling. It also checks that the inspector cannot cover the welcome page in a narrow window. The existing task/file/restart flow, six proxy/release checks, syntax/diff checks, ad-hoc signature and DMG integrity passed. No shared Python core or Web/CLI behavior changed.
+
 | Check | Recorded result |
 | --- | --- |
 | Python tests, including existing Web/CLI contracts | 308 passed, 3 skipped |
@@ -43,6 +45,6 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Local beta artifacts
 
-The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.3`; prior beta.1 and beta.2 builds remain in `dist/desktop-beta` and `dist/desktop-beta.2`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
+The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.4`; prior builds remain in `dist/desktop-beta`, `dist/desktop-beta.2` and `dist/desktop-beta.3`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
 
-`dist/desktop-beta.3/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.
+`dist/desktop-beta.4/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.
