@@ -10,7 +10,7 @@ const repo = path.resolve(__dirname,'../..');
 async function main(){
   await fs.mkdir(path.join(repo,'dist','desktop-evidence'),{recursive:true});await fs.rm(path.join(repo,'dist','desktop-evidence','native-smoke.json'),{force:true});
   const root = await fs.mkdtemp(path.join(os.tmpdir(),'pantheon-native-'));
-  const workspace=path.join(root,'project');await fs.mkdir(workspace);await fs.writeFile(path.join(workspace,'notes.txt'),'Original project note.\n');
+  const project=path.join(root,'project');await fs.mkdir(project);const workspace=await fs.realpath(project);await fs.writeFile(path.join(workspace,'notes.txt'),'Original project note.\n');
   let calls=0;
   const provider=http.createServer((req,res)=>{
     let body='';req.on('data',data=>body+=data);req.on('end',()=>{
@@ -24,28 +24,38 @@ async function main(){
   const executable=process.env.PANTHEON_TEST_EXECUTABLE || require('electron');
   const loader=path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib','server','electron','loader.js');
   const args=process.env.PANTHEON_TEST_EXECUTABLE?['-r',loader]:[path.join(repo,'desktop')];
-  const env={...process.env,PANTHEON_DESKTOP_TEST:'1',PANTHEON_DESKTOP_WORKSPACE:workspace,PANTHEON_DESKTOP_USER_DATA:path.join(root,'user-data'),PANTHEON_DATA_DIR:path.join(root,'data'),PANTHEON_STATE_MODE:'workspace',PANTHEON_MODEL_DOCS_SYNC:'0',PANTHEON_DESKTOP_PYTHON:process.env.PANTHEON_DESKTOP_PYTHON || path.join(repo,'.venv','bin','python')};
+  const env={...process.env,PANTHEON_DESKTOP_TEST:'1',PANTHEON_DESKTOP_WORKSPACE:'',PANTHEON_DESKTOP_USER_DATA:path.join(root,'user-data'),PANTHEON_DATA_DIR:path.join(root,'data'),PANTHEON_STATE_MODE:'workspace',PANTHEON_MODEL_DOCS_SYNC:'0',PANTHEON_DESKTOP_PYTHON:process.env.PANTHEON_DESKTOP_PYTHON || path.join(repo,'.venv','bin','python')};
   for(const name of ['OPENAI_API_KEY','ANTHROPIC_API_KEY','DEEPSEEK_API_KEY','PANTHEON_CONFIG','PANTHEON_DESKTOP_TOKEN'])delete env[name];
   let application;
   const deadline=setTimeout(()=>{application?.process().kill('SIGKILL');provider.closeAllConnections();console.error('Native test exceeded its 240-second deadline.');process.exit(1);},240000);deadline.unref();
   const failures=[];
-  const launch=async()=>{
+  const launch=async(onboarding=false)=>{
     const handle=await electron.launch({executablePath:executable,args,env,timeout:30000});const child=handle.process();
-    await handle.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1});});
+    await handle.evaluate(({dialog},{workspace,onboarding})=>{
+      dialog.showMessageBox=async()=>({response:1});
+      const choices=onboarding?[{canceled:true,filePaths:[]},{canceled:false,filePaths:[workspace+'-missing']},{canceled:false,filePaths:[workspace]}]:[];
+      dialog.showOpenDialog=async()=>{await new Promise(resolve=>setTimeout(resolve,350));return choices.shift()||{canceled:true,filePaths:[]};};
+    },{workspace,onboarding});
     application={process:()=>child,windows:()=>handle.windows(),close:async()=>{let timer;try{await Promise.race([handle.close(),new Promise((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('Native quit exceeded 20 seconds.'));},20000);})]);assert.equal(child.exitCode,0,'Native application must exit normally');}finally{clearTimeout(timer);}}};
     const page=await handle.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',error=>failures.push(String(error)));
-    await page.waitForFunction(()=>document.querySelector('#connection-state').textContent==='Local connected');if(process.env.PANTHEON_TEST_EXECUTABLE)assert.equal((await page.evaluate(()=>window.pantheonDesktop.info())).packaged,true,'Must exercise the packaged application');
+    if(!onboarding)await page.waitForFunction(()=>document.querySelector('#connection-state').textContent==='Local connected');if(process.env.PANTHEON_TEST_EXECUTABLE)assert.equal((await page.evaluate(()=>window.pantheonDesktop.info())).packaged,true,'Must exercise the packaged application');
     return page;
   };
   try {
-    let page=await launch();
-    await page.locator('#connections-open').click();
+    let page=await launch(true);
+    await expect(page.locator('#welcome-workspace')).toHaveText('Choose project');await expect(page.locator('#welcome-connections')).toBeDisabled();
+    await page.locator('#welcome-workspace').click();await expect(page.locator('#welcome-workspace')).toBeDisabled();await expect(page.locator('#toast')).toContainText('Project selection canceled');await expect(page.locator('#connection-state')).toHaveText('Not connected');
+    await page.locator('#welcome-workspace').click();await expect(page.locator('#project-feedback-title')).toHaveText('Could not open project');await expect(page.locator('#project-feedback-detail')).toContainText('folder is no longer available');await expect(page.locator('#connection-state')).toHaveText('Not connected');
+    await page.waitForTimeout(4500);await expect(page.locator('#project-feedback')).toBeVisible();await page.screenshot({path:path.join(repo,'dist','desktop-evidence','project-error.png')});
+    await page.evaluate(()=>{window.workspaceProgress=[];window.pantheonDesktop.onWorkspaceStatus(value=>window.workspaceProgress.push(value.phase));});
+    await page.locator('#project-retry').click();await expect(page.locator('#connection-state')).toHaveText('Local connected',{timeout:30000});await expect(page.locator('#project-feedback-title')).toHaveText('Project connected');await expect(page.locator('#project-feedback-path')).toHaveText(workspace);await expect(page.locator('#project-path')).toHaveText(workspace);await expect(page.locator('#onboarding-project')).toHaveAttribute('data-state','complete');await expect(page.locator('#welcome-connections')).toHaveClass(/primary/);assert.ok((await page.evaluate(()=>window.workspaceProgress)).includes('opening'));
+    await page.screenshot({path:path.join(repo,'dist','desktop-evidence','project-connected.png')});await page.locator('#welcome-connections').click();
     await page.locator('#provider').selectOption('deepseek');await page.locator('#base-url').fill(url);await page.locator('#test-model').fill('test-chat');await page.locator('#api-key').fill('local-test-only');
     await page.getByRole('button',{name:'Save connection',exact:true}).click();
     await expect(page.locator('#connection-message')).toContainText('Connection saved');
     await page.locator('#use-provider').click();await page.getByRole('button',{name:'Update defaults',exact:true}).click();
     await expect(page.locator('#toast')).toContainText('defaults saved');await page.locator('#connections-dialog [data-close]').click();
-    await page.locator('#new-task').click();await page.locator('#mode').selectOption('role:hephaestus');await page.locator('#prompt').fill('Build native sample');await page.locator('#run').click();
+    await expect(page.locator('#welcome-task')).toBeVisible();await page.locator('#welcome-task').click();await page.locator('#mode').selectOption('role:hephaestus');await page.locator('#prompt').fill('Build native sample');await page.locator('#run').click();
     await expect(page.locator('#task-state')).toHaveText('completed',{timeout:30000});await expect(page.locator('#messages')).toContainText('Native task complete');
     assert.equal(calls,1,'No unexpected provider calls');
     const taskLink=page.locator('#task-list').getByRole('button',{name:'Build native sample',exact:true});await taskLink.focus();await page.waitForTimeout(2200);await expect(taskLink).toBeFocused();
@@ -73,6 +83,7 @@ async function main(){
     await page.locator('#connections-dialog [data-close]').click();await page.locator('#models-open').click();await page.locator('[name=model-mode][value=mixed]').check();await page.locator('[data-role=hephaestus] select').selectOption('anthropic');await page.locator('[data-role=athena] select').selectOption('openai');await page.locator('#save-models').click();
     await page.locator('#new-task').click();await page.locator('#models-open').click();await expect(page.locator('[data-role=hephaestus] select')).toHaveValue('deepseek');await page.locator('#models-dialog [data-close]').first().click();await page.locator('#task-list').getByRole('button',{name:'Build native sample',exact:true}).click();await page.locator('#models-open').click();await expect(page.locator('[data-role=hephaestus] select')).toHaveValue('anthropic');await expect(page.locator('[data-role=athena] select')).toHaveValue('openai');await page.locator('#models-dialog [data-close]').first().click();
     await page.locator('[data-view=tasks]').click();await page.locator('#task-status').selectOption('attention');await expect(page.locator('#mission-list')).toContainText('No tasks match this view.');await page.locator('#task-status').selectOption('all');await page.locator('[data-view=work]').click();
+    await page.locator('#project-open').click();await expect(page.locator('#toast')).toContainText('current project is unchanged');await expect(page.locator('#task-title')).toHaveText('Build native sample');await expect(page.locator('#prompt')).toHaveValue('Window one draft');
     const bypass=await page.evaluate(async()=>{try{await window.pantheonDesktop.api('/api/workspace/terminal/stream',{method:'POST',body:{command:'echo must-not-run'}});return '';}catch(error){return String(error);}});assert.match(bypass,/native confirmation/);
     await page.locator('#terminal-toggle').click();await page.locator('#terminal-command').fill('echo desktop-terminal-ok');await page.locator('#terminal-form').getByRole('button',{name:'Run once',exact:true}).click();await expect(page.locator('#terminal-output')).toContainText('desktop-terminal-ok');await page.locator('#terminal-close').click();
     await page.locator('#prompt').fill('Durable unsent prompt');await expect(page.locator('#draft-state')).toHaveText('Saved');await page.locator('#theme-toggle').click();

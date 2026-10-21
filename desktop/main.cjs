@@ -34,12 +34,18 @@ function publicInfo(context) {
           initialSession:context.initialSession || '', startupError:context.startupError || '', packaged:app.isPackaged};
 }
 async function attachLocal(context, target) {
+  if(!context.win.isDestroyed())context.win.webContents.send('desktop:workspace-status',{phase:'opening',path:target});
+  try {
   const root = await fs.realpath(target);
   const key = 'local:'+root;
   if (!backends.has(key)) backends.set(key, new Backend({...coreCommand(),env:{...process.env,PYTHONPATH:app.isPackaged?'':path.join(__dirname,'..')}}).local(root));
-  try { context.backend = await backends.get(key);context.lost=false; } catch(error) { backends.delete(key); throw error; }
+  try { context.backend = await backends.get(key);context.lost=false;context.startupError=''; } catch(error) { backends.delete(key); throw error; }
   recent = [root,...recent.filter(item=>item!==root)].slice(0,12); await savePreferences();
   return publicInfo(context);
+  } catch(error) {
+    if(!context.win.isDestroyed())context.win.webContents.send('desktop:workspace-status',{phase:'error',path:target,message:error.message});
+    throw error;
+  }
 }
 function createWindow(backend = null, initialSession = '') {
   const win = new BrowserWindow({width:1440,height:1000,minWidth:820,minHeight:680,backgroundColor:'#ffffff',
@@ -92,7 +98,7 @@ async function monitorTasks(){
 }
 function installIPC() {
   ipcMain.handle('desktop:info',event=>publicInfo(senderContext(event,false)));
-  ipcMain.handle('desktop:workspace',async event=>{const context=senderContext(event,false);const result=await dialog.showOpenDialog(context.win,{title:'Choose a Pantheon project',properties:['openDirectory','createDirectory']});return result.canceled?publicInfo(context):attachLocal(context,result.filePaths[0]);});
+  ipcMain.handle('desktop:workspace',async event=>{const context=senderContext(event,false);const result=await dialog.showOpenDialog(context.win,{title:'Choose a Pantheon project',properties:['openDirectory','createDirectory']});return result.canceled?{canceled:true,info:publicInfo(context)}:{canceled:false,info:await attachLocal(context,result.filePaths[0])};});
   ipcMain.handle('desktop:reconnect',async event=>{const context=senderContext(event),old=context.backend;if(old.remote)throw new Error('Sign in to the remote host again.');try{await old.identity();return publicInfo(context);}catch{}if(old.owned&&old.child?.exitCode===null)throw new Error('The core process is still running. Wait for it to recover before reconnecting.');backends.delete('local:'+old.workspace);return attachLocal(context,old.workspace);});
   ipcMain.handle('desktop:api',async(event,target,options)=>senderContext(event).backend.request(target,options));
   ipcMain.handle('desktop:remote',async(event,value)=>{

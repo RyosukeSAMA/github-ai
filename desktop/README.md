@@ -4,7 +4,7 @@ The native app is an English, white-first workbench built on the same Python cor
 
 ## First run
 
-1. Open Pantheon and choose your project folder. The app bundles Python; installing Python or Node is unnecessary for a packaged app.
+1. Open Pantheon and choose your project folder. **Opening project…** shows progress; **Project connected** confirms its full path. The first setup step gets a checkmark and **Configure models** becomes the next action. If opening fails, its reason and **Choose another folder** remain visible. Canceling the picker keeps your current task and draft. The app bundles Python; installing Python or Node is unnecessary for a packaged app.
 2. Open **Models & connections**. Save one provider connection, then choose **Use this provider for new tasks**. DeepSeek alone is sufficient for text tasks. Testing access sends a small, potentially billable request only when you confirm it.
 3. Create a task and choose Auto route, Multi-role council, or a specialist. **Assign role models** can use one provider for all roles or different providers per role. Connections are saved once; assignments stay with each conversation.
 4. Run the task. Conversation, Result and Activity show actual shared-core results and events. Usage reports missing prices and missing provider usage as unknown.

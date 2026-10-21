@@ -4,6 +4,7 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Show persistent project-opening progress, selected folder paths, actionable failures and setup-aware next steps. Keep the current task and draft when the folder picker is canceled; reload model readiness when changing projects.
 - Use a rounded native application icon with transparent spacing, a soft shadow and the unchanged Pantheon mark; include an editable SVG frame and reproducible PNG/ICNS/ICO export.
 - Add a separate English Electron workbench with bundled Python, light/dark themes, icon tooltips, Focus layout, adjustable text/context sizing, native file selection, tray mode, optional notifications and a global shortcut.
 - Reuse the shared Web/CLI core through a private desktop bridge. Persist detached runs, incremental events, drafts, attachment IDs and artifacts; reconcile completed core archives after restart without replaying a task. Restore the last viewed conversation and detect conflicting window edits.

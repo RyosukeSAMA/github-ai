@@ -4,7 +4,7 @@ const native = window.pantheonDesktop;
 const state = {info:null, sessions:[], runs:[], artifacts:[], coreTasks:[], setup:null, selected:'', detail:null,
   view:'work', tab:'conversation', eventCache:new Map(), cursors:new Map(), output:new Map(), attachments:new Map(),
   activeReview:null, file:null, fileDirectory:'', patchQueue:Promise.resolve(), draftTimer:null, editorTimer:null,
-  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false};
+  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, projectOpening:false, projectTarget:''};
 const activeStatuses = new Set(['queued','running','stopping']);
 const roleNames = ['hermes','hephaestus','athena','apollo'];
 const currentSession = () => state.sessions.find(item => item.id === state.selected);
@@ -52,32 +52,96 @@ async function confirmChoice(title,text,button='Continue') {
   const accept=element('button','primary',button),cancel=element('button','','Cancel');controls.append(cancel,accept);content.append(controls);info(title,content);
   return new Promise(resolve=>{let accepted=false;accept.onclick=()=>{accepted=true;closeDialog('#info-dialog');};cancel.onclick=()=>closeDialog('#info-dialog');$('#info-dialog').addEventListener('close',()=>resolve(accepted),{once:true});});
 }
-async function refreshSetup(){state.setup=await api('/api/setup/status');renderRoles();}
+async function refreshSetup(){state.setup=await api('/api/setup/status');renderRoles();renderOnboarding();}
+function projectFeedback(phase,title,path='',detail='') {
+  const card=$('#project-feedback');card.hidden=false;card.dataset.phase=phase;
+  $('#project-feedback-title').textContent=title;
+  $('#project-feedback-path').textContent=path;$('#project-feedback-path').hidden=!path;
+  $('#project-feedback-detail').textContent=detail;
+  $('#project-feedback-mark').textContent=phase==='connected'?'✓':phase==='error'?'!':'';
+  $('#project-retry').hidden=phase!=='error';
+  $('#project-feedback-close').hidden=['choosing','opening'].includes(phase);
+}
+function projectFailure(error) {
+  const reason=errorText(error);
+  const hint=/older Pantheon service|owns this workspace/.test(reason)
+    ? 'This folder is already in use by another Pantheon service. Choose a different folder, or close that service yourself before trying again.'
+    : /ENOENT|ENOTDIR/.test(reason)
+      ? 'This folder is no longer available. Choose an existing project folder and try again.'
+      : /EACCES|EPERM|permission/i.test(reason)
+        ? 'Pantheon could not access this folder. Check its permissions or choose another folder.'
+        : reason;
+  projectFeedback('error','Could not open project',state.projectTarget,hint+(state.info?.workspace?' Your current project remains available.':''));
+}
+function renderOnboarding() {
+  const connected=!!state.info?.workspace,ready=connected&&!!state.setup?.setup_ready,verified=!!state.setup?.verified_count;
+  $('#welcome-title').textContent=connected?(ready?'Ready for your first task.':'Your project is connected.'):'A clear path from task to outcome.';
+  $('#welcome-description').textContent=connected?(ready?'Your project and model settings are saved. Create a task and describe your goal.':'Next, configure a model connection. One provider is enough to get started.'):'Choose a project, connect a provider, and give your council a goal.';
+  const step=(id,text,status)=>{const item=$(id);item.textContent=text;item.dataset.state=status;};
+  step('#onboarding-project',connected?'Project connected · '+state.info.workspace.workspace_name:'Choose a local project or connect your server.',connected?'complete':'current');
+  step('#onboarding-models',ready?'Model defaults configured.':connected?'Configure a provider and choose defaults for new tasks.':'Save a provider connection. One provider is enough to start.',ready?'complete':connected?'current':'upcoming');
+  step('#onboarding-test',verified?'API access has been verified.':'Optional: test API access. Provider tests can incur usage.',verified?'complete':'optional');
+  step('#onboarding-task','Create a task, review the result, and save your work.',ready?'current':'upcoming');
+  $('#welcome-workspace').textContent=connected?'Change project':'Choose project';
+  $('#welcome-workspace').classList.toggle('primary',!connected);
+  $('#welcome-remote').hidden=connected;
+  $('#welcome-connections').disabled=!connected||state.projectOpening;
+  $('#welcome-connections').classList.toggle('primary',connected&&!ready);
+  $('#welcome-task').hidden=!ready;$('#welcome-task').disabled=state.projectOpening;$('#welcome-task').classList.toggle('primary',ready);
+  if($('#project-feedback').dataset.phase==='connected')$('#project-feedback-detail').textContent=ready?'Ready to create a task.':'Next: configure a model connection to start your first task.';
+}
 function workspaceUI() {
   const connected=!!state.info?.workspace;document.body.dataset.platform=state.info?.platform||'';
   $('#host-label').textContent=connected?(state.info.remote?'Remote · ':'Local · ')+state.info.workspace.workspace_name:'Choose a workspace';
   $('#project-name').textContent=connected?state.info.workspace.workspace_name:'Choose project…';
+  $('#project-name').title=connected?state.info.workspace.workspace:'';
+  $('#project-path').hidden=!connected;$('#project-path').textContent=connected?state.info.workspace.workspace:'';
+  $('#project-path').title=connected?state.info.workspace.workspace:'';
   $('#context-project').textContent=connected?state.info.workspace.workspace_name:'No project selected';
   $('#context-host').textContent=connected?(state.info.remote?'Remote host · ':'Local project · ')+state.info.workspace.workspace:'Choose a project to begin.';
   $('#connection-state').textContent=connected?(state.info.remote?'Remote connected':'Local connected'):'Not connected';
   $('#service-status').textContent=connected?(state.info.owned?'Desktop-owned local service':state.info.remote?'Remote service':'Reused local service'):'Choose a workspace';
   $('#terminal-host').textContent=state.info?.remote?'Remote project terminal':'Local project terminal';
-  $('#startup-error').textContent=state.info?.startupError||'';
+  $('#startup-error').textContent='';
+  renderOnboarding();
+  if(state.info?.startupError&&!state.projectOpening){projectFailure(state.info.startupError);$('#startup-error').textContent='';}
   if(!connected){showWelcome();}else $('.app').classList.remove('welcome-state');
 }
 function showWelcome() {
   $('.app').classList.add('welcome-state');$('#welcome').hidden=false;
   ['#task-heading','#council-route','#content-tabs','#composer'].forEach(key=>{$(key).hidden=true;});
   document.querySelectorAll('.pane,.global-pane').forEach(pane=>{pane.hidden=true;});
-  $('#breadcrumb').textContent='Get started';
+  $('#breadcrumb').textContent=state.info?.workspace?'Project setup':'Get started';renderOnboarding();
 }
 async function connectWorkspace() {
-  await flushDrafts();const value=await native.chooseWorkspace();if(!value.workspace)return;
-  state.info=value;resetWorkspace();workspaceUI();await refresh();
+  if(state.projectOpening)return false;
+  state.projectOpening=true;state.projectTarget='';
+  const controls=new Map([...document.querySelectorAll('button,input,select,textarea')].map(item=>[item,item.disabled]));
+  for(const item of controls.keys())item.disabled=true;
+  $('.main').setAttribute('aria-busy','true');
+  try {
+    await flushDrafts();
+    projectFeedback('choosing','Choose a project folder','','Select a folder in the system dialog to continue.');
+    const value=await native.chooseWorkspace();
+    if(value.canceled){$('#project-feedback').hidden=true;toast(state.info?.workspace?'Project selection canceled. Your current project is unchanged.':'Project selection canceled. Choose a folder when you are ready.');return false;}
+    await adoptWorkspace(value.info);return true;
+  }catch(error){workspaceUI();projectFailure(error);$('#project-feedback-title').focus();return false;}
+  finally {
+    state.projectOpening=false;$('.main').removeAttribute('aria-busy');
+    for(const [item,disabled] of controls)if(item.isConnected)item.disabled=disabled;
+    renderOnboarding();
+  }
+}
+async function adoptWorkspace(value) {
+  const changed=state.info?.workspace?.workspace!==value.workspace.workspace||state.info?.remoteOrigin!==value.remoteOrigin;
+  state.info=value;if(changed)resetWorkspace();else state.setup=null;
+  workspaceUI();await refresh();
+  projectFeedback('connected',value.remote?'Remote project connected':'Project connected',value.workspace.workspace);
+  renderOnboarding();toast('Opened '+value.workspace.workspace_name+'.');
 }
 function resetWorkspace() {
   state.epoch++;state.selectionGeneration++;state.dirty.clear();
-  state.selected='';state.detail=null;state.sessions=[];state.runs=[];state.artifacts=[];state.file=null;
+  state.selected='';state.detail=null;state.sessions=[];state.runs=[];state.artifacts=[];state.file=null;state.fileDirectory='';state.setup=null;state.view='work';state.tab='conversation';
   state.eventCache.clear();state.cursors.clear();state.output.clear();state.attachments.clear();state.approvals.clear();
   $('#file-editor').value='';$('#file-editor').disabled=true;notice('');
 }
@@ -110,7 +174,8 @@ async function refresh() {
   if(!state.selected)showWelcome();
 }
 async function newTask() {
-  if(!state.info?.workspace){await connectWorkspace();if(!state.info?.workspace)return;}
+  if(state.projectOpening)return;
+  if(!state.info?.workspace){if(!await connectWorkspace())return;}
   await flushDrafts();const item=await api('/api/desktop/sessions',{title:'New task'});state.sessions.unshift(item);await selectSession(item.id,true);$('#prompt').focus();
 }
 async function patchSession(changes,id=state.selected) {
@@ -187,6 +252,7 @@ function renderRoles() {
   for(const role of roleNames){const saved=statuses.find(item=>item.role===role),choice=currentSession()?.overrides?.[role] || saved;const row=element('div','inspector-role');row.append(element('span','role-mark mini hermes',role.slice(0,2).toUpperCase()));const body=element('div');body.append(element('strong','',role[0].toUpperCase()+role.slice(1)),element('span','model-label',choice?.model?(choice.provider||'')+' · '+choice.model:'No model assigned'));row.append(body);$('#role-list').append(row);}
 }
 async function runTask(resume) {
+  if(state.projectOpening)return;
   const running=activeRun();if(running){await api('/api/desktop/runs/'+running.id+'/stop',{});toast('Stop requested. Completed work is retained.');await refresh();return;}
   if(!state.selected)await newTask();await flushDrafts();const prompt=resume?.prompt || $('#prompt').value.trim();if(!prompt){$('#prompt').focus();return;}
   const session=currentSession();
@@ -215,7 +281,7 @@ async function pollEvents() {
   if(state.selected){renderMessages();renderActivity();}
   if(state.approvals.size&&!$('#approval-dialog').open){const pending=[...state.approvals.values()][0];$('#approval-dialog').dataset.approvalId=pending.approval_id;$('#approval-details').textContent=JSON.stringify(pending,null,2);showDialog('#approval-dialog');}
 }
-async function tick(){if(state.polling||!state.info?.workspace)return;state.polling=true;try{await pollEvents();await refresh();if(state.file && !$('#files-pane').hidden){const disk=await api('/api/desktop/file?path='+encodeURIComponent(state.file.path));if(disk.hash!==state.file.hash){$('#file-change-notice').textContent='This file changed outside the editor. Reload it or review against the new version before saving.';$('#file-change-notice').hidden=false;}}}catch(error){notice(errorText(error));}finally{state.polling=false;}}
+async function tick(){if(state.polling||state.projectOpening||!state.info?.workspace)return;state.polling=true;try{await pollEvents();await refresh();if(state.file && !$('#files-pane').hidden){const disk=await api('/api/desktop/file?path='+encodeURIComponent(state.file.path));if(disk.hash!==state.file.hash){$('#file-change-notice').textContent='This file changed outside the editor. Reload it or review against the new version before saving.';$('#file-change-notice').hidden=false;}}}catch(error){notice(errorText(error));}finally{state.polling=false;}}
 async function taskActions(id=state.selected) {
   const session=state.sessions.find(item=>item.id===id);if(!session)return;const content=element('div');content.append(element('p','',session.title));
   for(const [label,callback] of [
@@ -252,7 +318,7 @@ async function prepareReview(value) {state.activeReview=await api('/api/desktop/
 async function loadSchedules() {const value=await api('/api/chronos/jobs');$('#schedule-list').replaceChildren();for(const item of value.jobs){const card=element('div','data-card');card.append(element('strong','',item.task||item.name||item.id),element('p','',(item.enabled===false?'Paused':'Enabled')+' · '+(item.cron||item.schedule||JSON.stringify(item.schedule_spec||{}))));for(const operation of [item.enabled===false?'resume':'pause','run']){const button=element('button','',operation==='run'?'Run once':operation==='pause'?'Pause':'Enable');action(button,async()=>{if(operation==='run'&&!await confirmChoice('Run scheduled task now?','This can call your configured providers and execute approved tools.','Run once'))return;await api('/api/chronos/jobs/'+item.id+'/'+operation,{});await loadSchedules();});card.append(button);}$('#schedule-list').append(card);}if(!value.jobs.length)empty($('#schedule-list'),'No schedules configured.');}
 async function loadCapability(name) {
   state.cap=name;const target=$('#capability-content');target.replaceChildren();
-  if(name==='git'){const value=await api('/api/desktop/git');if(!value.available){empty(target,value.message);return;}const card=element('div','data-card');card.append(element('strong','',value.branch||'Detached HEAD'),element('pre','',value.status||'Working tree is clean'),element('pre','',value.diff||'No unstaged diff'));const create=element('button','','Create isolated worktree');action(create,async()=>{const base=await askText('Create isolated worktree','Starting branch or commit','HEAD');if(!base)return;const tree=await api('/api/desktop/git/worktrees',{base});const panel=element('div');panel.append(element('p','',tree.note),element('pre','',tree.path+'\n'+tree.branch));const open=element('button','primary','Open isolated project');action(open,async()=>{state.info=await native.openWorktree(tree.path);if(state.info.workspace){closeDialog('#info-dialog');resetWorkspace();workspaceUI();await refresh();}});panel.append(open);info('Worktree created',panel);});card.append(create);target.append(card,element('pre','',value.worktrees));return;}
+  if(name==='git'){const value=await api('/api/desktop/git');if(!value.available){empty(target,value.message);return;}const card=element('div','data-card');card.append(element('strong','',value.branch||'Detached HEAD'),element('pre','',value.status||'Working tree is clean'),element('pre','',value.diff||'No unstaged diff'));const create=element('button','','Create isolated worktree');action(create,async()=>{const base=await askText('Create isolated worktree','Starting branch or commit','HEAD');if(!base)return;const tree=await api('/api/desktop/git/worktrees',{base});const panel=element('div');panel.append(element('p','',tree.note),element('pre','',tree.path+'\n'+tree.branch));const open=element('button','primary','Open isolated project');action(open,async()=>{const opened=await native.openWorktree(tree.path);if(opened.workspace){closeDialog('#info-dialog');await adoptWorkspace(opened);}});panel.append(open);info('Worktree created',panel);});card.append(create);target.append(card,element('pre','',value.worktrees));return;}
   if(name==='media'){await loadMedia(target);return;}const value=await api('/api/'+name);const items=value.items||value.servers||value.channels||[];
   if(name==='memory'){const add=element('button','primary','Add memory');action(add,async()=>{const text=await askText('Project memory','Content');if(text){await api('/api/memory',{content:text});await loadCapability(name);}});target.append(add);}
   const list=Array.isArray(items)?items:Object.entries(items).map(([id,data])=>({id,...data}));
@@ -267,7 +333,7 @@ async function loadCapability(name) {
 async function openConnections() {await refreshSetup();const selected=$('#provider').value;$('#provider').replaceChildren();for(const provider of state.setup.providers){const option=element('option','',provider.label||provider.id);option.value=provider.id;$('#provider').append(option);}if(selected&&state.setup.providers.some(item=>item.id===selected))$('#provider').value=selected;fillProvider();renderConnectionSummary();showDialog('#connections-dialog');}
 function providerChoice(){return state.setup?.providers.find(item=>item.id===$('#provider').value);}
 function fillProvider(){const provider=providerChoice();if(!provider)return;$('#base-url').value=provider.base_url||'';$('#test-model').value=provider.test_model||provider.default_model||provider.models?.[0]?.id||'';$('#api-key').value='';$('#credential-storage').value=provider.credential_storage||'env';$('#streaming').checked=provider.streaming!==false;$('#model-options').replaceChildren();for(const model of provider.models||[]){const option=element('option');option.value=model.id;option.label=model.label||model.id;$('#model-options').append(option);}$('#connection-message').textContent=provider.key_configured?'Saved key available. Leave the key field blank to keep it.':'Add a key to use this provider.';}
-function renderConnectionSummary() {$('#connection-summary').replaceChildren();for(const provider of state.setup.providers.filter(item=>item.connection_saved)){const row=element('div','data-card');row.append(element('strong','',provider.label||provider.id),element('p','',(provider.enabled?'Enabled':'Disabled')+' · '+(provider.api_health?.state||'Untested')));$('#connection-summary').append(row);}}
+function renderConnectionSummary() {renderOnboarding();$('#connection-summary').replaceChildren();for(const provider of state.setup.providers.filter(item=>item.connection_saved)){const row=element('div','data-card');row.append(element('strong','',provider.label||provider.id),element('p','',(provider.enabled?'Enabled':'Disabled')+' · '+(provider.api_health?.state||'Untested')));$('#connection-summary').append(row);}}
 function connectionBody(){return {provider:$('#provider').value,model:$('#test-model').value.trim(),base_url:$('#base-url').value.trim(),api_key:$('#api-key').value.trim()||undefined,credential_storage:$('#credential-storage').value,streaming:$('#streaming').checked};}
 async function openModels(){if(!state.selected)await newTask();await refreshSetup();const choices=roleNames.map(role=>currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{});const mixed=new Set(choices.map(item=>item.provider+'/'+item.model)).size>1;$('[name="model-mode"][value="'+(mixed?'mixed':'single')+'"]').checked=true;renderModels();showDialog('#models-dialog');}
 function renderModels(){const mixed=$('[name="model-mode"]:checked')?.value==='mixed';$('#model-rows').replaceChildren();for(const [index,role] of roleNames.entries()){const row=element('div','model-row'),label=element('strong','',role);const provider=element('select'),model=element('input');model.setAttribute('aria-label',role+' model');provider.setAttribute('aria-label',role+' provider');for(const choice of state.setup.providers.filter(item=>item.enabled)){const option=element('option','',choice.label||choice.id);option.value=choice.id;provider.append(option);}const saved=currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{};provider.value=saved.provider||state.setup.provider;model.value=saved.model||providerChoice()?.test_model||'';const changed=()=>{const choice=state.setup.providers.find(item=>item.id===provider.value);model.value=choice?.test_model||choice?.models?.[0]?.id||'';if(!mixed)$('#model-rows').querySelectorAll('.model-row').forEach(other=>{other.querySelector('select').value=provider.value;other.querySelector('input').value=model.value;});};provider.onchange=changed;model.oninput=()=>{if(!mixed)$('#model-rows').querySelectorAll('input').forEach(other=>{other.value=model.value;});};row.dataset.role=role;row.append(label,provider,model);$('#model-rows').append(row);if(!mixed&&index>0){provider.value=$('#model-rows select').value;model.value=$('#model-rows input').value;}}}
@@ -283,6 +349,8 @@ function bind() {
   document.querySelectorAll('[data-view]').forEach(button=>{const mark=button.querySelector('[data-nav-icon]');if(mark)mark.replaceChildren(desktopIcon(mark.dataset.navIcon));button.dataset.tooltip=button.textContent.trim();action(button,()=>setView(button.dataset.view));});
   document.querySelectorAll('[data-tab]').forEach(button=>{button.onclick=()=>setTab(button.dataset.tab);});
   action($('#new-task'),newTask);action($('#project-open'),connectWorkspace);action($('#project-name'),connectWorkspace);action($('#welcome-workspace'),connectWorkspace);
+  action($('#project-retry'),connectWorkspace);action($('#project-feedback-close'),()=>{$('#project-feedback').hidden=true;});action($('#welcome-task'),newTask);
+  native.onWorkspaceStatus?.(value=>{state.projectTarget=value.path;if(value.phase==='opening'){projectFeedback('opening','Opening project…',value.path,'Opening your folder and loading saved tasks. This can take a few seconds.');$('#connection-state').textContent='Opening project…';}if(value.phase==='error'){workspaceUI();projectFailure(value.message);}});
   action($('#welcome-connections'),openConnections);action($('#connections-open'),openConnections);action($('#welcome-remote'),()=>showDialog('#remote-dialog'));
   action($('#run'),()=>runTask());action($('#mode'),()=>{});$('#mode').onchange=()=>patchSession({mode:$('#mode').value}).catch(error=>toast(errorText(error)));
   $('#prompt').oninput=()=>{const id=state.selected;state.edits.set(id,(state.edits.get(id)||0)+1);state.dirty.add(id);try{localStorage.setItem('pantheon-draft:'+state.info.workspace.workspace+':'+id,JSON.stringify({value:$('#prompt').value,updated:Date.now()}));}catch{}$('#draft-state').textContent='Unsaved';clearTimeout(state.draftTimer);const draft=$('#prompt').value;state.draftTimer=setTimeout(()=>patchSession({draft},id).catch(error=>toast(errorText(error))),450);};
@@ -295,7 +363,7 @@ function bind() {
   $('#connection-form').onsubmit=event=>{event.preventDefault();(async()=>{state.setup=await api('/api/connections/save',connectionBody());$('#api-key').value='';renderConnectionSummary();$('#connection-message').textContent='Connection saved. Existing role assignments are unchanged.';})().catch(error=>{$('#connection-message').textContent=errorText(error);});};
   action($('#test-api'),async()=>{if(!await confirmChoice('Test provider access?','This sends a small request to the selected provider and can incur usage.','Test API'))return;const value=await api('/api/setup/test',connectionBody());state.setup=value;$('#connection-message').textContent=value.ok?'API verified.':value.problem||'API test failed.';renderConnectionSummary();});
   action($('#refresh-models'),async()=>{const value=await api('/api/setup/models',{...connectionBody(),current_model:$('#test-model').value});await refreshSetup();fillProvider();$('#connection-message').textContent=value.message;});
-  action($('#use-provider'),async()=>{if(!await confirmChoice('Update defaults for new tasks?','Existing conversations keep their saved model choices.','Update defaults'))return;const models=Object.fromEntries(roleNames.map(role=>[role,{provider:$('#provider').value,model:$('#test-model').value.trim()}]));state.setup=await api('/api/models/defaults',{models});toast('New-task defaults saved.');});
+  action($('#use-provider'),async()=>{if(!await confirmChoice('Update defaults for new tasks?','Existing conversations keep their saved model choices.','Update defaults'))return;const models=Object.fromEntries(roleNames.map(role=>[role,{provider:$('#provider').value,model:$('#test-model').value.trim()}]));state.setup=await api('/api/models/defaults',{models});renderOnboarding();toast('New-task defaults saved.');});
   action($('#manage-connection'),manageConnection);
   action($('#task-menu'),()=>taskActions());action($('#new-window'),()=>native.newWindow(state.selected));
   action($('#inspector-toggle'),()=>showInspector($('#inspector-toggle').getAttribute('aria-pressed')!=='true'));action($('#inspector-close'),()=>showInspector(false));
@@ -320,13 +388,13 @@ function bind() {
   action($('#settings-open'),async()=>{const preferences=await native.preferences();$('#font-size').value=preferences.fontSize;$('#panel-width').value=preferences.panelWidth;for(const id of ['notifications','background','global-shortcut'])$('#'+id).checked=preferences[id==='global-shortcut'?'globalShortcut':id];showDialog('#settings-dialog');});
   $('#preferences-form').onsubmit=event=>{event.preventDefault();native.preferences({fontSize:Number($('#font-size').value),panelWidth:Number($('#panel-width').value),notifications:$('#notifications').checked,background:$('#background').checked,globalShortcut:$('#global-shortcut').checked}).then(value=>{state.info.preferences=value;applyPreferences(value);closeDialog('#settings-dialog');}).catch(error=>toast(errorText(error)));};
   action($('#service-open'),showService);
-  $('#remote-form').onsubmit=event=>{event.preventDefault();(async()=>{await flushDrafts();const value=await native.connectRemote({url:$('#remote-url').value,username:$('#remote-user').value,password:$('#remote-password').value,remember:$('#remote-remember').checked});$('#remote-password').value='';state.info=value;resetWorkspace();closeDialog('#remote-dialog');workspaceUI();await refresh();})().catch(error=>{$('#remote-error').textContent=errorText(error);$('#remote-password').value='';});};
-  native.onCommand(command=>{(async()=>{if(command==='connection-lost'){$('#connection-state').textContent='Disconnected';notice('The core is unavailable. Saved tasks will not be resent. Open Service and updates to reconnect.');}if(command==='new')await newTask();if(command==='workspace')await connectWorkspace();if(command==='palette')openPalette();if(command==='focus')$('#prompt').focus();if(command==='workspace-ready'){state.info=await native.info();workspaceUI();await refresh();}if(command==='preferences'){state.info.preferences=await native.preferences();applyPreferences(state.info.preferences);}if(command==='updates')await showService();})().catch(error=>toast(errorText(error)));});
+  $('#remote-form').onsubmit=event=>{event.preventDefault();(async()=>{await flushDrafts();const value=await native.connectRemote({url:$('#remote-url').value,username:$('#remote-user').value,password:$('#remote-password').value,remember:$('#remote-remember').checked});$('#remote-password').value='';closeDialog('#remote-dialog');await adoptWorkspace(value);})().catch(error=>{$('#remote-error').textContent=errorText(error);$('#remote-password').value='';});};
+  native.onCommand(command=>{(async()=>{if(command==='connection-lost'){$('#connection-state').textContent='Disconnected';notice('The core is unavailable. Saved tasks will not be resent. Open Service and updates to reconnect.');}if(command==='new')await newTask();if(command==='workspace')await connectWorkspace();if(command==='palette')openPalette();if(command==='focus')$('#prompt').focus();if(command==='workspace-ready')await adoptWorkspace(await native.info());if(command==='preferences'){state.info.preferences=await native.preferences();applyPreferences(state.info.preferences);}if(command==='updates')await showService();})().catch(error=>toast(errorText(error)));});
   document.addEventListener('keydown',event=>{const mod=event.metaKey||event.ctrlKey;if(mod&&event.key.toLowerCase()==='k'){event.preventDefault();openPalette();}if(mod&&event.key.toLowerCase()==='n'){event.preventDefault();newTask().catch(error=>toast(errorText(error)));}if(mod&&event.key==='Enter'&&event.target===$('#prompt')){event.preventDefault();runTask().catch(error=>toast(errorText(error)));}});
   $('#content-tabs').addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[role=tab]')],index=tabs.indexOf(event.target);if(index<0||!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const button=tabs[(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setTab(button.dataset.tab);button.focus();});
   document.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();$('.app').classList.add('drag-target');}});document.addEventListener('dragleave',event=>{if(!event.relatedTarget)$('.app').classList.remove('drag-target');});
   document.addEventListener('drop',async event=>{if(native.onDrop)return;event.preventDefault();$('.app').classList.remove('drag-target');try{const items=[];for(const file of [...event.dataTransfer.files].slice(0,5)){if(!file.size)continue;if(file.size>20*1024*1024)throw new Error('File exceeds 20 MB');const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));items.push({name:file.name,data:btoa(binary)});}if(items.length)await addAttachments(items);}catch(error){toast(errorText(error));}});
 }
 async function showService(){const panel=element('div');panel.append(element('p','',state.info?.workspace?(state.info.remote?'Connected to a remote server. Its lifecycle is managed on that host.':state.info.owned?'Desktop owns this core. Closing the window can keep it in the tray; quitting stops this owned service.':'This is an existing service. Quitting Desktop will not stop it.'):'No core connected.'));const reconnect=element('button','','Reconnect current host');action(reconnect,async()=>{await flushDrafts().catch(()=>{});state.info=state.info.remote?await native.reconnectRemote():await native.reconnect();state.setup=null;notice('');workspaceUI();await refresh();closeDialog('#info-dialog');});if(state.info?.workspace)panel.append(reconnect);const check=element('button','','Check for updates');action(check,async()=>{const result=await native.updates();panel.append(element('p','',result.available?'Update available: '+result.latest+'. Current app: '+result.version:result.reason||('You are up to date. Current app: '+result.version)));});const releases=element('button','','Open official releases');action(releases,()=>native.openRelease());const remote=element('button','','Connect remote server');action(remote,()=>{closeDialog('#info-dialog');showDialog('#remote-dialog');});panel.append(check,releases,remote);info('Service and updates',panel);}
-async function boot(){if(!native){showWelcome();$('#startup-error').textContent='This interface needs the native Pantheon app. The browser prototype remains in docs/desktop.';return;}state.info=await native.info();applyPreferences(state.info.preferences);workspaceUI();bind();native.onDrop?.(value=>{(async()=>{if(value.error)throw new Error(value.error);if(value.info){state.info=value.info;resetWorkspace();workspaceUI();await refresh();}if(value.files?.length)await addAttachments(value.files);})().catch(error=>toast(errorText(error)));});native.onUpdate?.(value=>{if(value.available){notice('Pantheon '+value.latest+' is available. Open Service and updates to download it.');$('#service-open').dataset.tooltip='Update available: '+value.latest;}});if(state.info.workspace)await refresh();setInterval(tick,1800);setInterval(async()=>{if(!state.info?.workspace){state.info=await native.info();workspaceUI();if(state.info.workspace)await refresh();}},1500);}
+async function boot(){if(!native){showWelcome();$('#startup-error').textContent='This interface needs the native Pantheon app. The browser prototype remains in docs/desktop.';return;}state.info=await native.info();applyPreferences(state.info.preferences);workspaceUI();bind();native.onDrop?.(value=>{(async()=>{if(value.error)throw new Error(value.error);if(value.info)await adoptWorkspace(value.info);if(value.files?.length)await addAttachments(value.files);})().catch(error=>{if($('#project-feedback').dataset.phase==='opening')projectFailure(error);else toast(errorText(error));});});native.onUpdate?.(value=>{if(value.available){notice('Pantheon '+value.latest+' is available. Open Service and updates to download it.');$('#service-open').dataset.tooltip='Update available: '+value.latest;}});if(state.info.workspace)await adoptWorkspace(state.info);setInterval(tick,1800);setInterval(async()=>{if(!state.info?.workspace&&!state.projectOpening){state.info=await native.info();workspaceUI();if(state.info.workspace)await adoptWorkspace(state.info);}},1500);}
 boot().catch(error=>{$('#startup-error').textContent=errorText(error);showWelcome();});

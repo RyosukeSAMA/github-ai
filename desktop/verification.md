@@ -4,6 +4,8 @@ Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-be
 
 The `0.5.0-beta.2` refresh changes only application icon assets, their reproducible SVG exporter and package metadata. It retains the verified runtime below; its macOS package is recorded separately under `dist/desktop-beta.2` with local checksums. The version increment helps distinguish the refreshed bundle from cached beta.1 icons. The rounded transparent PNG was visually inspected, macOS `iconutil` decoded every ICNS size, the built bundle contains the exact new ICNS, and its ad-hoc signature and DMG integrity checks passed.
 
+The `0.5.0-beta.3` desktop update adds project-opening progress, persistent path confirmation, setup-aware next steps, and actionable errors. Its development and packaged macOS smoke tests passed, including canceling the picker before/after opening a project, retaining the current draft, retrying an unavailable folder, seeing actual native opening events, following Configure models → Create first task, and the existing task/file/restart flow. One localhost fixture call was made, with zero paid calls or renderer errors. The six proxy/release tests, JavaScript syntax, ad-hoc signature and DMG integrity checks also passed. The shared Python core is unchanged; the three-platform baseline below remains historical evidence, while the updated workflow reruns the expanded smoke test.
+
 | Check | Recorded result |
 | --- | --- |
 | Python tests, including existing Web/CLI contracts | 308 passed, 3 skipped |
@@ -21,7 +23,7 @@ The three Python skips are the opt-in live model check and two Windows-native ch
 
 ## What the native smoke test exercises
 
-`desktop/test/native-smoke.cjs` creates a temporary project and app profile. It saves a provider connection to a localhost model fixture, updates new-task defaults, runs a specialist through the real shared core, reloads the page, saves a generated HTML output through a real diff, rejects an external-file conflict, reloads and saves a fresh edit, searches actual message content, checks that task focus survives unchanged polling and that attention filtering excludes ready/completed tasks, opens another window, resolves conflicting drafts, configures three dummy connections without making paid calls, checks role-model isolation across conversations, opens the capability pages and messaging form, verifies that direct terminal proxy requests cannot bypass native confirmation, executes a harmless confirmed `echo` command, saves an unsent draft, quits and restarts.
+`desktop/test/native-smoke.cjs` creates a temporary project and app profile. It begins without a project and exercises native folder selection, cancellation, an unavailable folder, persistent failure, retry, full path confirmation and the next-step guide. It then saves a provider connection to a localhost model fixture, updates new-task defaults, runs a specialist through the real shared core, reloads the page, saves a generated HTML output through a real diff, rejects an external-file conflict, reloads and saves a fresh edit, searches actual message content, checks that task focus survives unchanged polling and that attention filtering excludes ready/completed tasks, opens another window, resolves conflicting drafts, configures three dummy connections without making paid calls, checks role-model isolation across conversations, opens the capability pages and messaging form, verifies that canceling project selection keeps the current task/draft, verifies that direct terminal proxy requests cannot bypass native confirmation, executes a harmless confirmed `echo` command, saves an unsent draft, quits and restarts.
 
 The final package test additionally asserts that the renderer is running in the packaged app. Python and UI assets come from the bundle. Screenshots use the local fixture and are not evidence of real commercial-provider access. Native consent dialogs are substituted only through the external test driver inside its isolated fixture; production dialogs are not overridden. No diagnostic quit controls or test command bypasses are shipped.
 
@@ -41,6 +43,6 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Local beta artifacts
 
-The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.2`; the prior beta.1 proof build remains in `dist/desktop-beta`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
+The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.3`; prior beta.1 and beta.2 builds remain in `dist/desktop-beta` and `dist/desktop-beta.2`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
 
-`dist/desktop-beta.2/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.
+`dist/desktop-beta.3/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.

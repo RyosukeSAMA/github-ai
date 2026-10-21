@@ -4,6 +4,7 @@ const dropCallbacks=new Set();
 contextBridge.exposeInMainWorld('pantheonDesktop', Object.freeze({
   info: () => ipcRenderer.invoke('desktop:info'),
   chooseWorkspace: () => ipcRenderer.invoke('desktop:workspace'),
+  onWorkspaceStatus: callback => {const listener=(_event,value)=>callback(value);ipcRenderer.on('desktop:workspace-status',listener);return ()=>ipcRenderer.removeListener('desktop:workspace-status',listener);},
   reconnect: () => ipcRenderer.invoke('desktop:reconnect'),
   connectRemote: value => ipcRenderer.invoke('desktop:remote', value),
   reconnectRemote: () => ipcRenderer.invoke('desktop:remote-reconnect'),
