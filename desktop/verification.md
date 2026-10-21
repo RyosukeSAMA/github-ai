@@ -13,8 +13,7 @@ Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-be
 | Bundled Python | Frozen runtime starts without a system Python installation |
 | macOS application integrity | Ad-hoc signature passed `codesign --verify --deep --strict` |
 | macOS DMG integrity | `hdiutil verify` passed |
-| Windows/macOS native packaging | CI build, packaged smoke and installer packaging passed at `7e4ee10` |
-| Linux native packaging | Packaged smoke and AppImage passed at `7e4ee10`; Debian metadata fixed after that run. Final CI results are linked in PR #34. |
+| Windows/macOS/Linux native packaging | All three platforms passed shared-contract tests, packaged native smoke and installer packaging at `a7b9787`; [CI run and artifacts](https://github.com/RyosukeSAMA/github-ai/actions/runs/39560414867) |
 
 The three Python skips are the opt-in live model check and two Windows-native checks on a non-Windows host. The FastAPI TestClient emits an upstream deprecation warning; no test failure is hidden by it.
 
@@ -32,7 +31,7 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Validation still required for public release
 
-- Final three-platform CI packaging results and hands-on acceptance on supported desktop environments. CI status and installer downloads are linked in PR #34.
+- Hands-on acceptance on supported desktop environments. Automated three-platform build and packaged smoke results do not establish every OS permission or desktop environment behavior.
 - Real OpenAI/Anthropic/DeepSeek media/account access and Telegram/Slack/Discord callbacks and replies. No real platform messages were sent in this work.
 - An operator-managed real HTTPS remote server and a second physical device. Shared-session authentication is tested locally; this does not establish real TLS deployment or offline synchronization.
 - OS notifications, tray behavior, global shortcuts, real OS drag-and-drop and credential prompts across the target platforms. The code and opt-in controls exist; automated fixture checks do not establish every OS permission behavior.
