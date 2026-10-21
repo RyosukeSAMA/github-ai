@@ -8,7 +8,9 @@ The `0.5.0-beta.3` desktop update adds project-opening progress, persistent path
 
 The `0.5.0-beta.4` update adds an illustrated welcome page and a named project folder tile. Its macOS packaged smoke passed with one localhost fixture call, zero paid calls and zero page errors. The test verifies local illustration loading, a long folder name containing spaces and `&`, visible canonical paths, a sidebar folder icon, light/dark screenshots, native windows at 1440/1024/820 pixels without horizontal overflow, and a folder click opening files that remain visible across polling. It also checks that the inspector cannot cover the welcome page in a narrow window. The existing task/file/restart flow, six proxy/release checks, syntax/diff checks, ad-hoc signature and DMG integrity passed. No shared Python core or Web/CLI behavior changed.
 
-The latest `0.5.0-beta.5` adds persistent connection result cards inside the modal. Both development and final macOS packaged smoke passed with four localhost fixture calls (three explicit API probes and one task), zero paid calls and zero page errors. Tests cover pending/disabled controls, green API/model/timing confirmation, persistence beyond the old toast lifetime, invalidation after model edits, a rejected-model error and successful retry, restoring saved verification after reopening, save-first guidance, refresh preserving a typed key, and visible new-task defaults with all four AI roles and the existing-task scope. Light/dark screenshots were inspected. The existing task/file/restart flow and two normal process exits, six proxy/release checks, syntax/diff checks, ad-hoc signature and DMG integrity passed. The shared Python core and installed Web/CLI are unchanged.
+The `0.5.0-beta.5` adds persistent connection result cards inside the modal. Both development and final macOS packaged smoke passed with four localhost fixture calls (three explicit API probes and one task), zero paid calls and zero page errors. Tests cover pending/disabled controls, green API/model/timing confirmation, persistence beyond the old toast lifetime, invalidation after model edits, a rejected-model error and successful retry, restoring saved verification after reopening, save-first guidance, refresh preserving a typed key, and visible new-task defaults with all four AI roles and the existing-task scope. Light/dark screenshots were inspected. The existing task/file/restart flow and two normal process exits, six proxy/release checks, syntax/diff checks, ad-hoc signature and DMG integrity passed. The shared Python core and installed Web/CLI are unchanged.
+
+The latest `0.5.0-beta.6` adds the artistic task atelier: local temple/landscape vectors, role portraits, a centered composer, task starters and an explained mode menu. The development and final macOS packaged smoke passed with four localhost fixture calls, zero paid calls and zero page errors, including both normal exits. New assertions cover actual artwork/portrait loading, initial context and empty tabs being hidden, manual context access, keyboard mode selection/focus, selected-mode persistence across reload, draft-only starters with cancellation/replacement protection, empty-send prevention, prompt focus across polling, 1024/820-pixel windows and in-bounds menus, navigation to files and back, and the transition to execution. The remaining beta.5 and full task/file/restart checks, six proxy/release tests, syntax/diff checks, ad-hoc signature and DMG integrity passed. Light/dark/narrow screenshots were inspected. There are no shared Python core or installed Web/CLI changes.
 
 | Check | Recorded result |
 | --- | --- |
@@ -16,7 +18,7 @@ The latest `0.5.0-beta.5` adds persistent connection result cards inside the mod
 | Existing Web browser regression | 40 passed |
 | Native proxy and release policy tests | 6 passed |
 | Ruff and JavaScript syntax | Passed |
-| Development native app, macOS arm64 | Latest beta.5 smoke passed with four localhost model calls and zero paid calls |
+| Development native app, macOS arm64 | Latest beta.6 smoke passed with four localhost model calls and zero paid calls |
 | Final packaged native app | Passed the complete smoke flow and two normal exits (code 0); evidence in `dist/desktop-evidence/native-smoke.json` |
 | Bundled Python | Frozen runtime starts without a system Python installation |
 | macOS application integrity | Ad-hoc signature passed `codesign --verify --deep --strict` |
@@ -47,6 +49,6 @@ Tests cover private capability authentication; remote bindings requiring actual 
 
 ## Local beta artifacts
 
-The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.5`; prior builds remain in `dist/desktop-beta`, `dist/desktop-beta.2`, `dist/desktop-beta.3` and `dist/desktop-beta.4`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
+The latest local macOS Apple Silicon review app, DMG and ZIP are in `dist/desktop-beta.6`; prior builds remain in `dist/desktop-beta`, `dist/desktop-beta.2`, `dist/desktop-beta.3`, `dist/desktop-beta.4` and `dist/desktop-beta.5`. Default maintainer builds use `dist/desktop`. Replacing the app does not replace workspace configuration or data. No source changes were applied to the user's already-installed stable service, and it was not stopped.
 
-`dist/desktop-beta.5/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.
+`dist/desktop-beta.6/SHA256SUMS.txt` records the SHA-256 hashes of the current local DMG and ZIP.

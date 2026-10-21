@@ -14,6 +14,8 @@ Windows and Linux use their native window controls. The default light theme, opt
 
 The welcome page pairs the white interface with a quiet architectural illustration, sky/sand colors and an overview of the five council roles. Both illustrations are local vector assets; task reading and execution keep their plain workspace. Long folder names retain their full title/path even when the folder face or sidebar label needs truncation.
 
+New tasks open in an illustrated atelier with a centered prompt, temple/landscape artwork and the five role portraits. Click a portrait to select its mode, or open **Council mode** for descriptions of Auto route, Multi-role council and each specialist; the menu supports arrow keys, Home/End and Escape. The four starting points only populate a draft and ask before replacing existing text. They never send a task or call a provider. An empty prompt cannot be sent. The context panel starts collapsed and can be opened from its icon; after sending, the normal Conversation/Result/Activity/Changes workspace returns. Role details show responsibilities and a concise provider label; hover the provider to inspect its full model ID.
+
 ## Task and project lifecycle
 
 - A private local service owns execution; closing or reloading a renderer does not resend a task. Opt into tray background mode to keep the last window and local core alive. Quitting warns about active owned tasks, requests cancellation and stops only desktop-owned services. Provider calls already sent may still finish and incur usage.

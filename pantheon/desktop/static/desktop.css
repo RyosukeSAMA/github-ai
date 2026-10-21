@@ -101,3 +101,70 @@
 .connection-assignment>h3{font-size:14px;margin:0 0 7px}
 .connection-assignment>p{font-size:12px;line-height:1.7;color:var(--muted);margin:0 0 15px}
 @media(prefers-reduced-motion:reduce){.operation-status-mark:after{animation:none!important}}
+
+/* The atelier is the empty-task state; execution keeps its reading workspace. */
+.task-preparing .main{overflow-y:auto;background-color:var(--surface);background-image:radial-gradient(ellipse at 50% 14%,color-mix(in srgb,var(--gold) 5%,transparent),transparent 43%),radial-gradient(ellipse at 84% 44%,color-mix(in srgb,var(--accent) 4%,transparent),transparent 50%)}
+.task-preparing .main>.content-scroll{display:none}
+.task-preparing .breadcrumb{border-bottom-color:transparent;position:relative;z-index:1}
+.task-preparing .breadcrumb strong{color:var(--muted);font-size:11px}
+.task-intro{position:relative;flex-shrink:0;width:calc(100% - 64px);max-width:780px;margin:clamp(18px,calc((100dvh - 780px)/2),90px) auto 0;padding-top:125px;text-align:center}
+.task-intro[hidden],.task-starters[hidden],#content-tabs[hidden]{display:none}
+.atelier-illustration{position:absolute;top:-40px;left:-60px;right:-60px;height:175px;pointer-events:none;user-select:none}
+.atelier-illustration img{width:100%;height:100%;object-fit:contain;display:block}
+.task-intro .document-kicker{font-size:9px;letter-spacing:2.8px;position:relative}
+.task-intro h1{font:500 45px/1.17 ui-serif,Georgia,"Times New Roman",serif;letter-spacing:-1.35px;margin:12px 0 10px;color:var(--ink)}
+.task-intro>p{font-size:13px;color:var(--muted);line-height:1.8}
+.task-council{display:flex;align-items:flex-start;justify-content:center;gap:12px;margin:20px auto 0}
+.task-council button{display:flex;flex-direction:column;align-items:center;gap:7px;padding:4px 5px 5px;min-width:65px;border-radius:10px;transition:background .16s ease}
+.task-council img{display:block;object-fit:cover;width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 3px var(--surface),0 0 0 4px color-mix(in srgb,var(--gold) 17%,var(--line));filter:saturate(.75);transition:box-shadow .16s ease,filter .16s ease}
+.task-council span{font-size:10px;color:var(--muted);line-height:1.5}
+.task-council button[aria-pressed=true] img{box-shadow:0 0 0 3px var(--surface),0 0 0 4px color-mix(in srgb,var(--accent) 70%,var(--line));filter:saturate(1)}
+.task-council button[aria-pressed=true] span{color:var(--accent)}
+.task-preparing #composer{width:calc(100% - 72px);max-width:740px;margin:23px auto 0;padding:0;background:transparent}
+.composer-box{border-radius:17px;box-shadow:0 5px 22px color-mix(in srgb,var(--ink) 4%,transparent);border-color:color-mix(in srgb,var(--accent) 14%,var(--line));padding:6px}
+.composer-box:focus-within{border-color:color-mix(in srgb,var(--accent) 52%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 5%,transparent),0 7px 28px color-mix(in srgb,var(--ink) 4%,transparent)}
+.composer textarea{padding:15px 16px 10px;font-size:14px;line-height:1.75;min-height:87px}
+.composer textarea::placeholder{color:var(--muted);opacity:.85}
+.composer-tools{padding:1px 7px 5px;gap:6px}
+.composer-tools #mode[hidden]{display:none}
+.composer-tools .mode-trigger{display:inline-flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid var(--line);background:var(--panel);border-radius:8px;white-space:nowrap;color:var(--ink);font-size:11px;max-width:240px}
+.mode-trigger #mode-label{overflow:hidden;text-overflow:ellipsis}
+.mode-trigger .ui-icon{width:15px;height:15px;color:var(--accent)}
+.mode-trigger .mode-chevron .ui-icon{width:12px;height:12px;color:var(--muted)}
+#run.icon-button{border-radius:11px;width:35px;height:35px}
+#run:disabled{opacity:.36}
+.composer-caption{font-size:10px;line-height:1.7;margin:11px 3px 0;gap:14px}
+#draft-state{font-size:9px;color:var(--muted)}
+.task-starters{flex-shrink:0;width:calc(100% - 72px);max-width:740px;margin:27px auto 32px}
+.starter-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:11px;color:var(--muted);font-size:10px}
+.starter-heading>span:first-child{font-size:8px;letter-spacing:1.6px;color:var(--gold)}
+.starter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.starter-grid button{position:relative;display:flex;flex-direction:column;align-items:flex-start;min-width:0;padding:14px 13px 13px;border:1px solid color-mix(in srgb,var(--line) 80%,transparent);border-radius:12px;background:color-mix(in srgb,var(--surface) 85%,var(--panel));text-align:left;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.starter-grid button:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 32%,var(--line));box-shadow:0 5px 14px color-mix(in srgb,var(--ink) 4%,transparent);background:var(--panel)}
+.starter-icon{display:grid;place-items:center;color:var(--accent);margin-bottom:12px}
+.starter-icon .ui-icon{width:18px;height:18px}
+[data-starter=build] .starter-icon{color:#9b7b46}[data-starter=fix] .starter-icon{color:var(--green)}[data-starter=research] .starter-icon{color:#9380a5}
+.starter-grid strong{font-size:11px;line-height:1.6;font-weight:500}
+.starter-grid small{font-size:10px;line-height:1.6;margin-top:3px;color:var(--muted)}
+.starter-arrow{position:absolute;right:13px;top:12px;font-size:14px;color:var(--muted);opacity:.5}
+.atelier-note{text-align:center;font:italic 12px/1.8 ui-serif,Georgia,serif;color:var(--muted);margin-top:23px;opacity:.8}
+.mode-menu{position:fixed;inset:auto;margin:0;padding:7px;width:320px;max-width:calc(100vw - 20px);max-height:calc(100vh - 20px);overflow:auto;border:1px solid var(--line);border-radius:13px;background:var(--surface);color:var(--ink);box-shadow:0 12px 45px color-mix(in srgb,var(--ink) 14%,transparent)}
+.mode-menu-heading{font-size:8px;letter-spacing:1.5px;color:var(--muted);padding:10px 10px 9px}
+.mode-option{display:flex;align-items:flex-start;gap:11px;width:100%;padding:11px 10px;text-align:left;border-radius:8px}
+.mode-option>.ui-icon{width:17px;height:17px;margin-top:2px;color:var(--accent)}
+.mode-option>span{flex:1;min-width:0}
+.mode-option strong{display:block;font-size:12px;font-weight:500;line-height:1.6}
+.mode-option small{display:block;font-size:10px;line-height:1.65;margin-top:3px}
+.mode-option[aria-checked=true]{background:var(--accent-soft)}
+.mode-option[aria-checked=true]:after{content:'✓';color:var(--accent);font-size:12px;margin-top:3px}
+.role-portrait{width:34px;height:34px;flex-shrink:0;object-fit:cover;border-radius:10px;border:1px solid color-mix(in srgb,var(--gold) 20%,var(--line))}
+.inspector-role{flex-wrap:nowrap;align-items:flex-start;gap:11px;margin:20px 0}
+.inspector-role .role-purpose{font-size:10px;line-height:1.6;margin-top:3px}
+.inspector-role .inspector-model{padding:0;margin-top:3px;font-size:10px;line-height:1.5;color:var(--accent);text-align:left}
+.inspector-role .inspector-model:hover{background:transparent;text-decoration:underline}
+.council-route .role-portrait{width:24px;height:24px;border-radius:7px}
+.activity-list .role-portrait{width:29px;height:29px;border-radius:8px}
+.app[data-theme=dark] .atelier-illustration{opacity:.66;filter:saturate(.65)}
+@media(max-width:1150px){.task-intro{width:calc(100% - 50px)}.task-intro h1{font-size:40px}.task-preparing #composer,.task-starters{width:calc(100% - 52px)}.task-preparing .composer-caption{display:flex}.starter-grid{gap:8px}.starter-grid button{padding:13px 10px}.starter-grid small{font-size:9px}}
+@media(max-width:850px){.task-intro{padding-top:108px;margin-top:17px}.atelier-illustration{height:150px;top:-35px;left:-15px;right:-15px}.task-intro h1{font-size:34px;letter-spacing:-.9px}.task-intro>p{font-size:12px}.task-council{gap:6px;margin-top:18px}.task-council button{min-width:58px;padding:4px 2px}.task-council img{width:30px;height:30px}.task-council span{font-size:9px}.task-preparing #composer{margin-top:20px}.starter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.starter-grid button{padding:12px 13px}.starter-icon{margin-bottom:7px}.starter-grid small{font-size:10px}.starter-heading>span:last-child{display:none}.task-preparing .composer-caption{display:block}.task-preparing .composer-caption>span:first-child{max-width:100%}.task-preparing .composer-caption>span:last-child{display:none}.task-starters{margin-top:24px}.atelier-note{margin-top:17px}}
+@media(prefers-reduced-motion:reduce){.task-council button,.task-council img,.starter-grid button{transition:none}.starter-grid button:hover{transform:none}}

@@ -4,9 +4,12 @@ const native = window.pantheonDesktop;
 const state = {info:null, sessions:[], runs:[], artifacts:[], coreTasks:[], setup:null, selected:'', detail:null,
   view:'work', tab:'conversation', eventCache:new Map(), cursors:new Map(), output:new Map(), attachments:new Map(),
   activeReview:null, file:null, fileDirectory:'', patchQueue:Promise.resolve(), draftTimer:null, editorTimer:null,
-  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null};
+  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, sending:false, preparing:false, contextBeforePreparation:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null};
 const activeStatuses = new Set(['queued','running','stopping']);
 const roleNames = ['hermes','hephaestus','athena','apollo'];
+const councilRoles={hermes:{name:'Hermes',purpose:'Plan & coordinate'},hephaestus:{name:'Hephaestus',purpose:'Build & refine'},athena:{name:'Athena',purpose:'Research & reason'},apollo:{name:'Apollo',purpose:'Create & imagine'},chronos:{name:'Chronos',purpose:'Schedule & deliver'}};
+const councilModes=[['auto','Auto route','Hermes selects the right specialist for your task.','route'],['multi','Multi-role council','Hermes plans a collaboration across several roles.','council'],['role:hephaestus','Hephaestus','Work directly with your coding and engineering specialist.','build'],['role:athena','Athena','Work directly with your research and reasoning specialist.','search'],['role:apollo','Apollo','Work directly with your creative specialist.','capabilities'],['role:chronos','Chronos','Create a schedule with your local scheduling specialist.','clock']];
+const taskStarters={explore:'Explore this project and explain its structure, main components, and how to run it. Start with a read-only overview.',build:'Help me build a new feature in this project. The idea is: ',fix:'Help me diagnose and fix an issue in this project. The problem is: ',research:'Research the following topic and provide a clear recommendation with sources: '};
 const currentSession = () => state.sessions.find(item => item.id === state.selected);
 const latestRun = id => state.runs.filter(run => run.session_id === (id || state.selected)).sort((a,b)=>b.created-a.created)[0];
 const activeRun = id => state.runs.find(run => run.session_id === (id || state.selected) && activeStatuses.has(run.status));
@@ -27,7 +30,7 @@ function applyPreferences(preferences) {
   $('.app').style.setProperty('--reader-size',preferences.fontSize+'px');$('.app').style.setProperty('--context-width',preferences.panelWidth+'px');
   setIconButton($('#theme-toggle'),preferences.theme==='dark'?'sun':'moon',preferences.theme==='dark'?'Switch to light theme':'Switch to dark theme');
   setIconButton($('#layout-toggle'),preferences.layout==='focus'?'focus':'layout',preferences.layout==='focus'?'Switch to Pro workspace':'Switch to Focus layout');
-  showInspector(innerWidth>1150 && preferences.layout!=='focus');
+  const context=innerWidth>1150 && preferences.layout!=='focus';if(state.preparing)state.contextBeforePreparation=context;showInspector(context&&!state.preparing);
 }
 function inlineMarkdown(text){
   const fragment=document.createDocumentFragment(),pattern=/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https:\/\/[^\s)]+\))/g;let last=0;
@@ -122,6 +125,7 @@ function workspaceUI() {
 }
 function showWelcome() {
   $('.app').classList.add('welcome-state');$('#welcome').hidden=false;
+  syncTaskPresentation();
   ['#task-heading','#council-route','#content-tabs','#composer'].forEach(key=>{$(key).hidden=true;});
   document.querySelectorAll('.pane,.global-pane').forEach(pane=>{pane.hidden=true;});
   $('#breadcrumb').textContent=state.info?.workspace?'Project setup':'Get started';renderOnboarding();
@@ -164,7 +168,7 @@ async function selectSession(id, initial=false) {
   const detail=await api('/api/desktop/sessions/'+id);if(generation!==state.selectionGeneration||epoch!==state.epoch)return;state.selected=id;state.detail=detail;state.messageLimit=80;try{localStorage.setItem('pantheon-selected:'+state.info.workspace.workspace,id);}catch{}
   const localKey='pantheon-draft:'+state.info.workspace.workspace+':'+id;
   try{const saved=JSON.parse(localStorage.getItem(localKey)||'null');if(saved && saved.updated>detail.updatedAt && saved.value!==detail.draft){detail.draft=saved.value;notice('A local draft was recovered. It has not been sent.');}}catch{}
-  $('#prompt').value=detail.draft||'';$('#mode').value=detail.mode||'auto';
+  $('#prompt').value=detail.draft||'';$('#mode').value=detail.mode||'auto';if(!detail.messages?.length&&!latestRun(id))state.tab='conversation';renderCouncilMode();
   if(detail.editor_draft?.path){state.file={path:detail.editor_draft.path,hash:detail.editor_draft.hash};$('#file-editor').value=detail.editor_draft.content;$('#file-editor').disabled=false;$('#editor-label').textContent=state.file.path;}
   else{state.file=null;$('#file-editor').value='';$('#file-editor').disabled=true;$('#editor-label').textContent='Select a UTF-8 text file';}
   state.attachments.set(id,detail.attachments||[]);renderAttachments();renderSidebar();setView('work');renderTask();await pollEvents();await refreshUsage();
@@ -189,7 +193,7 @@ async function refresh() {
 async function newTask() {
   if(state.projectOpening)return;
   if(!state.info?.workspace){if(!await connectWorkspace())return;}
-  await flushDrafts();const item=await api('/api/desktop/sessions',{title:'New task'});state.sessions.unshift(item);await selectSession(item.id,true);$('#prompt').focus();
+  await flushDrafts();const item=await api('/api/desktop/sessions',{title:'New task'});state.sessions.unshift(item);state.tab='conversation';await selectSession(item.id,true);$('#prompt').focus({preventScroll:true});
 }
 async function patchSession(changes,id=state.selected) {
   if(!id)return;
@@ -230,8 +234,46 @@ function setView(view) {
   $('#breadcrumb').textContent=global?({tasks:'Task center',library:'Artifact library',files:'Project files',automation:'Automations',capabilities:'Capabilities'})[view]:currentSession()?.title||'Workbench';
   if(!global){if(state.selected)setTab(state.tab);else showWelcome();}
   else{$('#'+view+'-pane').hidden=false;if(view==='tasks')renderMissions().catch(error=>toast(errorText(error)));if(view==='library')loadArtifacts().catch(error=>toast(errorText(error)));if(view==='files')loadDirectory(state.fileDirectory).catch(error=>toast(errorText(error)));if(view==='automation')loadSchedules().catch(error=>toast(errorText(error)));if(view==='capabilities')loadCapability(state.cap).catch(error=>toast(errorText(error)));}
+  syncTaskPresentation();
 }
-function setTab(tab) {state.tab=tab;if(tab==='result')loadResultArtifacts().catch(error=>toast(errorText(error)));if(state.view!=='work')setView('work');['conversation','result','activity','review'].forEach(name=>{$('#'+name+'-pane').hidden=name!==tab;const button=$('#'+name+'-tab');button.setAttribute('aria-selected',String(name===tab));button.tabIndex=name===tab?0:-1;});}
+function setTab(tab) {state.tab=tab;if(tab==='result')loadResultArtifacts().catch(error=>toast(errorText(error)));if(state.view!=='work')setView('work');['conversation','result','activity','review'].forEach(name=>{$('#'+name+'-pane').hidden=name!==tab;const button=$('#'+name+'-tab');button.setAttribute('aria-selected',String(name===tab));button.tabIndex=name===tab?0:-1;});syncTaskPresentation();}
+function syncTaskPresentation() {
+  const preparing=state.view==='work'&&!!state.selected&&$('#welcome').hidden&&state.tab==='conversation'&&!latestRun()&&!(state.detail?.messages?.length);
+  if(preparing!==state.preparing){
+    if(preparing){state.contextBeforePreparation=$('#inspector-toggle').getAttribute('aria-pressed')==='true';showInspector(false);}
+    else if(state.preparing)showInspector(state.contextBeforePreparation&&innerWidth>1150&&$('.app').dataset.layout!=='focus');
+    state.preparing=preparing;
+  }
+  $('.app').classList.toggle('task-preparing',preparing);$('#task-intro').hidden=!preparing;$('#task-starters').hidden=!preparing;
+  if(preparing){$('#task-heading').hidden=true;$('#content-tabs').hidden=true;$('#council-route').hidden=true;}
+  else if(state.view==='work'&&state.selected&&$('#welcome').hidden){$('#task-heading').hidden=false;$('#content-tabs').hidden=false;}
+  if(state.selected&&$('#project-feedback').dataset.phase==='connected')$('#project-feedback').hidden=true;
+  updateComposerState();
+}
+function updateComposerState() {$('#run').disabled=state.sending||state.projectOpening||(!activeRun()&&!$('#prompt').value.trim());}
+function rolePortrait(role) {
+  const image=element('img','role-portrait');image.src='role-'+(councilRoles[role]?role:'hermes')+'.png';image.alt='';image.width=34;image.height=34;return image;
+}
+function renderCouncilMode() {
+  const mode=$('#mode').value,choice=councilModes.find(item=>item[0]===mode)||councilModes[0];
+  if($('#mode-trigger').dataset.mode!==choice[0]){$('#mode-trigger').dataset.mode=choice[0];$('#mode-icon').replaceChildren(desktopIcon(choice[3]));$('#mode-label').textContent=choice[1];$('#mode-description').textContent=choice[2];}
+  $('#mode-trigger').setAttribute('aria-label','Council mode: '+choice[1]);
+  document.querySelectorAll('[data-council]').forEach(button=>{const selected=mode==='multi'?button.dataset.council!=='chronos':button.dataset.mode===mode;button.setAttribute('aria-pressed',String(selected));});
+  $('#mode-menu').querySelectorAll('[data-mode]').forEach(button=>{button.setAttribute('aria-checked',String(button.dataset.mode===mode));button.tabIndex=button.dataset.mode===mode?0:-1;});
+}
+async function chooseCouncilMode(mode) {$('#mode').value=mode;renderCouncilMode();$('#mode-menu').hidePopover();await patchSession({mode});}
+function openCouncilMenu() {
+  const menu=$('#mode-menu');if(menu.matches(':popover-open')){menu.hidePopover();return;}
+  menu.showPopover();const bounds=$('#mode-trigger').getBoundingClientRect(),width=menu.getBoundingClientRect().width,height=menu.getBoundingClientRect().height;
+  menu.style.left=Math.max(10,Math.min(innerWidth-width-10,bounds.left))+'px';menu.style.top=Math.max(10,bounds.top-height-10)+'px';
+  menu.querySelector('[aria-checked=true]')?.focus({preventScroll:true});
+}
+async function useTaskStarter(id) {
+  if(!taskStarters[id]||activeRun()||state.sending)return;
+  const text=$('#prompt').value,session=state.selected,epoch=state.epoch;if(text.trim()&&!await confirmChoice('Replace this draft?','Your current prompt has not been sent. Replace it with this starting point?','Replace draft'))return;
+  if(session!==state.selected||epoch!==state.epoch||text!==$('#prompt').value){toast('The task or draft changed. Choose the starting point again.');return;}
+  $('#prompt').value=taskStarters[id];$('#prompt').dispatchEvent(new Event('input',{bubbles:true}));$('#prompt').focus({preventScroll:true});$('#prompt').setSelectionRange($('#prompt').value.length,$('#prompt').value.length);
+}
 function renderTask() {
   const session=currentSession();if(!session)return;
   if(state.view==='work'){$('#task-heading').hidden=false;$('#content-tabs').hidden=false;$('#composer').hidden=false;$('#welcome').hidden=true;$('.app').classList.remove('welcome-state');}
@@ -242,6 +284,7 @@ function renderTask() {
   const result=(state.detail?.messages||[]).filter(item=>item.role==='assistant').at(-1);
   $('#result-content').replaceChildren(markdown(result?.text || 'Your completed result will appear here.'));
   $('#export-archive').disabled=!run?.task_id;$('#resume-open').hidden=!run?.task_id || !['failed','partial_failure','stopped','interrupted'].includes(run.status);
+  syncTaskPresentation();renderCouncilMode();
 }
 function renderMessages() {
   const target=$('#messages'),detail=state.detail;if(!detail)return;const outputKey=activeRun()?state.output.get(activeRun().id):null;const signature=JSON.stringify([state.selected,detail.messages,activeRun()?.status,outputKey]);if(target.dataset.signature===signature)return;target.dataset.signature=signature;const scroll=$('.content-scroll'),nearEnd=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80,position=scroll.scrollTop;target.replaceChildren();
@@ -254,27 +297,26 @@ function renderMessages() {
 function renderActivity() {
   const run=latestRun(),events=run?state.eventCache.get(run.id)||[]:[];$('#activity-list').replaceChildren();
   const visible=events.filter(item=>!['step_chunk','summary_chunk','progress'].includes(item.event)).slice(-100);
-  for(const item of visible){const row=element('li'),data=item.data||{};row.append(element('span','role-mark hermes',(data.role||'H').slice(0,2).toUpperCase()));const body=element('div');body.append(element('strong','',(data.role?data.role+' · ':'')+item.event.replaceAll('_',' ')),element('p','',data.description||data.detail||data.summary||data.message||data.error||data.plan||''));row.append(body);$('#activity-list').append(row);}
+  for(const item of visible){const row=element('li'),data=item.data||{};row.append(rolePortrait(data.role||'hermes'));const body=element('div');body.append(element('strong','',(data.role?data.role+' · ':'')+item.event.replaceAll('_',' ')),element('p','',data.description||data.detail||data.summary||data.message||data.error||data.plan||''));row.append(body);$('#activity-list').append(row);}
   if(!visible.length)empty($('#activity-list'),'Execution and tool activity will appear here.');
   const roles=new Set();for(const item of events)if(item.data?.role)roles.add(item.data.role);$('#council-route').replaceChildren();
-  for(const role of roles){const block=element('div');block.append(element('span','role-mark '+(role==='athena'?'athena':role==='hephaestus'?'forge':'hermes'),role.slice(0,2).toUpperCase()),element('strong','',role));$('#council-route').append(block);}
+  for(const role of roles){const block=element('div');block.append(rolePortrait(role),element('strong','',councilRoles[role]?.name||role));$('#council-route').append(block);}
   $('#council-route').hidden=state.view!=='work'||!roles.size;
 }
 function renderRoles() {
-  $('#role-list').replaceChildren();const statuses=state.setup?.role_statuses||[];
-  for(const role of roleNames){const saved=statuses.find(item=>item.role===role),choice=currentSession()?.overrides?.[role] || saved;const row=element('div','inspector-role');row.append(element('span','role-mark mini hermes',role.slice(0,2).toUpperCase()));const body=element('div');body.append(element('strong','',role[0].toUpperCase()+role.slice(1)),element('span','model-label',choice?.model?(choice.provider||'')+' · '+choice.model:'No model assigned'));row.append(body);$('#role-list').append(row);}
+  const target=$('#role-list'),statuses=state.setup?.role_statuses||[],choices=roleNames.map(role=>currentSession()?.overrides?.[role]||statuses.find(item=>item.role===role));const signature=JSON.stringify(choices);if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
+  for(const [index,role] of roleNames.entries()){const choice=choices[index],row=element('div','inspector-role');row.append(rolePortrait(role));const body=element('div');body.append(element('strong','',councilRoles[role].name),element('small','role-purpose',councilRoles[role].purpose));const provider=state.setup?.providers.find(item=>item.id===choice?.provider),model=element('button','inspector-model',choice?.model?provider?.label||choice.provider:'No model assigned');model.dataset.tooltip=choice?.model?choice.model+' · Edit assignment':'Assign a model';model.setAttribute('aria-label',councilRoles[role].name+' model: '+(choice?.model||'Not assigned'));action(model,openModels);body.append(model);row.append(body);target.append(row);}
 }
 async function runTask(resume) {
-  if(state.projectOpening)return;
+  if(state.projectOpening||state.sending)return;
   const running=activeRun();if(running){await api('/api/desktop/runs/'+running.id+'/stop',{});toast('Stop requested. Completed work is retained.');await refresh();return;}
-  if(!state.selected)await newTask();await flushDrafts();const prompt=resume?.prompt || $('#prompt').value.trim();if(!prompt){$('#prompt').focus();return;}
-  const session=currentSession();
-  if(session.title==='New task')await patchSession({title:prompt.slice(0,80)});
-  const request={prompt,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
-  $('#run').disabled=true;
-  try{const run=await api('/api/desktop/sessions/'+state.selected+'/runs',request);state.runs.unshift(run);$('#prompt').value='';state.detail.draft='';state.attachments.set(state.selected,[]);renderAttachments();setTab('conversation');await refresh();}
+  state.sending=true;updateComposerState();
+  try{if(!state.selected)await newTask();await flushDrafts();const prompt=resume?.prompt || $('#prompt').value.trim();if(!prompt){$('#prompt').focus();return;}
+    const session=currentSession();if(session.title==='New task')await patchSession({title:prompt.slice(0,80)});
+    const request={prompt,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
+    const run=await api('/api/desktop/sessions/'+state.selected+'/runs',request);state.runs.unshift(run);$('#prompt').value='';state.detail.draft='';state.attachments.set(state.selected,[]);renderAttachments();setTab('conversation');await refresh();}
   catch(error){if(/timeout|fetch|network/i.test(errorText(error)))notice('The send status is uncertain. Refresh task history before trying again; do not resend automatically.');throw error;}
-  finally{$('#run').disabled=false;}
+  finally{state.sending=false;updateComposerState();}
 }
 async function pollEvents() {
   const candidates=state.runs.filter(run=>activeStatuses.has(run.status)||run.session_id===state.selected).slice(0,15);
@@ -442,8 +484,15 @@ function bind() {
   action($('#project-retry'),connectWorkspace);action($('#project-feedback-close'),()=>{$('#project-feedback').hidden=true;});action($('#welcome-task'),newTask);
   native.onWorkspaceStatus?.(value=>{state.projectTarget=value.path;if(value.phase==='opening'){projectFeedback('opening','Opening project…',value.path,'Opening your folder and loading saved tasks. This can take a few seconds.');$('#connection-state').textContent='Opening project…';}if(value.phase==='error'){workspaceUI();projectFailure(value.message);}});
   action($('#welcome-connections'),openConnections);action($('#connections-open'),openConnections);action($('#welcome-remote'),()=>showDialog('#remote-dialog'));
-  action($('#run'),()=>runTask());action($('#mode'),()=>{});$('#mode').onchange=()=>patchSession({mode:$('#mode').value}).catch(error=>toast(errorText(error)));
-  $('#prompt').oninput=()=>{const id=state.selected;state.edits.set(id,(state.edits.get(id)||0)+1);state.dirty.add(id);try{localStorage.setItem('pantheon-draft:'+state.info.workspace.workspace+':'+id,JSON.stringify({value:$('#prompt').value,updated:Date.now()}));}catch{}$('#draft-state').textContent='Unsaved';clearTimeout(state.draftTimer);const draft=$('#prompt').value;state.draftTimer=setTimeout(()=>patchSession({draft},id).catch(error=>toast(errorText(error))),450);};
+  action($('#run'),()=>runTask());$('#mode').onchange=()=>{renderCouncilMode();patchSession({mode:$('#mode').value}).catch(error=>toast(errorText(error)));};
+  action($('#mode-trigger'),openCouncilMenu);$('#mode-trigger .mode-chevron').append(desktopIcon('chevron'));
+  for(const [mode,name,description,icon] of councilModes){const button=element('button','mode-option');button.dataset.mode=mode;button.setAttribute('role','menuitemradio');button.append(desktopIcon(icon));const text=element('span');text.append(element('strong','',name),element('small','',description));button.append(text);action(button,async()=>{await chooseCouncilMode(mode);$('#mode-trigger').focus({preventScroll:true});});$('#mode-menu').append(button);}
+  $('#mode-menu').addEventListener('toggle',event=>{$('#mode-trigger').setAttribute('aria-expanded',String(event.newState==='open'));});
+  $('#mode-menu').onkeydown=event=>{const items=[...$('#mode-menu').querySelectorAll('[data-mode]')],current=items.indexOf(document.activeElement);let next;if(event.key==='ArrowDown')next=(current+1)%items.length;if(event.key==='ArrowUp')next=(current-1+items.length)%items.length;if(event.key==='Home')next=0;if(event.key==='End')next=items.length-1;if(next!==undefined){event.preventDefault();items[next].focus();}};
+  document.querySelectorAll('[data-council]').forEach(button=>{button.dataset.tooltip=button.getAttribute('aria-label');action(button,()=>chooseCouncilMode(button.dataset.mode));});
+  document.querySelectorAll('[data-starter-icon]').forEach(mark=>mark.append(desktopIcon(mark.dataset.starterIcon)));
+  document.querySelectorAll('[data-starter]').forEach(button=>action(button,()=>useTaskStarter(button.dataset.starter)));renderCouncilMode();
+  $('#prompt').oninput=()=>{updateComposerState();const id=state.selected;state.edits.set(id,(state.edits.get(id)||0)+1);state.dirty.add(id);try{localStorage.setItem('pantheon-draft:'+state.info.workspace.workspace+':'+id,JSON.stringify({value:$('#prompt').value,updated:Date.now()}));}catch{}$('#draft-state').textContent='Unsaved';clearTimeout(state.draftTimer);const draft=$('#prompt').value;state.draftTimer=setTimeout(()=>patchSession({draft},id).catch(error=>toast(errorText(error))),450);};
   $('#file-editor').oninput=()=>{state.edits.set(state.selected,(state.edits.get(state.selected)||0)+1);state.dirty.add(state.selected);clearTimeout(state.editorTimer);const id=state.selected,draft={...state.file,content:$('#file-editor').value};state.editorTimer=setTimeout(()=>patchSession({editor_draft:draft},id).catch(error=>toast(errorText(error))),600);};
   action($('#older-messages'),async()=>{const older=await api('/api/desktop/sessions/'+state.selected+'?before='+state.detail.message_start);state.detail.messages=[...older.messages,...state.detail.messages];state.detail.message_start=older.message_start;renderMessages();});
   action($('#models-open'),openModels);action($('#models-edit'),openModels);action($('#assign-open'),async()=>{closeDialog('#connections-dialog');await openModels();});
