@@ -4,6 +4,8 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Keep the selected day/moonlit garden visible after task submission, on Conversation/Result/Activity/Changes, and when reopening a task. Add soft title and reading surfaces without changing the floral assets or light-green/dark-purple send colors. Retain the background through theme, Focus and window-size changes while keeping project-file and utility surfaces separate.
+
 - Refine the native sidebar, growing composer, task status, reading typography, code/table/list rendering, artifact and diff cards, context/usage sections and settings dialogs while retaining the selected watercolor artwork. Add explicit code/response copy feedback through a bounded write-only native clipboard action, stable result rendering across polling, saved task groups, live preference values and fixed dialog action rows. Keep the task breadcrumb in sync after naming a task.
 - Make Focus layout reclaim the sidebar width on new tasks and existing work. Show a persistent Focus indicator, a pressed toolbar state and explicit entry/exit feedback. Keep task context available as an optional drawer, and preserve layout, theme and drafts across reload/restart. The command palette remains available while navigation is hidden.
 - Use the selected full-floral botanical watercolor garden for new tasks, with a matching moonlit dark theme, smaller watercolor council portraits, a green light-theme send button and a purple dark-theme send button. Keep all controls interactive and task execution uncluttered. Preserve unsaved text when changing council modes quickly, and prevent the connected-project banner from reappearing over an existing task on reload.

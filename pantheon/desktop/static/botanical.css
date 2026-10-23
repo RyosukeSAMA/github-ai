@@ -8,10 +8,10 @@ body:has(.app[data-theme=dark]){--canvas:#0e1c19;--panel:#142822;--surface:#1021
 .garden-scene .garden-night{display:none}
 .app[data-theme=dark] .garden-scene .garden-day{display:none}
 .app[data-theme=dark] .garden-scene .garden-night{display:block}
-.task-preparing .garden-scene{display:block}
+.task-workspace .garden-scene{display:block}
+.task-workspace .main>:not(.garden-scene){position:relative;z-index:1}
 .task-preparing .main{background:var(--surface);overflow-x:hidden;overflow-y:auto}
-.task-preparing .main>:not(.garden-scene){position:relative;z-index:1}
-.task-preparing .breadcrumb{background:color-mix(in srgb,var(--surface) 92%,transparent);border-bottom:1px solid color-mix(in srgb,var(--line) 40%,transparent)}
+.task-workspace .breadcrumb{background:color-mix(in srgb,var(--surface) 92%,transparent);border-bottom:1px solid color-mix(in srgb,var(--line) 40%,transparent)}
 .task-preparing .task-intro{width:calc(100% - 104px);max-width:960px;margin:0 auto;padding-top:clamp(180px,25vh,255px)}
 .task-preparing .task-intro h1{font:500 38px/1.23 ui-serif,Georgia,"Times New Roman",serif;letter-spacing:-.9px;margin:0 0 12px;text-wrap:balance}
 .task-preparing .task-intro h1{position:relative;isolation:isolate}

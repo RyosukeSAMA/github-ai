@@ -276,13 +276,14 @@ function setView(view) {
 }
 function setTab(tab) {state.tab=tab;if(tab==='result')loadResultArtifacts().catch(error=>toast(errorText(error)));if(state.view!=='work')setView('work');['conversation','result','activity','review'].forEach(name=>{$('#'+name+'-pane').hidden=name!==tab;const button=$('#'+name+'-tab');button.setAttribute('aria-selected',String(name===tab));button.tabIndex=name===tab?0:-1;});syncTaskPresentation();}
 function syncTaskPresentation() {
-  const preparing=state.view==='work'&&!!state.selected&&$('#welcome').hidden&&state.tab==='conversation'&&!latestRun()&&!(state.detail?.messages?.length);
+  const workspace=state.view==='work'&&!!state.selected&&$('#welcome').hidden;
+  const preparing=workspace&&state.tab==='conversation'&&!latestRun()&&!(state.detail?.messages?.length);
   if(preparing!==state.preparing){
     if(preparing){state.contextBeforePreparation=$('#inspector-toggle').getAttribute('aria-pressed')==='true';showInspector(false);}
     else if(state.preparing)showInspector(state.contextBeforePreparation&&innerWidth>1150&&$('.app').dataset.layout!=='focus');
     state.preparing=preparing;
   }
-  $('.app').classList.toggle('task-preparing',preparing);$('#task-intro').hidden=!preparing;$('#task-starters').hidden=!preparing;
+  $('.app').classList.toggle('task-workspace',workspace);$('.app').classList.toggle('task-preparing',preparing);$('#task-intro').hidden=!preparing;$('#task-starters').hidden=!preparing;
   if(preparing){$('#task-heading').hidden=true;$('#content-tabs').hidden=true;$('#council-route').hidden=true;}
   else if(state.view==='work'&&state.selected&&$('#welcome').hidden){$('#task-heading').hidden=false;$('#content-tabs').hidden=false;}
   if(state.selected&&$('#project-feedback').dataset.phase==='connected')$('#project-feedback').hidden=true;
