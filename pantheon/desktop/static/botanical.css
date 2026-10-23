@@ -17,6 +17,8 @@ body:has(.app[data-theme=dark]){--canvas:#0e1c19;--panel:#142822;--surface:#1021
 .task-preparing .task-intro h1{position:relative;isolation:isolate}
 .task-preparing .task-intro h1:before{content:'';position:absolute;inset:-12px -15px;background:var(--surface);opacity:.94;filter:blur(16px);z-index:-1;pointer-events:none}
 .task-intro>p{max-width:790px;margin:0 auto;font-size:13px;line-height:1.8;color:var(--muted);text-wrap:balance}
+.task-intro>p{position:relative;isolation:isolate}
+.task-intro>p:before{content:'';position:absolute;inset:-5px -12px;background:var(--surface);opacity:.94;filter:blur(12px);z-index:-1;pointer-events:none}
 .task-council{max-width:670px;justify-content:space-between;gap:13px;margin-top:25px}
 .task-council button{min-width:96px;padding:5px 6px 7px;gap:8px}
 .task-council .role-portrait{width:60px;height:60px;border-radius:50%;border:0;box-shadow:0 0 0 3px var(--surface),0 0 0 4px color-mix(in srgb,var(--gold) 38%,var(--line));transition:box-shadow .16s ease}

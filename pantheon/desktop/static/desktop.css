@@ -168,3 +168,10 @@
 @media(max-width:1150px){.task-intro{width:calc(100% - 50px)}.task-intro h1{font-size:40px}.task-preparing #composer,.task-starters{width:calc(100% - 52px)}.task-preparing .composer-caption{display:flex}.starter-grid{gap:8px}.starter-grid button{padding:13px 10px}.starter-grid small{font-size:9px}}
 @media(max-width:850px){.task-intro{padding-top:108px;margin-top:17px}.atelier-illustration{height:150px;top:-35px;left:-15px;right:-15px}.task-intro h1{font-size:34px;letter-spacing:-.9px}.task-intro>p{font-size:12px}.task-council{gap:6px;margin-top:18px}.task-council button{min-width:58px;padding:4px 2px}.task-council img{width:30px;height:30px}.task-council span{font-size:9px}.task-preparing #composer{margin-top:20px}.starter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.starter-grid button{padding:12px 13px}.starter-icon{margin-bottom:7px}.starter-grid small{font-size:10px}.starter-heading>span:last-child{display:none}.task-preparing .composer-caption{display:block}.task-preparing .composer-caption>span:first-child{max-width:100%}.task-preparing .composer-caption>span:last-child{display:none}.task-starters{margin-top:24px}.atelier-note{margin-top:17px}}
 @media(prefers-reduced-motion:reduce){.task-council button,.task-council img,.starter-grid button{transition:none}.starter-grid button:hover{transform:none}}
+
+/* Focus has a visible effect even when a new task already hides its context. */
+.layout-status{display:inline-flex;align-items:center;padding:4px 8px;border-radius:6px;font-size:10px;font-weight:600;color:var(--accent);background:var(--accent-soft);white-space:nowrap}
+.layout-status[hidden]{display:none}
+.app[data-layout=focus]{grid-template-columns:minmax(0,1fr)}
+.app[data-layout=focus]>.sidebar,.app[data-layout=focus]>.inspector{display:none}
+.app[data-layout=focus][data-surface=work].show-inspector:not(.welcome-state)>.inspector{display:flex;position:fixed;right:0;top:46px;bottom:0;width:min(var(--context-width),calc(100vw - 24px));z-index:4;box-shadow:-12px 0 35px color-mix(in srgb,var(--ink) 10%,transparent)}

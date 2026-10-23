@@ -29,8 +29,18 @@ function applyPreferences(preferences) {
   $('.app').dataset.theme=preferences.theme;$('.app').dataset.layout=preferences.layout || 'professional';
   $('.app').style.setProperty('--reader-size',preferences.fontSize+'px');$('.app').style.setProperty('--context-width',preferences.panelWidth+'px');
   setIconButton($('#theme-toggle'),preferences.theme==='dark'?'sun':'moon',preferences.theme==='dark'?'Switch to light theme':'Switch to dark theme');
-  setIconButton($('#layout-toggle'),preferences.layout==='focus'?'focus':'layout',preferences.layout==='focus'?'Switch to Pro workspace':'Switch to Focus layout');
+  const focus=preferences.layout==='focus';
+  setIconButton($('#layout-toggle'),focus?'focus':'layout',focus?'Exit Focus layout':'Switch to Focus layout');
+  $('#layout-toggle').setAttribute('aria-pressed',String(focus));$('#layout-status').hidden=!focus;
   const context=innerWidth>1150 && preferences.layout!=='focus';if(state.preparing)state.contextBeforePreparation=context;showInspector(context&&!state.preparing);
+}
+async function toggleLayout() {
+  const button=$('#layout-toggle');if(button.disabled)return;button.disabled=true;
+  try{
+    const layout=$('.app').dataset.layout==='focus'?'professional':'focus';
+    state.info.preferences=await native.preferences({layout});applyPreferences(state.info.preferences);
+    hideButtonTooltip();toast(layout==='focus'?'Focus layout on. Sidebar and task context hidden.':'Standard layout restored. Sidebar is available.');
+  }finally{button.disabled=false;}
 }
 function inlineMarkdown(text){
   const fragment=document.createDocumentFragment(),pattern=/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https:\/\/[^\s)]+\))/g;let last=0;
@@ -476,7 +486,7 @@ async function openUsage() {const run=latestRun();const [usage,budget]=await Pro
 async function recoverTask(){const run=latestRun();if(!run?.task_id)return;const core=await api('/api/tasks/'+encodeURIComponent(run.task_id));const accepted=await confirmChoice('Review before resuming','Completed steps are retained. Inspect any external actions before retrying. Resume uses the current saved configuration.','I checked the effects — resume');if(accepted)await runTask({id:run.task_id,prompt:core.data?.task||run.data.prompt,ack:true});}
 async function addAttachments(items){if(!state.selected)await newTask();const list=state.attachments.get(state.selected)||[];for(const item of items){if(list.length>=5)throw new Error('Use up to five attachments per message.');const uploaded=await api('/api/desktop/attachments',item);if(uploaded.type.startsWith('audio/')){toast('Transcribe audio in Capabilities → Media, then use the text in your task.');continue;}list.push(uploaded);}state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(item=>item.id)});renderAttachments();}
 function renderAttachments(){$('#attachment-list').replaceChildren();for(const item of state.attachments.get(state.selected)||[]){const chip=element('span','attachment-chip',item.name),remove=element('button','','×');remove.setAttribute('aria-label','Remove '+item.name);action(remove,async()=>{const list=state.attachments.get(state.selected).filter(value=>value.id!==item.id);state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(value=>value.id)});renderAttachments();});chip.append(remove);$('#attachment-list').append(chip);}}
-const commands=[['New task',newTask],['Choose project',connectWorkspace],['Task center',()=>setView('tasks')],['Artifact library',()=>setView('library')],['Project files',()=>setView('files')],['Models and connections',openConnections],['Capabilities',()=>setView('capabilities')],['Open terminal',()=>showTerminal(true)],['Toggle Focus layout',async()=>{const layout=$('.app').dataset.layout==='focus'?'professional':'focus';state.info.preferences=await native.preferences({layout});applyPreferences(state.info.preferences);}],['Connect remote server',()=>showDialog('#remote-dialog')]];
+const commands=[['New task',newTask],['Choose project',connectWorkspace],['Task center',()=>setView('tasks')],['Artifact library',()=>setView('library')],['Project files',()=>setView('files')],['Models and connections',openConnections],['Capabilities',()=>setView('capabilities')],['Open terminal',()=>showTerminal(true)],['Toggle Focus layout',toggleLayout],['Connect remote server',()=>showDialog('#remote-dialog')]];
 async function searchCommands(query='') {const target=$('#command-list');target.replaceChildren();for(const [name,callback] of commands.filter(([name])=>name.toLowerCase().includes(query.toLowerCase()))){const button=element('button','',name);action(button,async()=>{closeDialog('#palette');await callback();});target.append(button);}if(query.trim()&&state.info?.workspace){const found=await api('/api/desktop/search?query='+encodeURIComponent(query));if($('#command-search').value!==query)return;for(const session of found.sessions){const button=element('button','',session.title);button.append(element('small','','Task'+(session.archived?' · Archived':'')));action(button,async()=>{closeDialog('#palette');await selectSession(session.id);});target.append(button);}for(const item of found.artifacts.slice(0,20)){const button=element('button','',item.title);button.append(element('small','','Artifact'));action(button,async()=>{closeDialog('#palette');await previewArtifact(item.id);});target.append(button);}}}
 function openPalette(){showDialog('#palette');$('#command-search').value='';searchCommands().catch(error=>toast(errorText(error)));$('#command-search').focus();}
 function bind() {

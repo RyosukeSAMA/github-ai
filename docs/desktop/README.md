@@ -10,6 +10,8 @@
 
 ![原生 Beta 月光花园暗色](botanical-dark.png)
 
+专注布局现在会收起左侧导航和右侧上下文，让任务区占满窗口宽度。顶部保留 Focus 状态和退出按钮；可临时打开上下文抽屉，使用命令菜单浏览项目或切换任务。见[浅色专注布局](focus-light.png)与[暗色专注布局](focus-dark.png)。
+
 ![原生 Beta 浅色工作台](native-light.png)
 
 本目录保留可操作的交互设计原型。完整定位、参考取舍、Web/桌面能力对照与分期验收见[产品方向与能力规划](product-direction.zh-CN.md)。打开 `index.html` 可体验；预览图与 `verification.json` 记录了本轮视觉和交互检查。原型不连接任何 API，不读取本机项目，不执行命令，也不接收凭据。
