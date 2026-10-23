@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('pantheonDesktop', Object.freeze({
   notify: value => ipcRenderer.invoke('desktop:notify', value),
   updates: () => ipcRenderer.invoke('desktop:updates'),
   openLink: value => ipcRenderer.invoke('desktop:open-link',value),
+  copyText: value => ipcRenderer.invoke('desktop:copy-text',value),
   exportArchive: id => ipcRenderer.invoke('desktop:archive',id),
   mediaFile: (id,save) => ipcRenderer.invoke('desktop:media-file',id,save),
   onDrop: callback => {dropCallbacks.add(callback);return ()=>dropCallbacks.delete(callback);},

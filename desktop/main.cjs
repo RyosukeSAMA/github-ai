@@ -1,5 +1,5 @@
 'use strict';
-const {app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, Tray, nativeImage, Notification, globalShortcut, shell, safeStorage} = require('electron');
+const {app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, Tray, nativeImage, Notification, globalShortcut, shell, safeStorage, clipboard} = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
@@ -175,6 +175,7 @@ function installIPC() {
   }return {enabled:preferences.notifications};});
   ipcMain.handle('desktop:updates',async event=>{senderContext(event,false);return checkUpdates();});
   ipcMain.handle('desktop:open-link',async(event,value)=>{senderContext(event,false);if(typeof value!=='string'||value.length>3000)throw new Error('Invalid link');const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Only HTTPS links without credentials can be opened.');return shell.openExternal(url.href);});
+  ipcMain.handle('desktop:copy-text',(event,value)=>{senderContext(event,false);if(typeof value!=='string'||value.length>1000000)throw new Error('Copy up to one million characters of text.');clipboard.writeText(value);return {copied:true};});
   ipcMain.handle('desktop:archive',async(event,id)=>{const context=senderContext(event);if(typeof id!=='string'||!/^[-A-Za-z0-9_]{1,100}$/.test(id))throw new Error('Invalid task');const archive=await context.backend.request('/api/tasks/'+id+'/archive');const selected=await dialog.showSaveDialog(context.win,{defaultPath:'pantheon-task-'+id+'.json',filters:[{name:'Task archive',extensions:['json']}]});if(selected.canceled)return {saved:false};await fs.writeFile(selected.filePath,JSON.stringify(archive,null,2),{mode:0o600});return {saved:true};});
   ipcMain.handle('desktop:release',event=>{senderContext(event,false);return shell.openExternal('https://github.com/RyosukeSAMA/github-ai/releases');});
   ipcMain.handle('desktop:terminal-stop',event=>{senderContext(event).terminal?.abort();return {stopped:true};});

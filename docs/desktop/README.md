@@ -12,6 +12,8 @@
 
 专注布局现在会收起左侧导航和右侧上下文，让任务区占满窗口宽度。顶部保留 Focus 状态和退出按钮；可临时打开上下文抽屉，使用命令菜单浏览项目或切换任务。见[浅色专注布局](focus-light.png)与[暗色专注布局](focus-dark.png)。
 
+当前 beta.9 已完成侧栏、输入框、执行阅读区、上下文、弹窗和操作反馈精修。背景沿用原先选定的水彩资源。安装包实际截图：[新任务页](refined-start-light.png)、[浅色执行页](refined-task-light.png)、[暗色执行页](refined-task-dark.png)、[成果阅读](refined-result.png)、[连接设置](refined-connections.png)、[桌面偏好](refined-preferences.png)。内容来自隔离的本地测试服务。
+
 ![原生 Beta 浅色工作台](native-light.png)
 
 本目录保留可操作的交互设计原型。完整定位、参考取舍、Web/桌面能力对照与分期验收见[产品方向与能力规划](product-direction.zh-CN.md)。打开 `index.html` 可体验；预览图与 `verification.json` 记录了本轮视觉和交互检查。原型不连接任何 API，不读取本机项目，不执行命令，也不接收凭据。

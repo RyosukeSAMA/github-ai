@@ -4,7 +4,8 @@ async function refreshUsage(){
   const selected=state.selected;const value=await api('/api/usage/details?task_id='+encodeURIComponent(run.task_id));if(selected!==state.selected)return;
   const calls=value.groups.reduce((n,item)=>n+item.calls,0),unknown=value.groups.some(item=>item.input_tokens===null||item.output_tokens===null),unpriced=value.groups.some(item=>item.unpriced);
   const tokens=value.groups.reduce((n,item)=>n+(item.input_tokens||0)+(item.output_tokens||0),0),cost=value.groups.reduce((n,item)=>n+(item.estimated_usd||0),0);
-  $('#usage-summary').textContent=calls+' call(s) · '+tokens.toLocaleString()+(unknown?' reported tokens (incomplete)':' tokens')+' · '+(unpriced?'Cost unknown':'$'+cost.toFixed(4)+' estimated');
+  const target=$('#usage-summary');target.replaceChildren();if(!calls){target.textContent='No calls recorded for this task.';return;}
+  const metrics=element('div','usage-metrics');for(const [number,label] of [[calls.toLocaleString(),calls===1?'Model call':'Model calls'],[tokens.toLocaleString(),unknown?'Reported tokens · incomplete':'Reported tokens']]){const metric=element('div','usage-metric');metric.append(element('strong','',number),element('small','',label));metrics.append(metric);}target.append(metrics,element('div','usage-cost',unpriced?'Cost unknown · provider price is unavailable':'$'+cost.toFixed(4)+' estimated · not a bill'));
 }
 async function loadResultArtifacts(){if(!state.selected||state.tab!=='result')return;const selected=state.selected;const value=await api('/api/desktop/artifacts');if(state.selected!==selected)return;$('#result-artifacts').replaceChildren();for(const item of value.artifacts.filter(item=>item.session_id===selected))$('#result-artifacts').append(artifactCard(item));}
 function formField(form,label,value='',type='text'){
