@@ -49,6 +49,8 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 
 Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 Web 会话保存在所选工作区；浏览器还保留会话缓存和显示偏好。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
+桌面端开发：本分支已实现英语原生 Beta，包含内置 Python、持久任务、文件审阅、模型连接和本地/远程工作区。见[客户端说明](desktop/README.md)与[验证边界](desktop/verification.md)。下方稳定版 v0.4.0 安装命令仍对应 Web/CLI 版本。
+
 <a id="quick-start"></a>
 
 ## 快速开始

@@ -1,0 +1,75 @@
+{
+  "name": "pantheon-desktop",
+  "version": "0.5.0-beta.9",
+  "private": true,
+  "description": "Pantheon local multi-role workspace",
+  "homepage": "https://github.com/RyosukeSAMA/github-ai",
+  "main": "main.cjs",
+  "author": "RyosukeSAMA",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "build": "electron-builder --dir",
+    "package": "electron-builder",
+    "test:native": "node test/native-smoke.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.9.1",
+    "electron-builder": "26.15.3",
+    "playwright": "1.64.1"
+  },
+  "build": {
+    "appId": "ai.pantheon.desktop",
+    "productName": "Pantheon",
+    "files": [
+      "*.cjs",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/pantheon-runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "../pantheon/desktop/static",
+        "to": "ui"
+      }
+    ],
+    "directories": {
+      "output": "../dist/desktop"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "assets/icon.png",
+      "maintainer": "Pantheon contributors"
+    },
+    "artifactName": "Pantheon-${version}-${os}-${arch}.${ext}"
+  }
+}

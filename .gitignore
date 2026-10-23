@@ -74,3 +74,8 @@ logs/
 
 # ----- GitHub meta (user-specific) -----
 .github/FUNDING.yml
+
+# Desktop dependencies and private local state
+node_modules/
+*.spec
+.desktop-test/

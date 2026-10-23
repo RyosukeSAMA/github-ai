@@ -2,6 +2,23 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Desktop beta
+
+- Refine the native sidebar, growing composer, task status, reading typography, code/table/list rendering, artifact and diff cards, context/usage sections and settings dialogs while retaining the selected watercolor artwork. Add explicit code/response copy feedback through a bounded write-only native clipboard action, stable result rendering across polling, saved task groups, live preference values and fixed dialog action rows. Keep the task breadcrumb in sync after naming a task.
+- Make Focus layout reclaim the sidebar width on new tasks and existing work. Show a persistent Focus indicator, a pressed toolbar state and explicit entry/exit feedback. Keep task context available as an optional drawer, and preserve layout, theme and drafts across reload/restart. The command palette remains available while navigation is hidden.
+- Use the selected full-floral botanical watercolor garden for new tasks, with a matching moonlit dark theme, smaller watercolor council portraits, a green light-theme send button and a purple dark-theme send button. Keep all controls interactive and task execution uncluttered. Preserve unsaved text when changing council modes quickly, and prevent the connected-project banner from reappearing over an existing task on reload.
+- Introduce an artistic empty-task atelier with local temple/landscape line art, a serif headline, council portraits and a centered composer. Add draft-only task starters, an explained keyboard-accessible mode menu and empty-send protection; retain existing drafts before replacement, and switch to the execution workspace after sending. Collapse the initial context panel and replace letter badges with role portraits.
+- Show persistent connection status cards inside Models & connections: pending, green API/save/default confirmations and actionable failures. Include the tested model, response time, affected roles and future-task scope. Invalidate edited API settings, prevent duplicate submissions and retain typed keys when refreshing models.
+- Give the native welcome page a quiet architectural illustration, soft sky/sand colors and a council overview. Show the actual project name on a folder tile and retain its full path; open project files without losing the view during status polling.
+- Show persistent project-opening progress, selected folder paths, actionable failures and setup-aware next steps. Keep the current task and draft when the folder picker is canceled; reload model readiness when changing projects.
+- Use a rounded native application icon with transparent spacing, a soft shadow and the unchanged Pantheon mark; include an editable SVG frame and reproducible PNG/ICNS/ICO export.
+- Add a separate English Electron workbench with bundled Python, light/dark themes, icon tooltips, Focus layout, adjustable text/context sizing, native file selection, tray mode, optional notifications and a global shortcut.
+- Reuse the shared Web/CLI core through a private desktop bridge. Persist detached runs, incremental events, drafts, attachment IDs and artifacts; reconcile completed core archives after restart without replaying a task. Restore the last viewed conversation and detect conflicting window edits.
+- Review real file diffs and recheck disk hashes before writing. Add artifact search, source-task navigation, full task archive export, task rename/pin/archive/filter, model assignment isolation and confirmed terminal commands.
+- Expose shared connections, budgets, usage, memory, skills/plugins, MCP tool policies and approvals, schedules, media and Telegram/Slack/Discord callback configuration.
+- Add multiple windows, explicit Git worktrees and authenticated HTTPS remote-server access to shared sessions. Reuse compatible local services and stop only owned services on exit. Exclude transient desktop capabilities from every backup.
+- Add macOS/Windows/Linux packaging CI and an isolated native smoke test using a localhost model fixture. Native validation is recorded separately from paid-provider, platform callback and signed-installer acceptance.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
