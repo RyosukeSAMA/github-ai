@@ -29,7 +29,7 @@ const DESKTOP_ICONS = {
   copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
   edit: '<path d="m16 3 5 5-11 11-7 2 2-7Z"/><path d="m14 5 5 5"/>',
   attach: '<path d="m8 13 7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9m-7 12 8-8"/>',
-  send: '<path d="M12 20V4m-7 7 7-7 7 7"/>',
+  send: '<path d="m21 3-7 18-4-8-8-4Z"/><path d="M21 3 10 13"/>',
   play: '<path d="m8 4 12 8-12 8Z"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   open: '<path d="M14 3h7v7m0-7L10 14"/><path d="M10 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-5"/>',

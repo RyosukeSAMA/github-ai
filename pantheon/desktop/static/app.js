@@ -57,7 +57,7 @@ async function confirmChoice(title,text,button='Continue') {
 }
 async function refreshSetup(){state.setup=await api('/api/setup/status');renderRoles();renderOnboarding();}
 function projectFeedback(phase,title,path='',detail='') {
-  const card=$('#project-feedback');card.hidden=false;card.dataset.phase=phase;
+  const card=$('#project-feedback');card.hidden=phase==='connected'&&!!state.selected;card.dataset.phase=phase;
   $('#project-feedback-title').textContent=title;
   $('#project-feedback-path').textContent=path;$('#project-feedback-path').hidden=!path;
   $('#project-feedback-detail').textContent=detail;
@@ -207,7 +207,9 @@ async function patchSession(changes,id=state.selected) {
       catch(error){if(!/another window|changed/i.test(errorText(error)))throw error;const latest=await api('/api/desktop/sessions/'+id);if(!Object.keys(changes).every(key=>JSON.stringify(latest[key])===JSON.stringify(base?.[key])))throw error;saved=await api('/api/desktop/sessions/'+id,{expected_version:latest.desktop_version||0,...changes},'PATCH');if(state.selected===id)state.detail=latest;}
       const index=state.sessions.findIndex(item=>item.id===id);if(index>=0)state.sessions[index]=saved;
       if(state.selected===id)state.detail={...state.detail,...saved,...changes};
-      state.mutation++;const settled=(state.edits.get(id)||0)===generation;if(settled)state.dirty.delete(id);$('#draft-state').textContent=settled?'Saved':'Unsaved';
+      state.mutation++;const settled=(state.edits.get(id)||0)===generation;
+      const pendingDraft=state.selected===id&&($('#prompt').value!==(state.detail.draft||'')||(state.file&&$('#file-editor').value!==(state.detail.editor_draft?.content||'')));
+      if(settled&&!pendingDraft)state.dirty.delete(id);$('#draft-state').textContent=settled&&!pendingDraft?'Saved':'Unsaved';
       if(settled && 'draft' in changes)try{localStorage.removeItem('pantheon-draft:'+state.info.workspace.workspace+':'+id);}catch{}
       renderSidebar();return saved;
     }catch(error){$('#draft-state').textContent='Not saved';notice(errorText(error)+' Your current local draft is still visible.');if(/another window|changed/i.test(errorText(error))){const reload=element('button','','Resolve draft conflict');action(reload,()=>resolveDraftConflict(id));$('#global-notice').append(document.createTextNode(' '),reload);}throw error;}
@@ -252,7 +254,10 @@ function syncTaskPresentation() {
 }
 function updateComposerState() {$('#run').disabled=state.sending||state.projectOpening||(!activeRun()&&!$('#prompt').value.trim());}
 function rolePortrait(role) {
-  const image=element('img','role-portrait');image.src='role-'+(councilRoles[role]?role:'hermes')+'.png';image.alt='';image.width=34;image.height=34;return image;
+  const crops={hermes:[364,505,151,151],hephaestus:[593,505,151,151],athena:[821,505,151,151],apollo:[1055,505,151,151],chronos:[1294,505,151,151]};
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),image=document.createElementNS('http://www.w3.org/2000/svg','image');
+  svg.classList.add('role-portrait');svg.setAttribute('viewBox',(crops[role]||crops.hermes).join(' '));svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('width','34');svg.setAttribute('height','34');
+  image.setAttribute('href','council-watercolor.png');image.setAttribute('width','1586');image.setAttribute('height','992');svg.append(image);return svg;
 }
 function renderCouncilMode() {
   const mode=$('#mode').value,choice=councilModes.find(item=>item[0]===mode)||councilModes[0];
@@ -489,7 +494,7 @@ function bind() {
   for(const [mode,name,description,icon] of councilModes){const button=element('button','mode-option');button.dataset.mode=mode;button.setAttribute('role','menuitemradio');button.append(desktopIcon(icon));const text=element('span');text.append(element('strong','',name),element('small','',description));button.append(text);action(button,async()=>{await chooseCouncilMode(mode);$('#mode-trigger').focus({preventScroll:true});});$('#mode-menu').append(button);}
   $('#mode-menu').addEventListener('toggle',event=>{$('#mode-trigger').setAttribute('aria-expanded',String(event.newState==='open'));});
   $('#mode-menu').onkeydown=event=>{const items=[...$('#mode-menu').querySelectorAll('[data-mode]')],current=items.indexOf(document.activeElement);let next;if(event.key==='ArrowDown')next=(current+1)%items.length;if(event.key==='ArrowUp')next=(current-1+items.length)%items.length;if(event.key==='Home')next=0;if(event.key==='End')next=items.length-1;if(next!==undefined){event.preventDefault();items[next].focus();}};
-  document.querySelectorAll('[data-council]').forEach(button=>{button.dataset.tooltip=button.getAttribute('aria-label');action(button,()=>chooseCouncilMode(button.dataset.mode));});
+  document.querySelectorAll('[data-council]').forEach(button=>{button.dataset.tooltip=button.getAttribute('aria-label');button.querySelector('img').replaceWith(rolePortrait(button.dataset.council));button.append(element('small','council-purpose',councilRoles[button.dataset.council].purpose));action(button,()=>chooseCouncilMode(button.dataset.mode));});
   document.querySelectorAll('[data-starter-icon]').forEach(mark=>mark.append(desktopIcon(mark.dataset.starterIcon)));
   document.querySelectorAll('[data-starter]').forEach(button=>action(button,()=>useTaskStarter(button.dataset.starter)));renderCouncilMode();
   $('#prompt').oninput=()=>{updateComposerState();const id=state.selected;state.edits.set(id,(state.edits.get(id)||0)+1);state.dirty.add(id);try{localStorage.setItem('pantheon-draft:'+state.info.workspace.workspace+':'+id,JSON.stringify({value:$('#prompt').value,updated:Date.now()}));}catch{}$('#draft-state').textContent='Unsaved';clearTimeout(state.draftTimer);const draft=$('#prompt').value;state.draftTimer=setTimeout(()=>patchSession({draft},id).catch(error=>toast(errorText(error))),450);};

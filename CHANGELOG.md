@@ -4,6 +4,7 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Use the selected full-floral botanical watercolor garden for new tasks, with a matching moonlit dark theme, smaller watercolor council portraits, a green light-theme send button and a purple dark-theme send button. Keep all controls interactive and task execution uncluttered. Preserve unsaved text when changing council modes quickly, and prevent the connected-project banner from reappearing over an existing task on reload.
 - Introduce an artistic empty-task atelier with local temple/landscape line art, a serif headline, council portraits and a centered composer. Add draft-only task starters, an explained keyboard-accessible mode menu and empty-send protection; retain existing drafts before replacement, and switch to the execution workspace after sending. Collapse the initial context panel and replace letter badges with role portraits.
 - Show persistent connection status cards inside Models & connections: pending, green API/save/default confirmations and actionable failures. Include the tested model, response time, affected roles and future-task scope. Invalidate edited API settings, prevent duplicate submissions and retain typed keys when refreshing models.
 - Give the native welcome page a quiet architectural illustration, soft sky/sand colors and a council overview. Show the actual project name on a folder tile and retain its full path; open project files without losing the view during status polling.
