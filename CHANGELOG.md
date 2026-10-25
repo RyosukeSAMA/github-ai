@@ -4,6 +4,8 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Make ongoing conversations quieter: put the task title/status in one header row, collapse actual council-role details, keep task context closed until requested, use solid reading surfaces within the garden and a smaller growing follow-up composer. Preserve explicit context choices across theme/font changes and keep approval/recovery guidance visible outside collapsed details.
+
 - Keep the selected day/moonlit garden visible after task submission, on Conversation/Result/Activity/Changes, and when reopening a task. Add soft title and reading surfaces without changing the floral assets or light-green/dark-purple send colors. Retain the background through theme, Focus and window-size changes while keeping project-file and utility surfaces separate.
 
 - Refine the native sidebar, growing composer, task status, reading typography, code/table/list rendering, artifact and diff cards, context/usage sections and settings dialogs while retaining the selected watercolor artwork. Add explicit code/response copy feedback through a bounded write-only native clipboard action, stable result rendering across polling, saved task groups, live preference values and fixed dialog action rows. Keep the task breadcrumb in sync after naming a task.

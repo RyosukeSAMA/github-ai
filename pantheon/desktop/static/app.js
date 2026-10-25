@@ -4,7 +4,7 @@ const native = window.pantheonDesktop;
 const state = {info:null, sessions:[], runs:[], artifacts:[], coreTasks:[], setup:null, selected:'', detail:null,
   view:'work', tab:'conversation', eventCache:new Map(), cursors:new Map(), output:new Map(), attachments:new Map(),
   activeReview:null, file:null, fileDirectory:'', patchQueue:Promise.resolve(), draftTimer:null, editorTimer:null,
-  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, sending:false, preparing:false, contextBeforePreparation:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null};
+  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, sending:false, preparing:false, contextOpen:false, contextBeforeFocus:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null};
 const activeStatuses = new Set(['queued','running','stopping']);
 const roleNames = ['hermes','hephaestus','athena','apollo'];
 const councilRoles={hermes:{name:'Hermes',purpose:'Plan & coordinate'},hephaestus:{name:'Hephaestus',purpose:'Build & refine'},athena:{name:'Athena',purpose:'Research & reason'},apollo:{name:'Apollo',purpose:'Create & imagine'},chronos:{name:'Chronos',purpose:'Schedule & deliver'}};
@@ -23,16 +23,19 @@ function closeDialog(id) {$(id).close();}
 function info(title, content) {$('#info-title').textContent=title;$('#info-content').replaceChildren(typeof content==='string'?element('p','',content):content);showDialog('#info-dialog');}
 async function api(path, body, method) {if(!native)throw new Error('Open this interface in the Pantheon desktop app.');return native.api(path,{method:method || (body===undefined?'GET':'POST'),...(body===undefined?{}:{body})});}
 function action(button, callback) {button.onclick=async event=>{if(button.getAttribute('aria-busy')==='true')return;try{const pending=callback(event);if(pending?.then){button.setAttribute('aria-busy','true');await pending;}}catch(error){toast(errorText(error));}finally{button.removeAttribute('aria-busy');}};}
-function showInspector(show) {$('.app').classList.toggle('no-inspector',!show);$('.app').classList.toggle('show-inspector',show);$('#inspector-toggle').setAttribute('aria-pressed',String(show));setIconButton($('#inspector-toggle'),'context',show?'Hide context':'Show context');}
+function showInspector(show) {state.contextOpen=show;$('.app').classList.toggle('no-inspector',!show);$('.app').classList.toggle('show-inspector',show);$('#inspector-toggle').setAttribute('aria-pressed',String(show));setIconButton($('#inspector-toggle'),'context',show?'Hide context':'Show context');}
 function showTerminal(show) {$('#terminal-drawer').hidden=!show;$('#terminal-toggle').setAttribute('aria-expanded',String(show));setIconButton($('#terminal-toggle'),'terminal',show?'Close terminal':'Open terminal');}
 function applyPreferences(preferences) {
+  const wasFocus=$('.app').dataset.layout==='focus';
   $('.app').dataset.theme=preferences.theme;$('.app').dataset.layout=preferences.layout || 'professional';
   $('.app').style.setProperty('--reader-size',preferences.fontSize+'px');$('.app').style.setProperty('--context-width',preferences.panelWidth+'px');
   setIconButton($('#theme-toggle'),preferences.theme==='dark'?'sun':'moon',preferences.theme==='dark'?'Switch to light theme':'Switch to dark theme');
   const focus=preferences.layout==='focus';
   setIconButton($('#layout-toggle'),focus?'focus':'layout',focus?'Exit Focus layout':'Switch to Focus layout');
   $('#layout-toggle').setAttribute('aria-pressed',String(focus));$('#layout-status').hidden=!focus;
-  const context=innerWidth>1150 && preferences.layout!=='focus';if(state.preparing)state.contextBeforePreparation=context;showInspector(context&&!state.preparing);
+  if(focus&&!wasFocus){state.contextBeforeFocus=state.contextOpen;showInspector(false);}
+  else if(wasFocus&&!focus)showInspector(state.contextBeforeFocus&&innerWidth>1150);
+  else showInspector(state.contextOpen);
   resizeComposer();
 }
 async function toggleLayout() {
@@ -279,11 +282,14 @@ function syncTaskPresentation() {
   const workspace=state.view==='work'&&!!state.selected&&$('#welcome').hidden;
   const preparing=workspace&&state.tab==='conversation'&&!latestRun()&&!(state.detail?.messages?.length);
   if(preparing!==state.preparing){
-    if(preparing){state.contextBeforePreparation=$('#inspector-toggle').getAttribute('aria-pressed')==='true';showInspector(false);}
-    else if(state.preparing)showInspector(state.contextBeforePreparation&&innerWidth>1150&&$('.app').dataset.layout!=='focus');
+    if(preparing){state.contextBeforeFocus=false;showInspector(false);}
     state.preparing=preparing;
   }
   $('.app').classList.toggle('task-workspace',workspace);$('.app').classList.toggle('task-preparing',preparing);$('#task-intro').hidden=!preparing;$('#task-starters').hidden=!preparing;
+  const details=$('#council-summary');details.hidden=!workspace||preparing;
+  if(details.dataset.session!==state.selected){details.dataset.session=state.selected;details.open=false;}
+  $('#task-attention').hidden=!workspace||preparing||!['approval','failed','partial_failure','stopped','interrupted'].includes($('#task-heading').dataset.state);
+  $('#prompt').placeholder=preparing?'What would you like to accomplish? Describe your idea, or start below…':'Message your council…';
   if(preparing){$('#task-heading').hidden=true;$('#content-tabs').hidden=true;$('#council-route').hidden=true;}
   else if(state.view==='work'&&state.selected&&$('#welcome').hidden){$('#task-heading').hidden=false;$('#content-tabs').hidden=false;}
   if(state.selected&&$('#project-feedback').dataset.phase==='connected')$('#project-feedback').hidden=true;
@@ -292,9 +298,9 @@ function syncTaskPresentation() {
 function updateComposerState() {$('#run').disabled=state.sending||state.projectOpening||(!activeRun()&&!$('#prompt').value.trim());resizeComposer();}
 function resizeComposer() {
   const input=$('#prompt');if(!input||$('#composer').hidden)return;
-  const key=JSON.stringify([input.value,input.clientWidth,innerHeight,getComputedStyle(input).fontSize]);if(resizeComposer.key===key)return;resizeComposer.key=key;
-  const scroll=input.scrollTop;input.style.height='auto';const limit=Math.max(110,Math.min(240,innerHeight*.28));
-  input.style.height=Math.min(limit,Math.max(78,input.scrollHeight))+'px';input.style.overflowY=input.scrollHeight>limit?'auto':'hidden';input.scrollTop=scroll;
+  const minimum=state.preparing?78:50,key=JSON.stringify([input.value,input.clientWidth,innerHeight,getComputedStyle(input).fontSize,minimum]);if(resizeComposer.key===key)return;resizeComposer.key=key;
+  const scroll=input.scrollTop;input.style.height='0px';const limit=Math.max(110,Math.min(240,innerHeight*.28));
+  input.style.height=Math.min(limit,Math.max(minimum,input.scrollHeight))+'px';input.style.overflowY=input.scrollHeight>limit?'auto':'hidden';input.scrollTop=scroll;
 }
 function rolePortrait(role) {
   const crops={hermes:[364,505,151,151],hephaestus:[593,505,151,151],athena:[821,505,151,151],apollo:[1055,505,151,151],chronos:[1294,505,151,151]};
@@ -328,7 +334,9 @@ function renderTask() {
   const run=latestRun(),approval=!!activeRun()&&(state.eventCache.get(run.id)||[]).some(event=>event.event==='mcp_approval_required'&&state.approvals.has(event.data.approval_id)),status=approval?'approval':run?.status||'ready';
   if(state.view==='work')$('#breadcrumb').textContent=session.title;
   $('#task-heading').dataset.state=status;$('#task-title').textContent=session.title;const label=approval?'Waiting for approval':run?.status||'Ready';if($('#task-state').textContent!==label)$('#task-state').textContent=label;
+  $('#task-title').title=session.title;
   $('#task-subtitle').textContent=approval?'A tool needs your approval before work can continue.':status==='stopping'?'Stopping safely. Completed work will be retained.':activeRun()?'Your council is working in '+(state.info.remote?'your remote project.':'your local project.'):status==='completed'?'Your result is ready. Review outputs or continue the conversation.':['failed','partial_failure','stopped','interrupted'].includes(status)?'Review the saved activity before choosing how to continue.':'Describe the goal and expected outcome.';
+  $('#task-attention').textContent=$('#task-subtitle').textContent;
   setIconButton($('#run'),activeRun()?'stop':'send',activeRun()?'Stop task':'Run task');
   renderMessages();renderActivity();renderRoles();
   const result=(state.detail?.messages||[]).filter(item=>item.role==='assistant').at(-1);
@@ -349,8 +357,10 @@ function renderActivity() {
   const visible=events.filter(item=>!['step_chunk','summary_chunk','progress'].includes(item.event)).slice(-100),signature=JSON.stringify([state.selected,run?.id,run?.status,visible.map(item=>item.id)]);if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
   for(const item of visible){const row=element('li'),data=item.data||{},role=data.role||'hermes';row.dataset.state=data.error||['failed','partial_failure'].includes(data.status)||item.event==='desktop_final'&&['failed','partial_failure'].includes(run?.status)?'error':data.status==='completed'||item.event==='desktop_final'&&run?.status==='completed'?'success':'neutral';row.append(rolePortrait(role));const body=element('div');body.append(element('strong','',councilRoles[role]?.name||role),element('span','event-label',item.event.replaceAll('_',' ')),element('p','',data.description||data.detail||data.summary||data.message||data.error||data.plan||''));row.append(body);target.append(row);}
   if(!visible.length)empty(target,'Execution and tool activity will appear here.');
-  const roles=new Set();for(const item of events)if(item.data?.role)roles.add(item.data.role);$('#council-route').replaceChildren();
-  for(const role of roles){const block=element('div');block.append(rolePortrait(role),element('strong','',councilRoles[role]?.name||role));$('#council-route').append(block);}
+  const roles=new Set();for(const item of events)if(item.data?.role)roles.add(item.data.role);$('#council-route').replaceChildren();$('#council-faces').replaceChildren();
+  for(const role of roles){const block=element('div');block.append(rolePortrait(role),element('strong','',councilRoles[role]?.name||role));$('#council-route').append(block);$('#council-faces').append(rolePortrait(role));}
+  $('#council-summary-label').textContent=roles.size?'Council · '+roles.size+' '+(roles.size===1?'role':'roles'):'Council details';
+  $('#council-summary-toggle').title=Array.from(roles,role=>councilRoles[role]?.name||role).join(', ')||'View council details';
   $('#council-route').hidden=state.view!=='work'||!roles.size;
 }
 function renderRoles() {
@@ -531,6 +541,8 @@ function bind() {
   document.querySelectorAll('[data-close]').forEach(button=>{button.onclick=()=>button.closest('dialog').close();});
   document.querySelectorAll('[data-view]').forEach(button=>{const mark=button.querySelector('[data-nav-icon]');if(mark)mark.replaceChildren(desktopIcon(mark.dataset.navIcon));button.dataset.tooltip=button.textContent.trim();action(button,()=>setView(button.dataset.view));});
   document.querySelectorAll('[data-tab]').forEach(button=>{button.onclick=()=>setTab(button.dataset.tab);});
+  $('.council-chevron').replaceChildren(desktopIcon('chevron'));
+  action($('#council-activity'),()=>{setTab('activity');$('#activity-tab').focus();});
   const openProjectFiles=()=>state.info?.workspace?setView('files'):connectWorkspace();
   action($('#new-task'),newTask);action($('#project-open'),connectWorkspace);action($('#project-name'),openProjectFiles);action($('#welcome-workspace'),connectWorkspace);
   action($('#workspace-folder'),openProjectFiles);action($('#workspace-card-files'),openProjectFiles);

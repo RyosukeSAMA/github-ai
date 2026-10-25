@@ -4,17 +4,19 @@
 
 下图来自原生 Beta 的隔离测试，供应商响应来自本地模拟服务，不代表真实商业账号已验证。
 
-当前原生客户端采用有花的植物水彩浅色与月光花园暗色，使用较小的水彩角色头像；浅色发送按钮为绿色，暗色为紫色。任务发送、完成及重新打开后，对话、成果、活动和变更页面继续保留对应花园，正文与代码使用清晰的阅读面板。以下是安装包运行截图，背景插画、资源来源与生成提示见[水彩主题说明](botanical-art.md)。后文的蓝灰色截图属于保留的早期浏览器原型。
+当前原生客户端采用有花的植物水彩浅色与月光花园暗色，使用较小的水彩角色头像；浅色发送按钮为绿色，暗色为紫色。任务发送、完成及重新打开后，对话、成果、活动和变更页面继续保留对应花园，花园位于顶部和两侧，正文与代码使用清晰的实色阅读面板。以下是安装包运行截图，背景插画、资源来源与生成提示见[水彩主题说明](botanical-art.md)。后文的蓝灰色截图属于保留的早期浏览器原型。
 
-![原生 Beta 植物水彩浅色](botanical-light.png)
+![原生 Beta 植物水彩浅色](conversation-start-light.png)
 
-![原生 Beta 月光花园暗色](botanical-dark.png)
+![原生 Beta 月光花园暗色](conversation-start-dark.png)
 
 专注布局现在会收起左侧导航和右侧上下文，让任务区占满窗口宽度。顶部保留 Focus 状态和退出按钮；可临时打开上下文抽屉，使用命令菜单浏览项目或切换任务。见[浅色专注布局](focus-light.png)与[暗色专注布局](focus-dark.png)。
 
-当前 beta.10 保留了任务执行后的浅色和暗色花园；beta.9 已完成侧栏、输入框、执行阅读区、上下文、弹窗和操作反馈精修。背景沿用原先选定的水彩资源。安装包实际截图：[新任务页](refined-start-light.png)、[浅色执行页](garden-task-light.png)、[暗色执行页](garden-task-dark.png)、[成果阅读](garden-result.png)、[连接设置](refined-connections.png)、[桌面偏好](refined-preferences.png)。内容来自隔离的本地测试服务。
+当前 beta.11 将任务标题和状态合并到顶部一行，角色信息按需展开、右侧上下文默认收起，正文使用实色底，后续输入框更紧凑。新任务页仍保留完整花园与五神头像。背景沿用原先选定的水彩资源。安装包实际截图：[新任务页](conversation-start-light.png)、[浅色对话页](conversation-light.png)、[暗色对话页](conversation-dark.png)、[成果阅读](conversation-result.png)、[连接设置](refined-connections.png)、[桌面偏好](refined-preferences.png)。内容来自隔离的本地测试服务。
 
-![原生 Beta 浅色工作台](native-light.png)
+![原生 Beta 紧凑浅色对话页](conversation-light.png)
+
+![原生 Beta 紧凑暗色对话页](conversation-dark.png)
 
 本目录保留可操作的交互设计原型。完整定位、参考取舍、Web/桌面能力对照与分期验收见[产品方向与能力规划](product-direction.zh-CN.md)。打开 `index.html` 可体验；预览图与 `verification.json` 记录了本轮视觉和交互检查。原型不连接任何 API，不读取本机项目，不执行命令，也不接收凭据。
 
