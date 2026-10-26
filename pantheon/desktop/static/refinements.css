@@ -244,6 +244,18 @@ dialog p{font-size:12px;line-height:1.8}
 dialog footer button{border:1px solid var(--line);padding:9px 12px;font-size:11px;background:var(--surface);border-radius:8px}
 dialog footer .primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .form-section{border:0;padding:0;margin:0 0 20px;min-width:0}
+.connection-steps{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0;margin:0 0 20px}
+.connection-steps li{display:flex;align-items:center;gap:9px;min-width:0;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--soft-surface)}
+.connection-step-number{display:grid;place-items:center;flex-shrink:0;width:25px;height:25px;border-radius:50%;background:var(--surface);border:1px solid var(--line);font-size:11px;color:var(--muted)}
+.connection-steps strong{display:block;font-size:11px;font-weight:600;line-height:1.6}
+.connection-steps small{display:block;font-size:9px;line-height:1.6;margin-top:2px;color:var(--muted)}
+.connection-steps [data-state=current]{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--accent-soft)}
+.connection-steps [data-state=current] .connection-step-number{color:var(--accent);border-color:var(--accent)}
+.connection-steps [data-state=complete] .connection-step-number{background:var(--green);color:var(--surface);border-color:var(--green)}
+.connection-steps [data-state=locked]{opacity:.65}
+#connection-controls{flex-wrap:wrap}
+#connection-footer-hint{flex-basis:100%;margin:0 0 1px;font-size:10px;line-height:1.6;color:var(--muted)}
+#connection-advanced>#refresh-models{margin-top:13px;border:1px solid var(--line);padding:7px 10px;font-size:10px;background:var(--surface)}
 .form-section legend{font-size:11px;font-weight:600;margin:0 0 14px;padding:0;color:var(--ink)}
 .form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:15px}
 .form-grid .span-two{grid-column:1/-1}

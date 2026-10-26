@@ -464,6 +464,18 @@ function defaultDetails(body) {return [connectionCaption(body),'Hermes · Hephae
 function defaultStatus(body,updated=false,reveal=true) {
   connectionStatus('#defaults-feedback','success',updated?'New-task defaults saved':'Default for new tasks','Applies to future tasks in this project. Existing tasks keep their saved models.',defaultDetails(body),reveal);
 }
+function connectionIsDefault(body=connectionBody()) {return providerChoice()?.connection_saved&&state.setup?.setup_ready&&roleNames.every(role=>{const saved=state.setup.role_statuses.find(item=>item.role===role);return saved?.provider===body.provider&&saved?.model===body.model;});}
+function syncConnectionFlow() {
+  const provider=providerChoice(),saved=!!provider?.connection_saved&&!state.connectionDirty,busy=!!state.connectionOperation,usable=saved&&provider.enabled!==false,applied=saved&&connectionIsDefault();
+  $('#connection-save-step').dataset.state=saved?'complete':'current';$('#connection-use-step').dataset.state=applied?'complete':saved?'current':'locked';
+  $('#connection-step-save-status').textContent=saved?'Saved':'Enter details, optionally test, then save';
+  $('#connection-step-use-status').textContent=applied?'Defaults set for new tasks':saved?'Choose defaults or this task':'Available after saving';
+  $('#connection-usage-help').textContent=!saved?'Save connection to unlock these choices. Saving alone does not change any role models.':provider.enabled===false?'This connection is disabled. Enable it below before using it.':'Choose defaults for future tasks, or assign models to the current task. Existing tasks are kept when you update defaults.';
+  $('#use-provider').disabled=busy||!usable;$('#assign-open').disabled=busy||!usable;$('#manage-connection').disabled=busy||!saved;
+  $('#save-connection').disabled=busy||saved;$('#test-api').disabled=busy||provider?.enabled===false;$('#refresh-models').disabled=busy||provider?.enabled===false;
+  if(!busy)$('#save-connection').textContent=saved?'Connection saved':'Save connection';
+  $('#connection-footer-hint').textContent=applied?'Defaults are set for new tasks. Existing tasks keep their models.':saved?'Connection saved. Continue with step 2 above.':'Optional: Test API. Then save your connection to continue.';
+}
 function populateConnectionModels() {$('#model-options').replaceChildren();for(const model of providerChoice()?.models||[]){const option=element('option');option.value=model.id;option.label=model.label||model.id;$('#model-options').append(option);}}
 function fillProvider() {
   const provider=providerChoice();if(!provider)return;
@@ -475,13 +487,15 @@ function fillProvider() {
   const checked=provider.api_health?.checked_at;
   if(provider.api_health?.state==='verified')connectionStatus('#api-feedback','success','API verified','The saved connection passed its most recent API test.',[connectionCaption(connectionBody()),...(checked?['Last checked '+new Date(checked*1000).toLocaleString()]:[])],false);
   if(provider.api_health?.state==='failed')connectionStatus('#api-feedback','error','Last API test failed','Check the saved settings, then use Test API to try again.',[connectionCaption(connectionBody())],false);
-  if(provider.connection_saved&&state.setup.setup_ready&&roleNames.every(role=>state.setup.role_statuses.find(item=>item.role===role)?.provider===provider.id&&state.setup.role_statuses.find(item=>item.role===role)?.model===$('#test-model').value.trim()))defaultStatus(connectionBody(),false,false);
+  if(connectionIsDefault())defaultStatus(connectionBody(),false,false);
+  syncConnectionFlow();
 }
 function connectionEdited(identityChanged) {
   state.connectionDirty=true;
-  connectionStatus('#connection-message','attention','Unsaved connection changes','Save connection to keep these settings. Role assignments have not changed.',[],false);
+  connectionStatus('#connection-message','neutral','Connection not saved yet','Save connection to keep these settings and unlock step 2. Role assignments have not changed.',[],false);
   if(identityChanged&&!$('#api-feedback').hidden)connectionStatus('#api-feedback','neutral','API settings changed','The previous test result does not verify these edited settings. Use Test API to check them.',[],false);
   if(!$('#defaults-feedback').hidden)connectionStatus('#defaults-feedback','neutral','Defaults have not been updated','Save connection, then choose Use this provider for new tasks to apply these changes.',[],false);
+  syncConnectionFlow();
 }
 async function connectionAction({button,target,pending,label,request,complete,failure}) {
   if(state.connectionOperation)return;
@@ -494,13 +508,15 @@ async function connectionAction({button,target,pending,label,request,complete,fa
     const value=await request(body);if(operation.epoch!==state.epoch)return;
     await complete(value,body);
   }catch(error){if(operation.epoch===state.epoch)connectionStatus(target,'error',failure,errorText(error),[connectionCaption(body)]);}
-  finally {trigger.textContent=originalText;for(const [item,disabled] of controls)if(item.isConnected)item.disabled=disabled;if(state.connectionOperation===operation)state.connectionOperation=null;}
+  finally {trigger.textContent=originalText;for(const [item,disabled] of controls)if(item.isConnected)item.disabled=disabled;if(state.connectionOperation===operation)state.connectionOperation=null;syncConnectionFlow();}
 }
 async function saveConnection() {
   if(!$('#connection-form').reportValidity())return;
   await connectionAction({button:'#save-connection',target:'#connection-message',pending:'Saving connection…',label:'Saving…',failure:'Connection could not be saved',request:body=>api('/api/connections/save',body),complete:(value,body)=>{
     state.setup=value;state.connectionDirty=false;$('#api-key').value='';$('#api-key').placeholder='Leave blank to keep the saved key';renderConnectionSummary();
-    connectionStatus('#connection-message','success','Connection saved','Your connection settings are stored. Existing role assignments are unchanged.',[connectionCaption(body),body.credential_storage==='system'?'System credential storage':'Private local .env']);
+    $('#defaults-feedback').hidden=true;if(connectionIsDefault(body))defaultStatus(body,false,false);
+    if($('#api-feedback').dataset.state==='success')$('#api-feedback .operation-status-content p').textContent='The saved connection responded successfully.';
+    connectionStatus('#connection-message','success','Connection saved','Next, choose how to use this connection in step 2. Saving did not change existing role assignments.',[connectionCaption(body),body.credential_storage==='system'?'System credential storage':'Private local .env']);
   }});
 }
 async function testConnection() {
@@ -508,7 +524,7 @@ async function testConnection() {
   if(!await confirmChoice('Test provider access?','This sends a small request to the selected provider and can incur usage.','Test API'))return;
   await connectionAction({button:'#test-api',target:'#api-feedback',pending:'Testing API…',label:'Testing…',failure:'API test could not complete',request:body=>api('/api/setup/test',body),complete:(value,body)=>{
     state.setup=value;renderConnectionSummary();
-    connectionStatus('#api-feedback',value.ok?'success':value.tested?'error':'attention',value.ok?'API verified':value.tested?'API test failed':'API test did not run',value.ok?'The selected model responded successfully. Save connection to keep any changed settings.':value.problem||'Check the API key, model and base URL, then try again.',[connectionCaption({...body,provider:value.tested_provider||body.provider,model:value.tested_model||body.model}),...(value.ok&&Number.isFinite(value.duration_ms)?['Response time · '+value.duration_ms+' ms']:[])]);
+    connectionStatus('#api-feedback',value.ok?'success':value.tested?'error':'attention',value.ok?'API verified':value.tested?'API test failed':'API test did not run',value.ok?(state.connectionDirty||!providerChoice()?.connection_saved?'The selected model responded successfully. Next, save your connection to unlock step 2.':'The saved connection responded successfully. Choose how to use it in step 2.'):value.problem||'Check the API key, model and base URL, then try again.',[connectionCaption({...body,provider:value.tested_provider||body.provider,model:value.tested_model||body.model}),...(value.ok&&Number.isFinite(value.duration_ms)?['Response time · '+value.duration_ms+' ms']:[])]);
   }});
 }
 async function refreshConnectionModels() {

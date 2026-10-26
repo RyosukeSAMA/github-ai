@@ -4,6 +4,8 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Guide native provider setup through two stages: connect/test/save, then choose future-task defaults or current-task models. Keep assignment disabled for unsaved edits, unlock it after saving, clear stale save-first warnings and API-card save instructions, show saved/completed steps, and move manual model refresh into advanced options. Preserve explicit test confirmation and existing role assignments when saving.
+
 - Let desktop conversations sit directly on the selected garden canvas: remove the outer reading panel, use content-sized user bubbles and feathered local text backdrops, float the task tabs and composer, and retain solid surfaces for code, tables, artifacts and change review. Preserve both themes, the compact task header and on-demand details/context.
 
 - Make ongoing conversations quieter: put the task title/status in one header row, collapse actual council-role details, keep task context closed until requested, keep reading content clear within the garden and a smaller growing follow-up composer. Preserve explicit context choices across theme/font changes and keep approval/recovery guidance visible outside collapsed details.
