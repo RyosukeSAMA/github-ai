@@ -2,6 +2,33 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Desktop beta
+
+- Show stored API keys as a fixed display-only mask with Saved/Change controls; support replacement cancellation without losing unrelated edits or submitting the mask as a credential. Keep save-only configuration open for multiple providers, add Done, and close successful defaults/task-model application with a persistent scope-specific workbench confirmation and an Add another provider action.
+
+- Guide native provider setup through two stages: connect/test/save, then choose future-task defaults or current-task models. Keep assignment disabled for unsaved edits, unlock it after saving, clear stale save-first warnings and API-card save instructions, show saved/completed steps, and move manual model refresh into advanced options. Preserve explicit test confirmation and existing role assignments when saving.
+
+- Let desktop conversations sit directly on the selected garden canvas: remove the outer reading panel, use content-sized user bubbles and feathered local text backdrops, float the task tabs and composer, and retain solid surfaces for code, tables, artifacts and change review. Preserve both themes, the compact task header and on-demand details/context.
+
+- Make ongoing conversations quieter: put the task title/status in one header row, collapse actual council-role details, keep task context closed until requested, keep reading content clear within the garden and a smaller growing follow-up composer. Preserve explicit context choices across theme/font changes and keep approval/recovery guidance visible outside collapsed details.
+
+- Keep the selected day/moonlit garden visible after task submission, on Conversation/Result/Activity/Changes, and when reopening a task. Add soft title and reading surfaces without changing the floral assets or light-green/dark-purple send colors. Retain the background through theme, Focus and window-size changes while keeping project-file and utility surfaces separate.
+
+- Refine the native sidebar, growing composer, task status, reading typography, code/table/list rendering, artifact and diff cards, context/usage sections and settings dialogs while retaining the selected watercolor artwork. Add explicit code/response copy feedback through a bounded write-only native clipboard action, stable result rendering across polling, saved task groups, live preference values and fixed dialog action rows. Keep the task breadcrumb in sync after naming a task.
+- Make Focus layout reclaim the sidebar width on new tasks and existing work. Show a persistent Focus indicator, a pressed toolbar state and explicit entry/exit feedback. Keep task context available as an optional drawer, and preserve layout, theme and drafts across reload/restart. The command palette remains available while navigation is hidden.
+- Use the selected full-floral botanical watercolor garden for new tasks, with a matching moonlit dark theme, smaller watercolor council portraits, a green light-theme send button and a purple dark-theme send button. Keep all controls interactive and task execution uncluttered. Preserve unsaved text when changing council modes quickly, and prevent the connected-project banner from reappearing over an existing task on reload.
+- Introduce an artistic empty-task atelier with local temple/landscape line art, a serif headline, council portraits and a centered composer. Add draft-only task starters, an explained keyboard-accessible mode menu and empty-send protection; retain existing drafts before replacement, and switch to the execution workspace after sending. Collapse the initial context panel and replace letter badges with role portraits.
+- Show persistent connection status cards inside Models & connections: pending, green API/save/default confirmations and actionable failures. Include the tested model, response time, affected roles and future-task scope. Invalidate edited API settings, prevent duplicate submissions and retain typed keys when refreshing models.
+- Give the native welcome page a quiet architectural illustration, soft sky/sand colors and a council overview. Show the actual project name on a folder tile and retain its full path; open project files without losing the view during status polling.
+- Show persistent project-opening progress, selected folder paths, actionable failures and setup-aware next steps. Keep the current task and draft when the folder picker is canceled; reload model readiness when changing projects.
+- Use a rounded native application icon with transparent spacing, a soft shadow and the unchanged Pantheon mark; include an editable SVG frame and reproducible PNG/ICNS/ICO export.
+- Add a separate English Electron workbench with bundled Python, light/dark themes, icon tooltips, Focus layout, adjustable text/context sizing, native file selection, tray mode, optional notifications and a global shortcut.
+- Reuse the shared Web/CLI core through a private desktop bridge. Persist detached runs, incremental events, drafts, attachment IDs and artifacts; reconcile completed core archives after restart without replaying a task. Restore the last viewed conversation and detect conflicting window edits.
+- Review real file diffs and recheck disk hashes before writing. Add artifact search, source-task navigation, full task archive export, task rename/pin/archive/filter, model assignment isolation and confirmed terminal commands.
+- Expose shared connections, budgets, usage, memory, skills/plugins, MCP tool policies and approvals, schedules, media and Telegram/Slack/Discord callback configuration.
+- Add multiple windows, explicit Git worktrees and authenticated HTTPS remote-server access to shared sessions. Reuse compatible local services and stop only owned services on exit. Exclude transient desktop capabilities from every backup.
+- Add macOS/Windows/Linux packaging CI and an isolated native smoke test using a localhost model fixture. Native validation is recorded separately from paid-provider, platform callback and signed-installer acceptance.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added

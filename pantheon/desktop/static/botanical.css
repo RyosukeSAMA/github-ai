@@ -1,0 +1,58 @@
+/* The approved floral garden is artwork only. Every control remains live HTML. */
+:root{--canvas:#f0f3ed;--panel:#f6f8f2;--surface:#fbfcf9;--ink:#263d34;--muted:#5e7066;--line:#dbe3d7;--accent:#526f4c;--accent-soft:#e9eee4;--gold:#94733b;--green:#397557;--red:#af5454;--on-accent:#fff;--send:#52724b;--send-hover:#45633e;--shadow:0 10px 34px #263d3408}
+body:has(.app[data-theme=dark]){--canvas:#0e1c19;--panel:#142822;--surface:#10211e;--ink:#f0f0e5;--muted:#b0bfb4;--line:#30483e;--accent:#b5cba9;--accent-soft:#233b2e;--gold:#d6bc80;--green:#9dc8ab;--red:#e5a5a5;--on-accent:#10211e;--send:#7960af;--send-hover:#896fc1;--shadow:0 16px 55px #0002}
+.sidebar{background:var(--panel)}
+.main{position:relative;isolation:isolate}
+.garden-scene{display:none;position:absolute;top:53px;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;user-select:none;z-index:0}
+.garden-scene img{position:absolute;top:0;left:0;display:block;width:100%;height:auto;mask-image:linear-gradient(to bottom,#000 0%,#000 70%,transparent 100%)}
+.garden-scene .garden-night{display:none}
+.app[data-theme=dark] .garden-scene .garden-day{display:none}
+.app[data-theme=dark] .garden-scene .garden-night{display:block}
+.task-workspace .garden-scene{display:block}
+.task-workspace .main>:not(.garden-scene){position:relative;z-index:1}
+.task-preparing .main{background:var(--surface);overflow-x:hidden;overflow-y:auto}
+.task-workspace .breadcrumb{background:color-mix(in srgb,var(--surface) 92%,transparent);border-bottom:1px solid color-mix(in srgb,var(--line) 40%,transparent)}
+.task-preparing .task-intro{width:calc(100% - 104px);max-width:960px;margin:0 auto;padding-top:clamp(180px,25vh,255px)}
+.task-preparing .task-intro h1{font:500 38px/1.23 ui-serif,Georgia,"Times New Roman",serif;letter-spacing:-.9px;margin:0 0 12px;text-wrap:balance}
+.task-preparing .task-intro h1{position:relative;isolation:isolate}
+.task-preparing .task-intro h1:before{content:'';position:absolute;inset:-12px -15px;background:var(--surface);opacity:.94;filter:blur(16px);z-index:-1;pointer-events:none}
+.task-intro>p{max-width:790px;margin:0 auto;font-size:13px;line-height:1.8;color:var(--muted);text-wrap:balance}
+.task-intro>p{position:relative;isolation:isolate}
+.task-intro>p:before{content:'';position:absolute;inset:-5px -12px;background:var(--surface);opacity:.94;filter:blur(12px);z-index:-1;pointer-events:none}
+.task-council{max-width:670px;justify-content:space-between;gap:13px;margin-top:25px}
+.task-council button{min-width:96px;padding:5px 6px 7px;gap:8px}
+.task-council .role-portrait{width:60px;height:60px;border-radius:50%;border:0;box-shadow:0 0 0 3px var(--surface),0 0 0 4px color-mix(in srgb,var(--gold) 38%,var(--line));transition:box-shadow .16s ease}
+.task-council button[aria-pressed=true] .role-portrait{box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
+.task-council span{font-size:12px;color:var(--ink);line-height:1.5}
+.task-council button[aria-pressed=true] span{color:var(--ink)}
+.task-council .council-purpose{font-size:9px;line-height:1.6;color:var(--muted);margin-top:-5px;white-space:nowrap}
+svg.role-portrait{display:block;overflow:hidden;background:var(--surface);border-radius:50%}
+.task-preparing #composer{width:calc(100% - 104px);max-width:880px;margin:25px auto 0}
+.composer-box{background:color-mix(in srgb,var(--surface) 92%,var(--panel));border-color:var(--line);box-shadow:0 4px 21px color-mix(in srgb,var(--ink) 5%,transparent)}
+.composer-box:focus-within{border-color:color-mix(in srgb,var(--accent) 52%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 6%,transparent)}
+.composer textarea{min-height:79px;font-size:14px}
+.composer textarea::placeholder{opacity:1}
+.composer-tools .mode-trigger{border-radius:18px;background:var(--panel);border-color:var(--line);padding:7px 11px}
+.composer-tools #run.icon-button{width:37px;height:37px;border-radius:50%;background:var(--send);color:#fff;box-shadow:none}
+.composer-tools #run.icon-button:hover:not(:disabled){background:var(--send-hover)}
+.composer-tools #run .ui-icon{width:19px;height:19px}
+.composer-tools #run:focus-visible{outline:2px solid var(--send);outline-offset:3px}
+.composer-tools #run:disabled{opacity:.4}
+.task-preparing .task-starters{width:calc(100% - 104px);max-width:880px;margin:24px auto 27px}
+.starter-grid{gap:12px}
+.starter-grid button{background:color-mix(in srgb,var(--surface) 94%,var(--panel));border-color:var(--line);padding:15px 15px 13px;min-height:103px}
+.starter-grid button:hover{background:var(--panel)}
+.starter-grid strong{font-size:12px}
+.starter-grid small{font-size:10px}
+.starter-icon{margin-bottom:11px}
+.starter-icon .ui-icon{width:20px;height:20px}
+.starter-heading{font-size:10px}
+.starter-heading>span:first-child{font-size:9px;letter-spacing:1.4px}
+.atelier-note{font-size:12px;margin-top:20px}
+.app[data-theme=dark] .task-council .role-portrait{background:#10211e}
+.app[data-theme=dark] .inspector,.app[data-theme=dark] .titlebar{background:var(--panel)}
+@media(min-width:1700px){.task-preparing .task-intro{padding-top:285px}.task-preparing .task-intro h1{font-size:42px}}
+@media(max-height:850px) and (min-width:1151px){.task-preparing .task-intro{padding-top:185px}.task-council{margin-top:20px}.task-council .role-portrait{width:54px;height:54px}.task-preparing #composer{margin-top:21px}.task-preparing .task-starters{margin-top:19px}.starter-grid button{min-height:88px;padding:12px}.starter-icon{margin-bottom:7px}.atelier-note{margin-top:14px}}
+@media(max-width:1150px){.task-preparing .task-intro{width:calc(100% - 76px);padding-top:clamp(145px,21vh,220px)}.task-preparing .task-intro h1{font-size:33px}.task-preparing #composer,.task-preparing .task-starters{width:calc(100% - 76px)}.task-council{gap:8px}.task-council button{min-width:87px}.task-council .role-portrait{width:52px;height:52px}.starter-grid{gap:9px}.starter-grid button{padding:12px 11px}.starter-grid strong{font-size:11px}}
+@media(max-width:850px){.garden-scene img{width:125%;max-width:none;left:-12.5%}.task-preparing .task-intro{width:calc(100% - 42px);padding-top:130px}.task-preparing .task-intro h1{font-size:28px;letter-spacing:-.5px;margin-bottom:10px}.task-intro>p{font-size:11px;line-height:1.75;max-width:460px}.task-council{gap:5px;margin-top:22px}.task-council button{min-width:0;flex:1;padding:4px 1px 5px;gap:7px}.task-council .role-portrait{width:45px;height:45px}.task-council span{font-size:10px}.task-council .council-purpose{font-size:8px;letter-spacing:-.2px}.task-preparing #composer{width:calc(100% - 46px);margin-top:21px}.task-preparing .task-starters{width:calc(100% - 46px);margin-top:21px}.composer textarea{font-size:13px;min-height:73px}.starter-grid button{min-height:87px}.starter-grid small{font-size:10px}.atelier-note{margin-top:17px}}
+@media(prefers-reduced-motion:reduce){.task-council .role-portrait{transition:none}}
