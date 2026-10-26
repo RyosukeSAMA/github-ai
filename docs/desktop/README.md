@@ -14,7 +14,7 @@
 
 当前 beta.12 去掉对话区外层的大面板，让风景连贯显示；用户消息使用小气泡，回复文字只在局部加柔和衬底，标签与输入框悬浮在画布上。顶部标题与状态保持一行，角色信息按需展开，右侧上下文默认收起。新任务页仍保留完整花园与五神头像。背景沿用原先选定的水彩资源。安装包实际截图：[新任务页](conversation-start-light.png)、[浅色对话页](canvas-light.png)、[暗色对话页](canvas-dark.png)、[成果阅读](canvas-result.png)、[连接设置](refined-connections.png)、[桌面偏好](refined-preferences.png)。内容来自隔离的本地测试服务。
 
-连接设置在 beta.13 中采用两步引导：先填写连接、可选测试并保存，再解锁“新任务默认模型”或“当前任务分配”。保存后会清除旧提示，模型刷新位于高级选项。见[未保存状态](connection-flow-unsaved.png)、[保存后](connection-flow-saved.png)与[暗色完成状态](connection-flow-dark.png)。
+连接设置在 beta.14 中保留两步引导，并用圆点遮罩和 Saved 标记显示已有密钥；Change 才进入替换，取消时保留原密钥与其他编辑。单纯保存后可继续添加多家供应商，Done 可结束；应用新任务默认模型或当前任务模型成功后，配置窗口自动关闭，主界面显示注明生效范围的绿色确认。见[密钥已保存](saved-key-light.png)、[暗色设置](saved-key-dark.png)与[完成确认](setup-complete-light.png)。
 
 ![原生 Beta 紧凑浅色对话页](canvas-light.png)
 

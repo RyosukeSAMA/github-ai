@@ -4,6 +4,8 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Show stored API keys as a fixed display-only mask with Saved/Change controls; support replacement cancellation without losing unrelated edits or submitting the mask as a credential. Keep save-only configuration open for multiple providers, add Done, and close successful defaults/task-model application with a persistent scope-specific workbench confirmation and an Add another provider action.
+
 - Guide native provider setup through two stages: connect/test/save, then choose future-task defaults or current-task models. Keep assignment disabled for unsaved edits, unlock it after saving, clear stale save-first warnings and API-card save instructions, show saved/completed steps, and move manual model refresh into advanced options. Preserve explicit test confirmation and existing role assignments when saving.
 
 - Let desktop conversations sit directly on the selected garden canvas: remove the outer reading panel, use content-sized user bubbles and feathered local text backdrops, float the task tabs and composer, and retain solid surfaces for code, tables, artifacts and change review. Preserve both themes, the compact task header and on-demand details/context.

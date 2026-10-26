@@ -4,7 +4,7 @@ const native = window.pantheonDesktop;
 const state = {info:null, sessions:[], runs:[], artifacts:[], coreTasks:[], setup:null, selected:'', detail:null,
   view:'work', tab:'conversation', eventCache:new Map(), cursors:new Map(), output:new Map(), attachments:new Map(),
   activeReview:null, file:null, fileDirectory:'', patchQueue:Promise.resolve(), draftTimer:null, editorTimer:null,
-  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, sending:false, preparing:false, contextOpen:false, contextBeforeFocus:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null};
+  epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, sending:false, preparing:false, contextOpen:false, contextBeforeFocus:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null, keyEditing:false, connectionBaseline:null, connectionSavedHealth:null};
 const activeStatuses = new Set(['queued','running','stopping']);
 const roleNames = ['hermes','hephaestus','athena','apollo'];
 const councilRoles={hermes:{name:'Hermes',purpose:'Plan & coordinate'},hephaestus:{name:'Hephaestus',purpose:'Build & refine'},athena:{name:'Athena',purpose:'Research & reason'},apollo:{name:'Apollo',purpose:'Create & imagine'},chronos:{name:'Chronos',purpose:'Schedule & deliver'}};
@@ -193,6 +193,7 @@ async function adoptWorkspace(value) {
   renderOnboarding();toast('Opened '+value.workspace.workspace_name+'.');
 }
 function resetWorkspace() {
+  hideSetupCompletion();
   state.epoch++;state.selectionGeneration++;state.dirty.clear();
   state.selected='';state.detail=null;state.sessions=[];state.runs=[];state.artifacts=[];state.file=null;state.fileDirectory='';state.setup=null;state.view='work';state.tab='conversation';
   state.eventCache.clear();state.cursors.clear();state.output.clear();state.attachments.clear();state.approvals.clear();
@@ -267,6 +268,7 @@ function renderSidebar() {
   if(!visible.length)empty(target,'Your tasks will appear here.');
 }
 function setView(view) {
+  hideSetupCompletion();
   if(!state.info?.workspace){showWelcome();return;}
   state.view=view;$('.app').dataset.surface=view;
   document.querySelectorAll('[data-view]').forEach(button=>{button.classList.toggle('selected',button.dataset.view===view);button.setAttribute('aria-current',button.dataset.view===view?'page':'false');});
@@ -448,8 +450,29 @@ async function loadCapability(name) {
   if(name==='channels'){for(const item of list){const button=element('button','','Configure '+item.name);action(button,()=>editChannel(item));target.append(button);}}
   else if(['skills','plugins','mcp/servers'].includes(name)){const button=element('button','','Add '+(name==='mcp/servers'?'MCP server':name.slice(0,-1)));action(button,()=>editCapability(name));target.append(button);}
 }
-async function openConnections() {await refreshSetup();const selected=$('#provider').value;$('#provider').replaceChildren();for(const provider of state.setup.providers){const option=element('option','',provider.label||provider.id);option.value=provider.id;$('#provider').append(option);}if(selected&&state.setup.providers.some(item=>item.id===selected))$('#provider').value=selected;fillProvider();renderConnectionSummary();showDialog('#connections-dialog');}
+async function openConnections() {hideSetupCompletion();await refreshSetup();const selected=$('#provider').value;$('#provider').replaceChildren();for(const provider of state.setup.providers){const option=element('option','',provider.label||provider.id);option.value=provider.id;$('#provider').append(option);}if(selected&&state.setup.providers.some(item=>item.id===selected))$('#provider').value=selected;fillProvider();renderConnectionSummary();showDialog('#connections-dialog');}
 function providerChoice(){return state.setup?.providers.find(item=>item.id===$('#provider').value);}
+function hideSetupCompletion() {$('#setup-complete').hidden=true;}
+function finishSetup(title,description,details) {
+  closeDialog('#connections-dialog');closeDialog('#models-dialog');
+  $('#setup-complete-title').textContent=title;$('#setup-complete-description').textContent=description;$('#setup-complete-details').textContent=details;
+  const card=$('#setup-complete');card.hidden=false;card.scrollIntoView({block:'nearest'});card.focus({preventScroll:true});
+}
+function renderSavedKey() {
+  const stored=!!providerChoice()?.key_configured,masked=stored&&!state.keyEditing;
+  $('#saved-api-key').hidden=!masked;$('#api-key').hidden=masked;$('#api-key').required=stored&&state.keyEditing;
+  $('#cancel-key-change').hidden=!stored||!state.keyEditing;
+  $('#api-key').placeholder=stored?'Enter a replacement API key':'Enter your API key';
+  $('#api-key-hint').textContent=masked?'A key is saved for this provider. Choose Change to replace it.':stored?'Enter a replacement, or cancel to keep the saved key.':'Your key is saved only when you choose Save connection.';
+}
+function rememberSavedConnection() {state.connectionBaseline=JSON.stringify(connectionBody());state.connectionSavedHealth=providerChoice()?.api_health;}
+function restoreSavedConnectionFeedback() {
+  for(const id of ['#api-feedback','#connection-message','#defaults-feedback'])$(id).hidden=true;
+  const health=state.connectionSavedHealth,checked=health?.checked_at;
+  if(health?.state==='verified')connectionStatus('#api-feedback','success','API verified','The saved connection passed its most recent API test.',[connectionCaption(connectionBody()),...(checked?['Last checked '+new Date(checked*1000).toLocaleString()]:[])],false);
+  if(health?.state==='failed')connectionStatus('#api-feedback','error','Last API test failed','Check the saved settings, then use Test API to try again.',[connectionCaption(connectionBody())],false);
+  if(connectionIsDefault())defaultStatus(connectionBody(),false,false);
+}
 function connectionStatus(id,status,title,text,details=[],reveal=true) {
   const card=$(id);card.hidden=false;card.dataset.state=status;card.setAttribute('aria-busy',String(status==='pending'));
   const mark=element('span','operation-status-mark',status==='success'?'✓':status==='error'?'!':status==='attention'?'!':status==='pending'?'':'i');mark.setAttribute('aria-hidden','true');
@@ -466,32 +489,29 @@ function defaultStatus(body,updated=false,reveal=true) {
 }
 function connectionIsDefault(body=connectionBody()) {return providerChoice()?.connection_saved&&state.setup?.setup_ready&&roleNames.every(role=>{const saved=state.setup.role_statuses.find(item=>item.role===role);return saved?.provider===body.provider&&saved?.model===body.model;});}
 function syncConnectionFlow() {
-  const provider=providerChoice(),saved=!!provider?.connection_saved&&!state.connectionDirty,busy=!!state.connectionOperation,usable=saved&&provider.enabled!==false,applied=saved&&connectionIsDefault();
+  const provider=providerChoice(),replacing=!!provider?.key_configured&&state.keyEditing,saved=!!provider?.connection_saved&&!state.connectionDirty&&!replacing,busy=!!state.connectionOperation,usable=saved&&provider.enabled!==false,applied=saved&&connectionIsDefault();
   $('#connection-save-step').dataset.state=saved?'complete':'current';$('#connection-use-step').dataset.state=applied?'complete':saved?'current':'locked';
   $('#connection-step-save-status').textContent=saved?'Saved':'Enter details, optionally test, then save';
   $('#connection-step-use-status').textContent=applied?'Defaults set for new tasks':saved?'Choose defaults or this task':'Available after saving';
   $('#connection-usage-help').textContent=!saved?'Save connection to unlock these choices. Saving alone does not change any role models.':provider.enabled===false?'This connection is disabled. Enable it below before using it.':'Choose defaults for future tasks, or assign models to the current task. Existing tasks are kept when you update defaults.';
   $('#use-provider').disabled=busy||!usable;$('#assign-open').disabled=busy||!usable;$('#manage-connection').disabled=busy||!saved;
   $('#save-connection').disabled=busy||saved;$('#test-api').disabled=busy||provider?.enabled===false;$('#refresh-models').disabled=busy||provider?.enabled===false;
+  $('#change-api-key').disabled=busy;$('#cancel-key-change').disabled=busy;$('#finish-connection').hidden=!saved;$('#finish-connection').disabled=busy||!saved;
   if(!busy)$('#save-connection').textContent=saved?'Connection saved':'Save connection';
-  $('#connection-footer-hint').textContent=applied?'Defaults are set for new tasks. Existing tasks keep their models.':saved?'Connection saved. Continue with step 2 above.':'Optional: Test API. Then save your connection to continue.';
+  $('#connection-footer-hint').textContent=replacing?'Enter a replacement key, or cancel to keep the saved key.':applied?'Defaults are set. Choose Done, or apply models to the current task.':saved?'Choose an option in step 2, add another provider, or choose Done.':'Optional: Test API. Then save your connection to continue.';
 }
 function populateConnectionModels() {$('#model-options').replaceChildren();for(const model of providerChoice()?.models||[]){const option=element('option');option.value=model.id;option.label=model.label||model.id;$('#model-options').append(option);}}
 function fillProvider() {
   const provider=providerChoice();if(!provider)return;
   $('#base-url').value=provider.base_url||'';$('#test-model').value=provider.test_model||provider.default_model||provider.models?.[0]?.id||'';$('#api-key').value='';
-  $('#api-key').placeholder=provider.key_configured?'Leave blank to keep the saved key':'Enter your API key';
+  state.keyEditing=!provider.key_configured;renderSavedKey();
   $('#credential-storage').value=provider.credential_storage||'env';$('#streaming').checked=provider.streaming!==false;
-  state.connectionDirty=false;populateConnectionModels();
-  for(const id of ['#api-feedback','#connection-message','#defaults-feedback'])$(id).hidden=true;
-  const checked=provider.api_health?.checked_at;
-  if(provider.api_health?.state==='verified')connectionStatus('#api-feedback','success','API verified','The saved connection passed its most recent API test.',[connectionCaption(connectionBody()),...(checked?['Last checked '+new Date(checked*1000).toLocaleString()]:[])],false);
-  if(provider.api_health?.state==='failed')connectionStatus('#api-feedback','error','Last API test failed','Check the saved settings, then use Test API to try again.',[connectionCaption(connectionBody())],false);
-  if(connectionIsDefault())defaultStatus(connectionBody(),false,false);
+  state.connectionDirty=false;rememberSavedConnection();populateConnectionModels();restoreSavedConnectionFeedback();
   syncConnectionFlow();
 }
 function connectionEdited(identityChanged) {
-  state.connectionDirty=true;
+  state.connectionDirty=JSON.stringify(connectionBody())!==state.connectionBaseline;
+  if(!state.connectionDirty){restoreSavedConnectionFeedback();syncConnectionFlow();return;}
   connectionStatus('#connection-message','neutral','Connection not saved yet','Save connection to keep these settings and unlock step 2. Role assignments have not changed.',[],false);
   if(identityChanged&&!$('#api-feedback').hidden)connectionStatus('#api-feedback','neutral','API settings changed','The previous test result does not verify these edited settings. Use Test API to check them.',[],false);
   if(!$('#defaults-feedback').hidden)connectionStatus('#defaults-feedback','neutral','Defaults have not been updated','Save connection, then choose Use this provider for new tasks to apply these changes.',[],false);
@@ -506,14 +526,14 @@ async function connectionAction({button,target,pending,label,request,complete,fa
   connectionStatus(target,'pending',pending,'Please wait for the result.',[connectionCaption(body)]);
   try {
     const value=await request(body);if(operation.epoch!==state.epoch)return;
-    await complete(value,body);
+    await complete(value,body);return true;
   }catch(error){if(operation.epoch===state.epoch)connectionStatus(target,'error',failure,errorText(error),[connectionCaption(body)]);}
   finally {trigger.textContent=originalText;for(const [item,disabled] of controls)if(item.isConnected)item.disabled=disabled;if(state.connectionOperation===operation)state.connectionOperation=null;syncConnectionFlow();}
 }
 async function saveConnection() {
   if(!$('#connection-form').reportValidity())return;
   await connectionAction({button:'#save-connection',target:'#connection-message',pending:'Saving connection…',label:'Saving…',failure:'Connection could not be saved',request:body=>api('/api/connections/save',body),complete:(value,body)=>{
-    state.setup=value;state.connectionDirty=false;$('#api-key').value='';$('#api-key').placeholder='Leave blank to keep the saved key';renderConnectionSummary();
+    state.setup=value;state.connectionDirty=false;$('#api-key').value='';state.keyEditing=!providerChoice()?.key_configured;renderSavedKey();rememberSavedConnection();renderConnectionSummary();
     $('#defaults-feedback').hidden=true;if(connectionIsDefault(body))defaultStatus(body,false,false);
     if($('#api-feedback').dataset.state==='success')$('#api-feedback .operation-status-content p').textContent='The saved connection responded successfully.';
     connectionStatus('#connection-message','success','Connection saved','Next, choose how to use this connection in step 2. Saving did not change existing role assignments.',[connectionCaption(body),body.credential_storage==='system'?'System credential storage':'Private local .env']);
@@ -523,7 +543,7 @@ async function testConnection() {
   if(state.connectionOperation||!$('#connection-form').reportValidity())return;
   if(!await confirmChoice('Test provider access?','This sends a small request to the selected provider and can incur usage.','Test API'))return;
   await connectionAction({button:'#test-api',target:'#api-feedback',pending:'Testing API…',label:'Testing…',failure:'API test could not complete',request:body=>api('/api/setup/test',body),complete:(value,body)=>{
-    state.setup=value;renderConnectionSummary();
+    state.setup=value;if(!state.connectionDirty)state.connectionSavedHealth=providerChoice()?.api_health;renderConnectionSummary();
     connectionStatus('#api-feedback',value.ok?'success':value.tested?'error':'attention',value.ok?'API verified':value.tested?'API test failed':'API test did not run',value.ok?(state.connectionDirty||!providerChoice()?.connection_saved?'The selected model responded successfully. Next, save your connection to unlock step 2.':'The saved connection responded successfully. Choose how to use it in step 2.'):value.problem||'Check the API key, model and base URL, then try again.',[connectionCaption({...body,provider:value.tested_provider||body.provider,model:value.tested_model||body.model}),...(value.ok&&Number.isFinite(value.duration_ms)?['Response time · '+value.duration_ms+' ms']:[])]);
   }});
 }
@@ -540,11 +560,12 @@ async function useProviderDefaults() {
   if(state.connectionDirty||!provider?.connection_saved){connectionStatus('#defaults-feedback','attention','Save connection first','Save the connection above, then apply it to future tasks. No default models were changed.');return;}
   if(provider.enabled===false){connectionStatus('#defaults-feedback','attention','Enable this connection first','Use Enable / disable connection, then try again. No default models were changed.');return;}
   if(!await confirmChoice('Update defaults for new tasks?',connectionCaption(connectionBody())+' will be used by Hermes, Hephaestus, Athena and Apollo for future tasks. Existing tasks keep their saved models.','Update defaults'))return;
-  await connectionAction({button:'#use-provider',target:'#defaults-feedback',pending:'Updating new-task defaults…',label:'Updating defaults…',failure:'Defaults could not be updated',request:body=>api('/api/models/defaults',{models:Object.fromEntries(roleNames.map(role=>[role,{provider:body.provider,model:body.model}]))}),complete:(value,body)=>{state.setup=value;renderOnboarding();defaultStatus(body,true);}});
+  const updated=await connectionAction({button:'#use-provider',target:'#defaults-feedback',pending:'Updating new-task defaults…',label:'Updating defaults…',failure:'Defaults could not be updated',request:body=>api('/api/models/defaults',{models:Object.fromEntries(roleNames.map(role=>[role,{provider:body.provider,model:body.model}]))}),complete:(value,body)=>{state.setup=value;renderOnboarding();defaultStatus(body,true);}});
+  if(updated)finishSetup('New-task models saved','Future tasks in this project will use this provider. Existing tasks keep their saved models.',connectionCaption(connectionBody())+' · Hermes, Hephaestus, Athena and Apollo');
 }
 function renderConnectionSummary() {renderOnboarding();$('#connection-summary').replaceChildren();for(const provider of state.setup.providers.filter(item=>item.connection_saved)){const status=provider.enabled===false?'disabled':provider.api_health?.state||'untested',row=element('div','connection-pill');row.dataset.state=status;row.append(element('strong','',provider.label||provider.id),element('small','',status==='verified'?'API verified':status==='failed'?'Test failed':status==='disabled'?'Disabled':'Not tested'));$('#connection-summary').append(row);}}
-function connectionBody(){return {provider:$('#provider').value,model:$('#test-model').value.trim(),base_url:$('#base-url').value.trim(),api_key:$('#api-key').value.trim()||undefined,credential_storage:$('#credential-storage').value,streaming:$('#streaming').checked};}
-async function openModels(){if(!state.selected)await newTask();await refreshSetup();const choices=roleNames.map(role=>currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{});const mixed=new Set(choices.map(item=>item.provider+'/'+item.model)).size>1;$('[name="model-mode"][value="'+(mixed?'mixed':'single')+'"]').checked=true;renderModels();showDialog('#models-dialog');}
+function connectionBody(){return {provider:$('#provider').value,model:$('#test-model').value.trim(),base_url:$('#base-url').value.trim(),api_key:state.keyEditing?$('#api-key').value.trim()||undefined:undefined,credential_storage:$('#credential-storage').value,streaming:$('#streaming').checked};}
+async function openModels(){hideSetupCompletion();if(!state.selected)await newTask();await refreshSetup();const choices=roleNames.map(role=>currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{});const mixed=new Set(choices.map(item=>item.provider+'/'+item.model)).size>1;$('[name="model-mode"][value="'+(mixed?'mixed':'single')+'"]').checked=true;renderModels();showDialog('#models-dialog');}
 function renderModels(){const mixed=$('[name="model-mode"]:checked')?.value==='mixed';$('#model-rows').replaceChildren();for(const [index,role] of roleNames.entries()){const row=element('div','model-row'),label=element('div','model-role');label.append(rolePortrait(role),element('span','',councilRoles[role].name));const provider=element('select'),model=element('input');model.setAttribute('aria-label',role+' model');provider.setAttribute('aria-label',role+' provider');for(const choice of state.setup.providers.filter(item=>item.enabled)){const option=element('option','',choice.label||choice.id);option.value=choice.id;provider.append(option);}const saved=currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{};provider.value=saved.provider||state.setup.provider;model.value=saved.model||providerChoice()?.test_model||'';const changed=()=>{const choice=state.setup.providers.find(item=>item.id===provider.value);model.value=choice?.test_model||choice?.models?.[0]?.id||'';if(!mixed)$('#model-rows').querySelectorAll('.model-row').forEach(other=>{other.querySelector('select').value=provider.value;other.querySelector('input').value=model.value;});};provider.onchange=changed;model.oninput=()=>{if(!mixed)$('#model-rows').querySelectorAll('input').forEach(other=>{other.value=model.value;});};row.dataset.role=role;row.append(label,provider,model);$('#model-rows').append(row);if(!mixed&&index>0){provider.value=$('#model-rows select').value;model.value=$('#model-rows input').value;}}}
 async function openUsage() {const run=latestRun();const [usage,budget]=await Promise.all([api('/api/usage/details'+(run?.task_id?'?task_id='+encodeURIComponent(run.task_id):'')),api('/api/budgets')]);const content=element('div');content.append(element('p','',usage.note));for(const group of usage.groups){const card=element('div','data-card');card.append(element('strong','',(group.role||'Other')+' · '+group.phase),element('p','',group.provider+' / '+group.model+' · '+group.calls+' call(s)'),element('p','',(group.input_tokens===null?'Unknown':group.input_tokens)+' input tokens · '+(group.output_tokens===null?'Unknown':group.output_tokens)+' output tokens'),element('p','',group.unpriced?'Cost unknown':('$'+Number(group.estimated_usd||0).toFixed(4)+' estimated')));content.append(card);}if(!usage.groups.length)content.append(element('p','','No calls recorded for this task.'));const input=element('textarea');input.rows=12;input.style.width='100%';input.value=JSON.stringify(budget.policy||budget,null,2);const save=element('button','primary','Save workspace budget');action(save,async()=>{await api('/api/budgets',JSON.parse(input.value));toast('Budget saved.');});const details=element('details');details.append(element('summary','','Workspace budget policy'),element('p','','Prices must be entered explicitly. Unknown prices remain unknown.'),input,save);content.append(details);info('Usage and budgets',content);}
 async function recoverTask(){const run=latestRun();if(!run?.task_id)return;const core=await api('/api/tasks/'+encodeURIComponent(run.task_id));const accepted=await confirmChoice('Review before resuming','Completed steps are retained. Inspect any external actions before retrying. Resume uses the current saved configuration.','I checked the effects — resume');if(accepted)await runTask({id:run.task_id,prompt:core.data?.task||run.data.prompt,ack:true});}
@@ -578,7 +599,12 @@ function bind() {
   action($('#older-messages'),async()=>{const older=await api('/api/desktop/sessions/'+state.selected+'?before='+state.detail.message_start);state.detail.messages=[...older.messages,...state.detail.messages];state.detail.message_start=older.message_start;renderMessages();});
   action($('#models-open'),openModels);action($('#models-edit'),openModels);action($('#assign-open'),async()=>{closeDialog('#connections-dialog');await openModels();});
   document.querySelectorAll('[name="model-mode"]').forEach(input=>{input.onchange=renderModels;});
-  action($('#save-models'),async()=>{const overrides={};$('#model-rows').querySelectorAll('.model-row').forEach(row=>{overrides[row.dataset.role]={provider:row.querySelector('select').value,model:row.querySelector('input').value.trim()};});await patchSession({overrides});closeDialog('#models-dialog');renderRoles();});
+  action($('#save-models'),async()=>{const overrides={};$('#model-rows').querySelectorAll('.model-row').forEach(row=>{overrides[row.dataset.role]={provider:row.querySelector('select').value,model:row.querySelector('input').value.trim()};});await patchSession({overrides});closeDialog('#models-dialog');renderRoles();finishSetup('Task models saved','These model assignments apply to this conversation only. Other tasks and future-task defaults are unchanged.',currentSession()?.title||'Current task');});
+  action($('#change-api-key'),()=>{state.keyEditing=true;$('#api-key').value='';renderSavedKey();syncConnectionFlow();$('#api-key').focus();});
+  action($('#cancel-key-change'),()=>{$('#api-key').value='';state.keyEditing=false;renderSavedKey();connectionEdited(true);$('#change-api-key').focus();});
+  action($('#finish-connection'),()=>{if(!state.connectionDirty&&!state.connectionOperation)finishSetup('Connection saved','Your connection is stored. You can change it later in Models & connections. Role assignments are unchanged.',connectionCaption(connectionBody()));});
+  action($('#setup-complete-dismiss'),hideSetupCompletion);
+  action($('#setup-complete-another'),async()=>{await openConnections();const next=state.setup.providers.find(provider=>!provider.connection_saved);if(next){$('#provider').value=next.id;fillProvider();}$('#provider').focus();});
   $('#provider').onchange=fillProvider;
   for(const id of ['#base-url','#test-model','#api-key'])$(id).oninput=()=>connectionEdited(true);
   for(const id of ['#credential-storage','#streaming'])$(id).onchange=()=>connectionEdited(false);
