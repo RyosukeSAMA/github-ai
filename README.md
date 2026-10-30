@@ -27,7 +27,9 @@
 
 </div>
 
-![Pantheon Web UI](docs/images/pantheon-web-ui.jpg)
+![Pantheon Web UI with a moonlit temple background](docs/images/pantheon-web-temple-v2-dark.png)
+
+<p align="center"><a href="docs/images/pantheon-web-temple-v2-light.png">Morning light theme</a> · <a href="docs/images/pantheon-web-temple-v2-dark.png">Moonlit dark theme</a> · <a href="docs/web-appearance.md">More views and verification</a></p>
 
 <p align="center"><sub>Pantheon brings chat, agent orchestration, workspace activity, files, terminal access, and webpage preview into one local interface.</sub></p>
 

@@ -27,7 +27,9 @@
 
 </div>
 
-![Pantheon Web UI](docs/images/pantheon-web-ui.jpg)
+![Pantheon Web UI：月光神殿背景](docs/images/pantheon-web-temple-v2-dark.png)
+
+<p align="center"><a href="docs/images/pantheon-web-temple-v2-light.png">晨光浅色</a> · <a href="docs/images/pantheon-web-temple-v2-dark.png">月光暗色</a> · <a href="docs/web-appearance.md">更多截图与验证说明</a></p>
 
 <p align="center"><sub>Pantheon Web UI：对话、Agent 编排、Workspace、文件、终端与网页预览集中在同一个本地工作区。</sub></p>
 

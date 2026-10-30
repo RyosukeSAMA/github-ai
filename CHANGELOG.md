@@ -2,6 +2,12 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Web workspace
+
+- Add locally bundled morning and moonlit fresco-style temple backgrounds, showing a complete pediment, colonnade and broad steps above the foreground courtyard. Keep artwork centered in narrow panels, fade it during conversations and honor reduced-motion preferences.
+- Keep the composer at the viewport bottom with explicit grid areas for the header, update banner, scrolling conversation and input. Contain narrow toolbars so Send remains reachable. Use a lighter welcome group while retaining role controls and draft-only examples.
+- Replace the old English and Chinese README screenshot with the current Web UI, link both themes and document artwork provenance and browser verification.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
