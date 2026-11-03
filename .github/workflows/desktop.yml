@@ -20,7 +20,7 @@ jobs:
   desktop:
     name: Native build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DEBUG: pw:browser
     strategy:
@@ -62,17 +62,17 @@ jobs:
         shell: bash
         run: |
           app_path=$(find "$PWD/dist/desktop" -path '*/Pantheon.app/Contents/MacOS/Pantheon' -type f -print -quit)
-          PANTHEON_TEST_EXECUTABLE="$app_path" node desktop/test/native-smoke.cjs
+          PANTHEON_TEST_EXECUTABLE="$app_path" node desktop/test/packaged-suites.cjs
       - name: Test packaged app on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $env:PANTHEON_TEST_EXECUTABLE = (Resolve-Path 'dist/desktop/win-unpacked/Pantheon.exe').Path
-          node desktop/test/native-smoke.cjs
+          node desktop/test/packaged-suites.cjs
       - name: Test packaged app on Linux
         if: runner.os == 'Linux'
         shell: bash
-        run: dbus-run-session -- xvfb-run -a env PANTHEON_TEST_EXECUTABLE="$PWD/dist/desktop/linux-unpacked/pantheon-desktop" node desktop/test/native-smoke.cjs
+        run: dbus-run-session -- xvfb-run -a env PANTHEON_TEST_EXECUTABLE="$PWD/dist/desktop/linux-unpacked/pantheon-desktop" node desktop/test/packaged-suites.cjs
       - name: Package beta installers
         run: npm run package --prefix desktop
         env:
@@ -89,3 +89,5 @@ jobs:
             dist/desktop/Pantheon-*.AppImage
             dist/desktop/Pantheon-*.deb
             dist/desktop-evidence/**
+            dist/provider-ui-evidence/**
+            dist/toolbar-ui-evidence/**

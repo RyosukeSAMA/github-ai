@@ -8,9 +8,11 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
 const http=require('node:http');
+const {smokeTimeout,smokeProgress}=require('./smoke-support.cjs');
 const repo=path.resolve(__dirname,'../..');
 
 async function main(){
+  const timeoutMs=smokeTimeout(180000);
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'pantheon-toolbar-'));
   const project=path.join(root,'Garden studio');await fs.mkdir(project);
   const evidence=path.join(repo,'dist','toolbar-ui-evidence');await fs.mkdir(evidence,{recursive:true});
@@ -31,7 +33,7 @@ async function main(){
   const loader=path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib','server','electron','loader.js');
   const app=await electron.launch({executablePath:process.env.PANTHEON_TEST_EXECUTABLE||require('electron'),args:process.env.PANTHEON_TEST_EXECUTABLE?['-r',loader]:[path.join(repo,'desktop')],env});
   const child=app.process();
-  const timeout=setTimeout(()=>{child.kill('SIGKILL');fixture.closeAllConnections();},180000);timeout.unref();
+  const progress=smokeProgress('toolbar-ui',evidence,timeoutMs,()=>{child.kill('SIGKILL');fixture.closeAllConnections();});
   const errors=[];app.on('window',page=>page.on('pageerror',error=>errors.push(String(error))));
   const page=await app.firstWindow();page.setDefaultTimeout(20000);
   const shot=async name=>{await page.mouse.move(5,70);await page.screenshot({path:path.join(evidence,name+'.png'),animations:'disabled',scale:'css'});};
@@ -50,6 +52,7 @@ async function main(){
     await page.locator('#connection-state').click();await page.locator('#connection-choose').click();
     await expect(page.locator('#connection-state')).toHaveText('Local connected',{timeout:30000});
     await expect(page.locator('#new-window')).toHaveAttribute('aria-label','Open in new window');
+    progress.stage('project connected');
     await page.locator('#connection-state').click();await expect(panel).toContainText('No API connections saved yet');await expect(panel.locator('.service-health')).toContainText('Connected');
     await page.locator('#connection-panel-close').click();assert.equal(providerCalls,0);
     await page.evaluate(async base=>{
@@ -58,6 +61,7 @@ async function main(){
       await window.pantheonDesktop.api('/api/models/defaults',{method:'POST',body:{models:Object.fromEntries(['hermes','hephaestus','athena','apollo'].map(role=>[role,{provider:'deepseek',model:'garden-chat'}]))}});
       await refreshSetup();
     },base);
+    progress.stage('saved API evidence');
     const explicitCalls=providerCalls;assert.ok(explicitCalls>=2);
     await page.locator('#new-task').click();await expect(page.locator('#prompt')).toBeVisible();
     await page.locator('#connection-state').click();
@@ -75,6 +79,7 @@ async function main(){
     await shot('connection-status-narrow');await page.keyboard.press('Escape');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1440,1000));await page.locator('#theme-toggle').click();
     // Click immediately after typing, before the autosave debounce; the other window must load the saved draft.
+    progress.stage('drafts and independent windows');
     const draft='Draft saved before opening another window';await page.locator('#prompt').fill(draft);await page.locator('#new-window').click();
     await expect.poll(()=>app.windows().length).toBe(2);second=app.windows().find(other=>other!==page);
     await expect(second.locator('#prompt')).toHaveValue(draft);await expect(second.locator('.app')).toHaveAttribute('data-layout','professional');
@@ -88,6 +93,7 @@ async function main(){
     await page.locator('#theme-toggle').click();await expect(second.locator('.app')).toHaveAttribute('data-layout','focus');
     await second.screenshot({path:path.join(evidence,'independent-focus-window.png'),animations:'disabled',scale:'css'});
     await page.locator('#connection-state').click();await shot('standard-window-status');await page.keyboard.press('Escape');
+    progress.stage('draft conflict guard');
     // Hold this renderer's polling while the other window saves a real conflicting edit.
     await page.evaluate(()=>{state.polling=true;});
     await second.locator('#prompt').fill('Saved from the other window');await expect(second.locator('#draft-state')).toHaveText('Saved');
@@ -96,6 +102,7 @@ async function main(){
     await expect(page.locator('#prompt')).toHaveValue('Keep my conflicting local draft');
     await page.getByRole('button',{name:'Resolve draft conflict',exact:true}).click();
     await page.getByRole('button',{name:'Load saved draft',exact:true}).click();await page.evaluate(()=>{state.polling=false;});
+    progress.stage('real service restart');
     // Stop only this test's owned core, then exercise the real failed-read and reconnect path.
     const descriptor=JSON.parse(await fs.readFile(path.join(project,'.pantheon','desktop-runtime.json'),'utf8'));
     assert.equal(descriptor.workspace,await fs.realpath(project));assert.ok(Number.isInteger(descriptor.pid));
@@ -108,10 +115,10 @@ async function main(){
     await expect(second.locator('.app')).toHaveAttribute('data-layout','focus');
     assert.equal(providerCalls,explicitCalls,'Toolbar and window actions must not probe any provider');
     assert.deepEqual(errors,[]);
-    await app.close();assert.equal(child.exitCode,0);
+    await app.close();assert.equal(child.exitCode,0);progress.finish(true);
     await fs.writeFile(path.join(evidence,'result.json'),JSON.stringify({passed:true,packaged:!!process.env.PANTHEON_TEST_EXECUTABLE,provider_fixture_calls:providerCalls,paid_api_calls:0,page_errors:errors,checks:['empty workspace','same-task draft saved before opening','failed draft save blocks new window and retains local text','saved verification and failure evidence','light dark and 820px layout','independent layouts and restoration','shared theme retains per-window layouts','reload retains per-window layout','status reconnect']},null,2));
     console.log('TOOLBAR_UI_PASS: status, saved API evidence, independent native windows, draft flush, empty workspace, themes and reconnect; zero paid APIs');
   }catch(error){await shot('failure').catch(()=>{});throw error;}
-  finally{if(child.exitCode===null)await app.close().catch(()=>child.kill('SIGKILL'));fixture.closeAllConnections();await new Promise(resolve=>fixture.close(resolve));clearTimeout(timeout);}
+  finally{if(child.exitCode===null)await app.close().catch(()=>child.kill('SIGKILL'));fixture.closeAllConnections();await new Promise(resolve=>fixture.close(resolve));progress.finish(false);}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

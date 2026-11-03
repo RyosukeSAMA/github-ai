@@ -93,3 +93,10 @@ node scripts/desktop/build_icons.cjs
 ```
 
 `npm run test:toolbar --prefix desktop` verifies actual native-window layout isolation, draft saving before opening, empty-project windows, saved API health, light/dark/narrow status panels and real local-service restart/reconnect in a disposable project. Explicit API probes use a localhost fixture; toolbar operations make no provider calls. Evidence is written to `dist/toolbar-ui-evidence`.
+
+
+### Combined packaged verification
+
+Set `PANTHEON_TEST_EXECUTABLE` to the built app and run `npm run test:packaged --prefix desktop`. The runner executes the full native smoke, provider UI and toolbar UI suites in separate disposable profiles and requires all three to exit successfully. CI runs this same command path on macOS, Windows and Linux. It records stage durations, failed/expired stages and the combined outcome in `dist/desktop-evidence`, `dist/provider-ui-evidence` and `dist/toolbar-ui-evidence`; all three directories are uploaded even on failure.
+
+The combined runner allows 600 seconds for the full native flow and 300 seconds for each focused suite, within the 30-minute job limit. A bounded `PANTHEON_DESKTOP_TEST_TIMEOUT_MS` override accepts 1000–900000 ms for diagnosis; malformed or out-of-range values fail immediately. Standalone native smoke retains its original platform defaults unless overridden. All existing assertions and zero-paid-call checks remain enabled. Passing local macOS tests does not establish a Windows/Linux CI pass.
