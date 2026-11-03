@@ -29,10 +29,11 @@ function senderContext(event, requireBackend = true) {
 }
 function publicInfo(context) {
   return {version:app.getVersion(),platform:process.platform,workspace:context.backend?.info || null,
-          remote:!!context.backend?.remote,remoteOrigin:context.backend?.remote?context.backend.base:'', owned:!!context.backend?.owned, preferences,recent,
+          remote:!!context.backend?.remote,remoteOrigin:context.backend?.remote?context.backend.base:'', owned:!!context.backend?.owned, preferences:windowPreferences(context),recent,
           savedRemote: savedRemote ? {url:savedRemote.url,username:savedRemote.username} : null,
           initialSession:context.initialSession || '', startupError:context.startupError || '', packaged:app.isPackaged};
 }
+function windowPreferences(context) { return {...preferences, layout:context.layout}; }
 async function attachLocal(context, target) {
   if(!context.win.isDestroyed())context.win.webContents.send('desktop:workspace-status',{phase:'opening',path:target});
   try {
@@ -52,7 +53,7 @@ function createWindow(backend = null, initialSession = '') {
     show:process.env.PANTHEON_DESKTOP_TEST!=='1',title:'Pantheon',icon:path.join(__dirname,'assets','icon.png'),
     ...(process.platform==='darwin'?{titleBarStyle:'hiddenInset',trafficLightPosition:{x:18,y:17}}:{}),
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,webSecurity:true,spellcheck:true,backgroundThrottling:process.env.PANTHEON_DESKTOP_TEST!=='1'}});
-  const context = {win,backend,initialSession,terminal:null},windowId=win.webContents.id; windows.set(windowId,context);
+  const context = {win,backend,initialSession,terminal:null,layout:windows.size?'professional':preferences.layout},windowId=win.webContents.id; windows.set(windowId,context);
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('pantheon://app/'))event.preventDefault();});
   win.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
@@ -99,7 +100,7 @@ async function monitorTasks(){
 function installIPC() {
   ipcMain.handle('desktop:info',event=>publicInfo(senderContext(event,false)));
   ipcMain.handle('desktop:workspace',async event=>{const context=senderContext(event,false);const result=await dialog.showOpenDialog(context.win,{title:'Choose a Pantheon project',properties:['openDirectory','createDirectory']});return result.canceled?{canceled:true,info:publicInfo(context)}:{canceled:false,info:await attachLocal(context,result.filePaths[0])};});
-  ipcMain.handle('desktop:reconnect',async event=>{const context=senderContext(event),old=context.backend;if(old.remote)throw new Error('Sign in to the remote host again.');try{await old.identity();return publicInfo(context);}catch{}if(old.owned&&old.child?.exitCode===null)throw new Error('The core process is still running. Wait for it to recover before reconnecting.');backends.delete('local:'+old.workspace);return attachLocal(context,old.workspace);});
+  ipcMain.handle('desktop:reconnect',async event=>{const context=senderContext(event),old=context.backend;if(old.remote)throw new Error('Sign in to the remote host again.');try{await old.identity();context.lost=false;return publicInfo(context);}catch{}if(old.owned&&old.child?.exitCode===null&&old.child?.signalCode===null)throw new Error('The core process is still running. Wait for it to recover before reconnecting.');backends.delete('local:'+old.workspace);const value=await attachLocal(context,old.workspace);for(const target of windows.values())if(target!==context&&target.backend===old){target.backend=context.backend;target.lost=false;target.win.webContents.send('desktop:command','workspace-ready');}return value;});
   ipcMain.handle('desktop:api',async(event,target,options)=>senderContext(event).backend.request(target,options));
   ipcMain.handle('desktop:remote',async(event,value)=>{
     const context=senderContext(event,false);
@@ -148,7 +149,7 @@ function installIPC() {
     if(relative)shell.showItemInFolder(target);else {const error=await shell.openPath(root);if(error)throw new Error(error);}
     return {opened:true};
   });
-  ipcMain.handle('desktop:window',(event,sessionId='')=>{const context=senderContext(event);if(typeof sessionId!=='string'||!/^[-a-zA-Z0-9_]{0,100}$/.test(sessionId))throw new Error('Invalid session');createWindow(context.backend,sessionId);return {opened:true};});
+  ipcMain.handle('desktop:window',async(event,sessionId='')=>{const context=senderContext(event,false);if(typeof sessionId!=='string'||!/^[-a-zA-Z0-9_]{0,100}$/.test(sessionId))throw new Error('Invalid session');if(sessionId&&!context.backend)throw new Error('Choose a project before opening a task.');await context.win.webContents.executeJavaScript('flushDrafts()');createWindow(context.backend,sessionId);return {opened:true};});
   ipcMain.handle('desktop:worktree',async(event,target)=>{
     const context=senderContext(event);if(context.backend.remote)throw new Error('Open this worktree on its remote host.');
     const status=await context.backend.request('/api/desktop/git');
@@ -158,7 +159,7 @@ function installIPC() {
     await context.win.webContents.executeJavaScript('flushDrafts()');return attachLocal(context,target);
   });
   ipcMain.handle('desktop:preferences',async(event,value)=>{
-    senderContext(event,false);if(value){
+    const context=senderContext(event,false);if(value){
       const allowed=['layout','theme','fontSize','panelWidth','notifications','background','globalShortcut'];
       if(Object.keys(value).some(key=>!allowed.includes(key)))throw new Error('Unsupported preference');
       if(value.layout && !['professional','focus'].includes(value.layout))throw new Error('Invalid layout');
@@ -166,9 +167,11 @@ function installIPC() {
       if(value.fontSize!==undefined && (!Number.isInteger(value.fontSize)||value.fontSize<13||value.fontSize>20))throw new Error('Choose a font size from 13 to 20');
       if(value.panelWidth!==undefined && (!Number.isInteger(value.panelWidth)||value.panelWidth<260||value.panelWidth>460))throw new Error('Choose a context width from 260 to 460');
       for(const key of ['notifications','background','globalShortcut'])if(value[key]!==undefined && typeof value[key]!=='boolean')throw new Error('Invalid preference');
-      preferences={...preferences,...value};await savePreferences();configureNative();
-      for(const context of windows.values())context.win.webContents.send('desktop:command','preferences');
-    }return preferences;
+      const {layout,...shared}=value;
+      if(layout){context.layout=layout;if(windows.values().next().value===context)preferences.layout=layout;}
+      preferences={...preferences,...shared};await savePreferences();
+      if(Object.keys(shared).length){configureNative();for(const target of windows.values())target.win.webContents.send('desktop:command','preferences');}
+    }return windowPreferences(context);
   });
   ipcMain.handle('desktop:notify',(event,value)=>{const context=senderContext(event);if(preferences.notifications && Notification.isSupported()){
     const notification=new Notification({title:'Pantheon',body:String(value?.body||'Task updated').slice(0,160)});notification.on('click',()=>{context.win.show();context.win.focus();});notification.show();
@@ -219,7 +222,7 @@ app.whenReady().then(async()=>{
   installIPC();configureNative();setInterval(monitorTasks,3000).unref();setTimeout(()=>checkUpdates().catch(()=>{}),6000).unref();setInterval(()=>checkUpdates().catch(()=>{}),6*60*60*1000).unref();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform==='darwin'?[{role:'appMenu'}]:[]),
-    {label:'File',submenu:[{label:'New task',accelerator:'CommandOrControl+N',click:()=>sendCommand('new')},{label:'Open project…',accelerator:'CommandOrControl+O',click:()=>sendCommand('workspace')},{label:'New window',accelerator:'CommandOrControl+Shift+N',click:()=>createWindow([...windows.values()][0]?.backend||null)}, {type:'separator'},{role:'quit'}]},
+    {label:'File',submenu:[{label:'New task',accelerator:'CommandOrControl+N',click:()=>sendCommand('new')},{label:'Open project…',accelerator:'CommandOrControl+O',click:()=>sendCommand('workspace')},{label:'Open in new window',accelerator:'CommandOrControl+Shift+N',click:()=>{if(BrowserWindow.getFocusedWindow())sendCommand('new-window');else createWindow();}}, {type:'separator'},{role:'quit'}]},
     {role:'editMenu'}, {label:'View',submenu:[{label:'Command palette',accelerator:'CommandOrControl+K',click:()=>sendCommand('palette')},{role:'reload'},{role:'togglefullscreen'},...(!app.isPackaged?[{role:'toggleDevTools'}]:[])]},
     {role:'windowMenu'}, {label:'Help',submenu:[{label:'Check for updates',click:()=>sendCommand('updates')}]}]));
   const context=createWindow();

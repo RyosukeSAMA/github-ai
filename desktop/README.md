@@ -2,6 +2,14 @@
 
 The native app is an English, white-first workbench built on the same Python core as Web and CLI. Its renderer is separate from the browser design prototype in `docs/desktop`.
 
+For the current button locations, English labels, operation scopes and beginner workflow, see the [Chinese controls and features guide](../docs/desktop/controls.zh-CN.md).
+
+Connection controls, saved connections and model menus show small, locally bundled provider marks. Watercolor portraits remain the role identity. Model fields accept typing, offer searchable choices and support Arrow Up/Down, Enter, Escape and Tab; selecting a choice does not test or call a model. Full IDs remain editable, and unknown providers use a neutral glyph. Catalog entries and API verification remain separate. The connection hint identifies custom endpoints and local/remote Ollama runtimes. Role details show configured assignments, without claiming that a task has used them. See [asset sources and usage scope](../docs/desktop/provider-marks.md).
+
+Top-bar **Connection status** opens a non-modal panel separating project-service access from saved provider test evidence, with model IDs, timestamps, reconnect and connection settings. Opening it does not probe a provider. Focus layouts are independent per native window; theme and accessibility preferences remain shared. New windows start in the standard layout. **Open in new window** (Command/Ctrl Shift N) saves task and editor drafts before opening the same project/task; save errors keep the originating window and draft intact. With no project selected, **New window** opens a fresh welcome screen.
+
+Toolbar previews: [Light](../docs/desktop/toolbar-status-light.png) · [Dark](../docs/desktop/toolbar-status-dark.png) · [Narrow](../docs/desktop/toolbar-status-narrow.png). The screenshots use isolated fixture connections and do not show the user's real API status.
+
 ## First run
 
 1. Open Pantheon and choose your project folder. **Opening project…** shows progress; the connected project appears as a folder tile with its actual name and full path. The first setup step gets a checkmark and **Configure models** becomes the next action. Click the folder to browse project files; use **Change project** or the sidebar chevron to choose another folder. If opening fails, its reason and **Choose another folder** remain visible. Canceling the picker keeps your current task and draft. The app bundles Python; installing Python or Node is unnecessary for a packaged app.
@@ -71,7 +79,7 @@ npm run build --prefix desktop
 npm run package --prefix desktop
 ```
 
-Set `PANTHEON_DESKTOP_PYTHON` to your development interpreter for `npm start --prefix desktop`. For the isolated native smoke test, use `DEBUG=pw:browser node desktop/test/native-smoke.cjs` (on PowerShell set `$env:DEBUG = "pw:browser"` first); optionally set `PANTHEON_TEST_EXECUTABLE` to the packaged executable. The test creates its own project and profile and calls a localhost model stub. It does not use saved user keys, contact paid models, send messages or modify the user's installed service.
+Set `PANTHEON_DESKTOP_PYTHON` to your development interpreter for `npm start --prefix desktop`. For the isolated native smoke test, use `DEBUG=pw:browser node desktop/test/native-smoke.cjs` (on PowerShell set `$env:DEBUG = "pw:browser"` first); optionally set `PANTHEON_TEST_EXECUTABLE` to the packaged executable. The test creates its own project and profile and calls a localhost model stub. It does not use saved user keys, contact paid models, send messages or modify the user's installed service. `npm run test:providers --prefix desktop` checks provider marks, searchable/keyboard model menus, custom IDs, single/mixed assignment, cancel retention and light/dark/narrow layouts in another isolated project; it saves dummy connections without requesting API tests, model refresh or task runs. Screenshots and its report are written to `dist/provider-ui-evidence`.
 
 See `.github/workflows/desktop.yml` for the three-platform build, package and smoke-test pipeline. Passing a local macOS run does not establish Windows/Linux native acceptance or real provider/channel access. See [verification](verification.md) for the actual evidence and remaining validation.
 
@@ -83,3 +91,5 @@ See `.github/workflows/desktop.yml` for the three-platform build, package and sm
 npx --prefix desktop playwright install chromium
 node scripts/desktop/build_icons.cjs
 ```
+
+`npm run test:toolbar --prefix desktop` verifies actual native-window layout isolation, draft saving before opening, empty-project windows, saved API health, light/dark/narrow status panels and real local-service restart/reconnect in a disposable project. Explicit API probes use a localhost fixture; toolbar operations make no provider calls. Evidence is written to `dist/toolbar-ui-evidence`.

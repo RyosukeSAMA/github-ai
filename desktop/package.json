@@ -1,6 +1,6 @@
 {
   "name": "pantheon-desktop",
-  "version": "0.5.0-beta.14",
+  "version": "0.5.0-beta.16",
   "private": true,
   "description": "Pantheon local multi-role workspace",
   "homepage": "https://github.com/RyosukeSAMA/github-ai",
@@ -12,7 +12,9 @@
     "test": "node --test test/*.test.cjs",
     "build": "electron-builder --dir",
     "package": "electron-builder",
-    "test:native": "node test/native-smoke.cjs"
+    "test:native": "node test/native-smoke.cjs",
+    "test:providers": "node test/provider-ui-smoke.cjs",
+    "test:toolbar": "node test/toolbar-ui-smoke.cjs"
   },
   "devDependencies": {
     "electron": "44.9.1",

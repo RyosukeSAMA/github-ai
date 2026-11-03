@@ -2,7 +2,17 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Web workspace
+
+- Add locally bundled morning and moonlit fresco-style temple backgrounds, showing a complete pediment, colonnade and broad steps above the foreground courtyard. Keep artwork centered in narrow panels, fade it during conversations and honor reduced-motion preferences.
+- Keep the composer at the viewport bottom with explicit grid areas for the header, update banner, scrolling conversation and input. Contain narrow toolbars so Send remains reachable. Use a lighter welcome group while retaining role controls and draft-only examples.
+- Replace the old English and Chinese README screenshot with the current Web UI, link both themes and document artwork provenance and browser verification.
+
 ## Unreleased — Desktop beta
+
+- Add a non-modal title-bar connection panel separating live project-service access from saved API tests, with timestamps, reconnect and model settings. Keep Focus layouts independent per native window while sharing theme preferences. Save task/editor drafts before Open in new window, support fresh windows without a project, and reconnect sibling windows after a local-service restart.
+
+- Add locally bundled DeepSeek, OpenAI, Anthropic and Ollama marks to connection selectors, saved connection summaries, searchable model menus and configured role details. Retain watercolor role portraits, custom model IDs, native provider selection and single/mixed-provider assignment. Keep verification text separate from brand identity, explain custom endpoints and distinguish local/remote Ollama runtimes.
 
 - Show stored API keys as a fixed display-only mask with Saved/Change controls; support replacement cancellation without losing unrelated edits or submitting the mask as a credential. Keep save-only configuration open for multiple providers, add Done, and close successful defaults/task-model application with a persistent scope-specific workbench confirmation and an Add another provider action.
 

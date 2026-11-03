@@ -6,6 +6,7 @@ const state = {info:null, sessions:[], runs:[], artifacts:[], coreTasks:[], setu
   activeReview:null, file:null, fileDirectory:'', patchQueue:Promise.resolve(), draftTimer:null, editorTimer:null,
   epoch:0, selectionGeneration:0, edits:new Map(), dirty:new Set(), mutation:0, polling:false, cap:'skills', approvals:new Map(), seenFinal:new Set(), messageLimit:80, saving:false, sending:false, preparing:false, contextOpen:false, contextBeforeFocus:false, projectOpening:false, projectTarget:'', connectionDirty:false, connectionOperation:null, keyEditing:false, connectionBaseline:null, connectionSavedHealth:null};
 const activeStatuses = new Set(['queued','running','stopping']);
+state.serviceLost=false;state.connectionPanelRequest=0;
 const roleNames = ['hermes','hephaestus','athena','apollo'];
 const councilRoles={hermes:{name:'Hermes',purpose:'Plan & coordinate'},hephaestus:{name:'Hephaestus',purpose:'Build & refine'},athena:{name:'Athena',purpose:'Research & reason'},apollo:{name:'Apollo',purpose:'Create & imagine'},chronos:{name:'Chronos',purpose:'Schedule & deliver'}};
 const councilModes=[['auto','Auto route','Hermes selects the right specialist for your task.','route'],['multi','Multi-role council','Hermes plans a collaboration across several roles.','council'],['role:hephaestus','Hephaestus','Work directly with your coding and engineering specialist.','build'],['role:athena','Athena','Work directly with your research and reasoning specialist.','search'],['role:apollo','Apollo','Work directly with your creative specialist.','capabilities'],['role:chronos','Chronos','Create a schedule with your local scheduling specialist.','clock']];
@@ -34,7 +35,7 @@ function applyPreferences(preferences) {
   setIconButton($('#layout-toggle'),focus?'focus':'layout',focus?'Exit Focus layout':'Switch to Focus layout');
   $('#layout-toggle').setAttribute('aria-pressed',String(focus));$('#layout-status').hidden=!focus;
   if(focus&&!wasFocus){state.contextBeforeFocus=state.contextOpen;showInspector(false);}
-  else if(wasFocus&&!focus)showInspector(state.contextBeforeFocus&&innerWidth>1150);
+  else if(wasFocus&&!focus)showInspector(state.contextBeforeFocus);
   else showInspector(state.contextOpen);
   resizeComposer();
 }
@@ -45,6 +46,63 @@ async function toggleLayout() {
     state.info.preferences=await native.preferences({layout});applyPreferences(state.info.preferences);
     hideButtonTooltip();toast(layout==='focus'?'Focus layout on. Sidebar and task context hidden.':'Standard layout restored. Sidebar is available.');
   }finally{button.disabled=false;}
+}
+function syncToolbar() {
+  const connected=!!state.info?.workspace&&!state.serviceLost;
+  const status=state.projectOpening?'Opening project…':state.serviceLost?'Disconnected':connected?(state.info.remote?'Remote connected':'Local connected'):'Not connected';
+  $('#connection-state').textContent=status;$('#connection-state').dataset.connected=String(connected);
+  $('#connection-state').dataset.tooltip='Connection status · Service and saved API tests';
+  setIconButton($('#new-window'),'open',state.info?.workspace?'Open in new window':'New window','⌘ / Ctrl Shift N');
+  $('#new-window').dataset.tooltip=state.info?.workspace?'Open in new window · Same project and task; saves your draft first':'New window · Choose a project in the new window';
+}
+function closeConnectionPanel() {
+  const panel=$('#connection-panel');if(panel.matches(':popover-open'))panel.hidePopover();
+}
+function renderConnectionPanel(phase,setup=null,error='') {
+  const content=$('#connection-panel-content'),connected=!!state.info?.workspace;
+  content.replaceChildren();content.setAttribute('aria-busy',String(phase==='checking'));
+  const service=element('section','service-health'),heading=element('div','health-heading');
+  heading.append(element('strong','',state.info?.remote?'Remote service':'Local service'));
+  const badge=element('span','health-badge',phase==='checking'?'Checking…':phase==='connected'?'Connected':connected?'Unavailable':'No project');
+  badge.dataset.state=phase==='connected'?'verified':phase==='failed'?'failed':'untested';heading.append(badge);service.append(heading);
+  service.append(element('small','',connected?state.info.workspace.workspace_name:'Choose a project to start your workspace.'));
+  if(connected)service.append(element('small','',state.info.remote?state.info.remoteOrigin:state.info.workspace.workspace));
+  content.append(service);
+  const label=element('div','health-section-label');label.append(element('span','','Saved API connections'));content.append(label);
+  if(phase==='checking')content.append(element('p','connection-panel-empty','Reading saved connection status…'));
+  else if(error)content.append(element('p','connection-panel-empty','Could not refresh saved results. '+error));
+  else {
+    const providers=setup?.providers.filter(provider=>provider.connection_saved)||[];
+    for(const provider of providers){
+      const health=provider.api_health||{},status=provider.enabled===false?'disabled':health.state||'untested';
+      const row=element('div','connection-health-row'),copy=element('div','connection-health-copy');row.dataset.provider=provider.id;
+      copy.append(element('strong','',provider.label||provider.id),element('small','',provider.test_model||'No test model selected'));
+      if(health.checked_at)copy.append(element('small','','Last tested · '+new Date(health.checked_at*1000).toLocaleString()));
+      const badge=element('span','health-badge',({verified:'API verified',failed:'Test failed',expired:'Test expired',disabled:'Disabled'})[status]||'Not tested');badge.dataset.state=status;
+      row.append(providerMark(provider),copy,badge);content.append(row);
+    }
+    if(!providers.length)content.append(element('p','connection-panel-empty',connected?'No API connections saved yet. Connect one provider to get started.':'Connect a project to see its saved API connections.'));
+  }
+  $('#connection-configure').hidden=!connected;$('#connection-reconnect').hidden=!connected;$('#connection-choose').hidden=connected;
+}
+async function openConnectionPanel() {
+  const panel=$('#connection-panel');if(panel.matches(':popover-open')){closeConnectionPanel();return;}
+  hideButtonTooltip();panel.showPopover();panel.focus({preventScroll:true});
+  const epoch=state.epoch,request=++state.connectionPanelRequest;
+  if(!state.info?.workspace){renderConnectionPanel('empty');return;}
+  renderConnectionPanel('checking');
+  try {
+    const setup=await api('/api/setup/status');if(epoch!==state.epoch||request!==state.connectionPanelRequest)return;
+    state.setup=setup;state.serviceLost=false;syncToolbar();renderRoles();renderOnboarding();renderConnectionPanel('connected',setup);
+  }catch(error){if(epoch!==state.epoch||request!==state.connectionPanelRequest)return;state.serviceLost=true;syncToolbar();renderConnectionPanel('failed',null,errorText(error));}
+}
+async function reconnectService() {
+  await flushDrafts().catch(()=>{});
+  state.info=state.info.remote?await native.reconnectRemote():await native.reconnect();state.setup=null;
+  await refresh();state.serviceLost=false;notice('');workspaceUI();closeConnectionPanel();closeDialog('#info-dialog');toast('Service reconnected. API tests were not run.');
+}
+async function openTaskWindow(id=state.selected) {
+  await native.newWindow(id);toast(state.info?.workspace?'Opened in a new window. The project and task are shared; layout is independent.':'New window opened. Choose a project there to get started.');
 }
 function inlineMarkdown(text){
   const fragment=document.createDocumentFragment(),pattern=/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https:\/\/[^\s)]+\))/g;let last=0;
@@ -150,8 +208,7 @@ function workspaceUI() {
   $('#context-kind').textContent=connected?(state.info.remote?'Remote project':'Local project'):'Not connected';
   $('#context-project').title=connected?state.info.workspace.workspace_name:'';
   $('#context-folder-icon').replaceChildren(desktopIcon('folder'));$('#context-reveal').hidden=!connected||state.info.remote;
-  $('#connection-state').textContent=connected?(state.info.remote?'Remote connected':'Local connected'):'Not connected';
-  $('#connection-state').dataset.connected=String(connected);
+  syncToolbar();
   $('#service-status').textContent=connected?(state.info.owned?'Desktop-owned local service':state.info.remote?'Remote service':'Reused local service'):'Choose a workspace';
   $('#terminal-host').textContent=state.info?.remote?'Remote project terminal':'Local project terminal';
   $('#startup-error').textContent='';
@@ -182,17 +239,18 @@ async function connectWorkspace() {
   finally {
     state.projectOpening=false;$('.main').removeAttribute('aria-busy');
     for(const [item,disabled] of controls)if(item.isConnected)item.disabled=disabled;
-    renderOnboarding();
+    renderOnboarding();syncToolbar();
   }
 }
 async function adoptWorkspace(value) {
   const changed=state.info?.workspace?.workspace!==value.workspace.workspace||state.info?.remoteOrigin!==value.remoteOrigin;
-  state.info=value;if(changed)resetWorkspace();else state.setup=null;
+  state.info=value;state.serviceLost=false;if(changed)resetWorkspace();else state.setup=null;
   workspaceUI();await refresh();
   projectFeedback('connected',value.remote?'Remote project connected':'Project connected',value.workspace.workspace);
   renderOnboarding();toast('Opened '+value.workspace.workspace_name+'.');
 }
 function resetWorkspace() {
+  closeConnectionPanel();state.serviceLost=false;
   hideSetupCompletion();
   state.epoch++;state.selectionGeneration++;state.dirty.clear();
   state.selected='';state.detail=null;state.sessions=[];state.runs=[];state.artifacts=[];state.file=null;state.fileDirectory='';state.setup=null;state.view='work';state.tab='conversation';
@@ -367,7 +425,7 @@ function renderActivity() {
 }
 function renderRoles() {
   const target=$('#role-list'),statuses=state.setup?.role_statuses||[],choices=roleNames.map(role=>currentSession()?.overrides?.[role]||statuses.find(item=>item.role===role));const signature=JSON.stringify(choices);if(target.dataset.signature===signature)return;target.dataset.signature=signature;target.replaceChildren();
-  for(const [index,role] of roleNames.entries()){const choice=choices[index],row=element('div','inspector-role');row.append(rolePortrait(role));const body=element('div');body.append(element('strong','',councilRoles[role].name),element('small','role-purpose',councilRoles[role].purpose));const provider=state.setup?.providers.find(item=>item.id===choice?.provider),model=element('button','inspector-model',choice?.model?provider?.label||choice.provider:'No model assigned');model.dataset.tooltip=choice?.model?choice.model+' · Edit assignment':'Assign a model';model.setAttribute('aria-label',councilRoles[role].name+' model: '+(choice?.model||'Not assigned'));action(model,openModels);body.append(model);row.append(body);target.append(row);}
+  for(const [index,role] of roleNames.entries()){const choice=choices[index],row=element('div','inspector-role');row.append(rolePortrait(role));const body=element('div');body.append(element('strong','',councilRoles[role].name),element('small','role-purpose',councilRoles[role].purpose));const provider=state.setup?.providers.find(item=>item.id===choice?.provider),model=element('button','inspector-model',choice?.model?provider?.label||choice.provider:'No model assigned');model.dataset.tooltip=choice?.model?choice.model+' · Edit assignment':'Assign a model';model.setAttribute('aria-label',councilRoles[role].name+' model: '+(choice?.model||'Not assigned'));if(choice?.model)model.prepend(providerMark(choice.provider));model.dataset.tooltip=choice?.model?'Configured model · '+(provider?.label||choice.provider)+' · '+choice.model+' · Edit assignment':'Assign a model';action(model,openModels);body.append(model);row.append(body);target.append(row);}
 }
 async function runTask(resume) {
   if(state.projectOpening||state.sending)return;
@@ -405,7 +463,7 @@ async function taskActions(id=state.selected) {
     ['Rename',async()=>{const title=await askText('Rename task','Task name',session.title);if(title)await patchSession({title},id);}],
     [session.pinned?'Unpin':'Pin',()=>patchSession({pinned:!session.pinned},id)],
     [session.archived?'Restore task':'Archive task',()=>patchSession({archived:!session.archived},id)],
-    ['Open in a new window',()=>native.newWindow(id)]]){const button=element('button','wide-button',label);action(button,async()=>{closeDialog('#info-dialog');await callback();if(state.view==='tasks')renderMissions().catch(error=>toast(errorText(error)));});content.append(button);}
+    ['Open in a new window',()=>openTaskWindow(id)]]){const button=element('button','wide-button',label);action(button,async()=>{closeDialog('#info-dialog');await callback();if(state.view==='tasks')renderMissions().catch(error=>toast(errorText(error)));});content.append(button);}
   info('Task actions',content);
 }
 async function renderMissions() {
@@ -450,7 +508,7 @@ async function loadCapability(name) {
   if(name==='channels'){for(const item of list){const button=element('button','','Configure '+item.name);action(button,()=>editChannel(item));target.append(button);}}
   else if(['skills','plugins','mcp/servers'].includes(name)){const button=element('button','','Add '+(name==='mcp/servers'?'MCP server':name.slice(0,-1)));action(button,()=>editCapability(name));target.append(button);}
 }
-async function openConnections() {hideSetupCompletion();await refreshSetup();const selected=$('#provider').value;$('#provider').replaceChildren();for(const provider of state.setup.providers){const option=element('option','',provider.label||provider.id);option.value=provider.id;$('#provider').append(option);}if(selected&&state.setup.providers.some(item=>item.id===selected))$('#provider').value=selected;fillProvider();renderConnectionSummary();showDialog('#connections-dialog');}
+async function openConnections() {hideSetupCompletion();await refreshSetup();const selected=$('#provider').value;prepareProviderSelect($('#provider'));for(const provider of state.setup.providers)providerOption($('#provider'),provider);if(selected&&state.setup.providers.some(item=>item.id===selected))$('#provider').value=selected;fillProvider();renderConnectionSummary();showDialog('#connections-dialog');}
 function providerChoice(){return state.setup?.providers.find(item=>item.id===$('#provider').value);}
 function hideSetupCompletion() {$('#setup-complete').hidden=true;}
 function finishSetup(title,description,details) {
@@ -506,10 +564,11 @@ function fillProvider() {
   $('#base-url').value=provider.base_url||'';$('#test-model').value=provider.test_model||provider.default_model||provider.models?.[0]?.id||'';$('#api-key').value='';
   state.keyEditing=!provider.key_configured;renderSavedKey();
   $('#credential-storage').value=provider.credential_storage||'env';$('#streaming').checked=provider.streaming!==false;
-  state.connectionDirty=false;rememberSavedConnection();populateConnectionModels();restoreSavedConnectionFeedback();
+  state.connectionDirty=false;rememberSavedConnection();populateConnectionModels();refreshModelPicker($('#test-model'));$('#provider-endpoint-note').textContent=providerEndpointNote(provider,$('#base-url').value);restoreSavedConnectionFeedback();
   syncConnectionFlow();
 }
 function connectionEdited(identityChanged) {
+  $('#provider-endpoint-note').textContent=providerEndpointNote(providerChoice(),$('#base-url').value);
   state.connectionDirty=JSON.stringify(connectionBody())!==state.connectionBaseline;
   if(!state.connectionDirty){restoreSavedConnectionFeedback();syncConnectionFlow();return;}
   connectionStatus('#connection-message','neutral','Connection not saved yet','Save connection to keep these settings and unlock step 2. Role assignments have not changed.',[],false);
@@ -563,10 +622,29 @@ async function useProviderDefaults() {
   const updated=await connectionAction({button:'#use-provider',target:'#defaults-feedback',pending:'Updating new-task defaults…',label:'Updating defaults…',failure:'Defaults could not be updated',request:body=>api('/api/models/defaults',{models:Object.fromEntries(roleNames.map(role=>[role,{provider:body.provider,model:body.model}]))}),complete:(value,body)=>{state.setup=value;renderOnboarding();defaultStatus(body,true);}});
   if(updated)finishSetup('New-task models saved','Future tasks in this project will use this provider. Existing tasks keep their saved models.',connectionCaption(connectionBody())+' · Hermes, Hephaestus, Athena and Apollo');
 }
-function renderConnectionSummary() {renderOnboarding();$('#connection-summary').replaceChildren();for(const provider of state.setup.providers.filter(item=>item.connection_saved)){const status=provider.enabled===false?'disabled':provider.api_health?.state||'untested',row=element('div','connection-pill');row.dataset.state=status;row.append(element('strong','',provider.label||provider.id),element('small','',status==='verified'?'API verified':status==='failed'?'Test failed':status==='disabled'?'Disabled':'Not tested'));$('#connection-summary').append(row);}}
+function renderConnectionSummary() {renderOnboarding();$('#connection-summary').replaceChildren();for(const provider of state.setup.providers.filter(item=>item.connection_saved)){const status=provider.enabled===false?'disabled':provider.api_health?.state||'untested',row=element('div','connection-pill');row.dataset.state=status;const copy=element('span');copy.append(element('strong','',provider.label||provider.id),element('small','',status==='verified'?'API verified':status==='failed'?'Test failed':status==='disabled'?'Disabled':'Not tested'));row.append(providerMark(provider),copy);$('#connection-summary').append(row);}}
 function connectionBody(){return {provider:$('#provider').value,model:$('#test-model').value.trim(),base_url:$('#base-url').value.trim(),api_key:state.keyEditing?$('#api-key').value.trim()||undefined:undefined,credential_storage:$('#credential-storage').value,streaming:$('#streaming').checked};}
 async function openModels(){hideSetupCompletion();if(!state.selected)await newTask();await refreshSetup();const choices=roleNames.map(role=>currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{});const mixed=new Set(choices.map(item=>item.provider+'/'+item.model)).size>1;$('[name="model-mode"][value="'+(mixed?'mixed':'single')+'"]').checked=true;renderModels();showDialog('#models-dialog');}
-function renderModels(){const mixed=$('[name="model-mode"]:checked')?.value==='mixed';$('#model-rows').replaceChildren();for(const [index,role] of roleNames.entries()){const row=element('div','model-row'),label=element('div','model-role');label.append(rolePortrait(role),element('span','',councilRoles[role].name));const provider=element('select'),model=element('input');model.setAttribute('aria-label',role+' model');provider.setAttribute('aria-label',role+' provider');for(const choice of state.setup.providers.filter(item=>item.enabled)){const option=element('option','',choice.label||choice.id);option.value=choice.id;provider.append(option);}const saved=currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{};provider.value=saved.provider||state.setup.provider;model.value=saved.model||providerChoice()?.test_model||'';const changed=()=>{const choice=state.setup.providers.find(item=>item.id===provider.value);model.value=choice?.test_model||choice?.models?.[0]?.id||'';if(!mixed)$('#model-rows').querySelectorAll('.model-row').forEach(other=>{other.querySelector('select').value=provider.value;other.querySelector('input').value=model.value;});};provider.onchange=changed;model.oninput=()=>{if(!mixed)$('#model-rows').querySelectorAll('input').forEach(other=>{other.value=model.value;});};row.dataset.role=role;row.append(label,provider,model);$('#model-rows').append(row);if(!mixed&&index>0){provider.value=$('#model-rows select').value;model.value=$('#model-rows input').value;}}}
+function renderModels() {
+  const mixed=$('[name="model-mode"]:checked')?.value==='mixed';$('#model-rows').replaceChildren();
+  for(const [index,role] of roleNames.entries()) {
+    const row=element('div','model-row'),label=element('div','model-role'),copy=element('span','model-role-copy');
+    copy.append(element('span','',councilRoles[role].name),element('small','',councilRoles[role].purpose));label.append(rolePortrait(role),copy);
+    const provider=element('select'),model=element('input');model.setAttribute('aria-label',role+' model');provider.setAttribute('aria-label',role+' provider');
+    prepareProviderSelect(provider);for(const choice of state.setup.providers.filter(item=>item.enabled))providerOption(provider,choice);
+    const saved=currentSession()?.overrides?.[role]||state.setup.role_statuses.find(item=>item.role===role)||{};
+    provider.value=saved.provider||state.setup.provider;model.value=saved.model||providerChoice()?.test_model||'';
+    provider.onchange=()=>{
+      const choice=state.setup.providers.find(item=>item.id===provider.value);model.value=choice?.test_model||choice?.models?.[0]?.id||'';
+      if(!mixed)$('#model-rows').querySelectorAll('.model-row').forEach(other=>{other.querySelector('select').value=provider.value;other.querySelector('input').value=model.value;refreshModelPicker(other.querySelector('input'));});
+      else refreshModelPicker(model);
+    };
+    model.oninput=()=>{if(!mixed)$('#model-rows').querySelectorAll('input').forEach(other=>{if(other!==model){other.value=model.value;refreshModelPicker(other);}});};
+    row.dataset.role=role;row.append(label,provider,model);$('#model-rows').append(row);
+    if(!mixed&&index>0){provider.value=$('#model-rows select').value;model.value=$('#model-rows input').value;}
+    attachModelPicker(model,()=>state.setup.providers.find(item=>item.id===provider.value));
+  }
+}
 async function openUsage() {const run=latestRun();const [usage,budget]=await Promise.all([api('/api/usage/details'+(run?.task_id?'?task_id='+encodeURIComponent(run.task_id):'')),api('/api/budgets')]);const content=element('div');content.append(element('p','',usage.note));for(const group of usage.groups){const card=element('div','data-card');card.append(element('strong','',(group.role||'Other')+' · '+group.phase),element('p','',group.provider+' / '+group.model+' · '+group.calls+' call(s)'),element('p','',(group.input_tokens===null?'Unknown':group.input_tokens)+' input tokens · '+(group.output_tokens===null?'Unknown':group.output_tokens)+' output tokens'),element('p','',group.unpriced?'Cost unknown':('$'+Number(group.estimated_usd||0).toFixed(4)+' estimated')));content.append(card);}if(!usage.groups.length)content.append(element('p','','No calls recorded for this task.'));const input=element('textarea');input.rows=12;input.style.width='100%';input.value=JSON.stringify(budget.policy||budget,null,2);const save=element('button','primary','Save workspace budget');action(save,async()=>{await api('/api/budgets',JSON.parse(input.value));toast('Budget saved.');});const details=element('details');details.append(element('summary','','Workspace budget policy'),element('p','','Prices must be entered explicitly. Unknown prices remain unknown.'),input,save);content.append(details);info('Usage and budgets',content);}
 async function recoverTask(){const run=latestRun();if(!run?.task_id)return;const core=await api('/api/tasks/'+encodeURIComponent(run.task_id));const accepted=await confirmChoice('Review before resuming','Completed steps are retained. Inspect any external actions before retrying. Resume uses the current saved configuration.','I checked the effects — resume');if(accepted)await runTask({id:run.task_id,prompt:core.data?.task||run.data.prompt,ack:true});}
 async function addAttachments(items){if(!state.selected)await newTask();const list=state.attachments.get(state.selected)||[];for(const item of items){if(list.length>=5)throw new Error('Use up to five attachments per message.');const uploaded=await api('/api/desktop/attachments',item);if(uploaded.type.startsWith('audio/')){toast('Transcribe audio in Capabilities → Media, then use the text in your task.');continue;}list.push(uploaded);}state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(item=>item.id)});renderAttachments();}
@@ -575,6 +653,11 @@ const commands=[['New task',newTask],['Choose project',connectWorkspace],['Task 
 async function searchCommands(query='') {const target=$('#command-list');target.replaceChildren();for(const [name,callback] of commands.filter(([name])=>name.toLowerCase().includes(query.toLowerCase()))){const button=element('button','',name);action(button,async()=>{closeDialog('#palette');await callback();});target.append(button);}if(query.trim()&&state.info?.workspace){const found=await api('/api/desktop/search?query='+encodeURIComponent(query));if($('#command-search').value!==query)return;for(const session of found.sessions){const button=element('button','',session.title);button.append(element('small','','Task'+(session.archived?' · Archived':'')));action(button,async()=>{closeDialog('#palette');await selectSession(session.id);});target.append(button);}for(const item of found.artifacts.slice(0,20)){const button=element('button','',item.title);button.append(element('small','','Artifact'));action(button,async()=>{closeDialog('#palette');await previewArtifact(item.id);});target.append(button);}}}
 function openPalette(){showDialog('#palette');$('#command-search').value='';searchCommands().catch(error=>toast(errorText(error)));$('#command-search').focus();}
 function bind() {
+  action($('#connection-state'),openConnectionPanel);action($('#connection-panel-close'),closeConnectionPanel);
+  $('#connection-panel').addEventListener('toggle',event=>{$('#connection-state').setAttribute('aria-expanded',String(event.newState==='open'));});
+  action($('#connection-configure'),async()=>{closeConnectionPanel();await openConnections();});
+  action($('#connection-choose'),async()=>{closeConnectionPanel();await connectWorkspace();});
+  action($('#connection-reconnect'),async()=>{try{await reconnectService();}catch(error){state.serviceLost=true;syncToolbar();renderConnectionPanel('failed',null,errorText(error));}});
   document.querySelectorAll('[data-close]').forEach(button=>{button.onclick=()=>button.closest('dialog').close();});
   document.querySelectorAll('[data-view]').forEach(button=>{const mark=button.querySelector('[data-nav-icon]');if(mark)mark.replaceChildren(desktopIcon(mark.dataset.navIcon));button.dataset.tooltip=button.textContent.trim();action(button,()=>setView(button.dataset.view));});
   document.querySelectorAll('[data-tab]').forEach(button=>{button.onclick=()=>setTab(button.dataset.tab);});
@@ -585,6 +668,7 @@ function bind() {
   action($('#workspace-folder'),openProjectFiles);action($('#workspace-card-files'),openProjectFiles);
   action($('#project-retry'),connectWorkspace);action($('#project-feedback-close'),()=>{$('#project-feedback').hidden=true;});action($('#welcome-task'),newTask);
   native.onWorkspaceStatus?.(value=>{state.projectTarget=value.path;if(value.phase==='opening'){projectFeedback('opening','Opening project…',value.path,'Opening your folder and loading saved tasks. This can take a few seconds.');$('#connection-state').textContent='Opening project…';}if(value.phase==='error'){workspaceUI();projectFailure(value.message);}});
+  attachModelPicker($('#test-model'),providerChoice);
   action($('#welcome-connections'),openConnections);action($('#connections-open'),openConnections);action($('#welcome-remote'),()=>showDialog('#remote-dialog'));
   action($('#run'),()=>runTask());$('#mode').onchange=()=>{renderCouncilMode();patchSession({mode:$('#mode').value}).catch(error=>toast(errorText(error)));};
   action($('#mode-trigger'),openCouncilMenu);$('#mode-trigger .mode-chevron').append(desktopIcon('chevron'));
@@ -613,7 +697,7 @@ function bind() {
   action($('#refresh-models'),refreshConnectionModels);
   action($('#use-provider'),useProviderDefaults);
   action($('#manage-connection'),manageConnection);
-  action($('#task-menu'),()=>taskActions());action($('#new-window'),()=>native.newWindow(state.selected));
+  action($('#task-menu'),()=>taskActions());action($('#new-window'),()=>openTaskWindow());
   action($('#inspector-toggle'),()=>showInspector($('#inspector-toggle').getAttribute('aria-pressed')!=='true'));action($('#inspector-close'),()=>showInspector(false));
   action($('#theme-toggle'),async()=>{state.info.preferences=await native.preferences({theme:$('.app').dataset.theme==='light'?'dark':'light'});applyPreferences(state.info.preferences);});
   action($('#layout-toggle'),commands.find(([name])=>name==='Toggle Focus layout')[1]);
@@ -638,13 +722,13 @@ function bind() {
   $('#preferences-form').onsubmit=event=>{event.preventDefault();const button=$('#preferences-form button.primary');if(button.disabled)return;button.disabled=true;button.textContent='Saving…';(async()=>{try{const value=await native.preferences({fontSize:Number($('#font-size').value),panelWidth:Number($('#panel-width').value),notifications:$('#notifications').checked,background:$('#background').checked,globalShortcut:$('#global-shortcut').checked});state.info.preferences=value;applyPreferences(value);closeDialog('#settings-dialog');toast('Preferences saved.');}catch(error){$('#preferences-feedback').textContent=errorText(error);$('#preferences-feedback').hidden=false;}finally{button.disabled=false;button.textContent='Save preferences';}})();};
   action($('#service-open'),showService);
   $('#remote-form').onsubmit=event=>{event.preventDefault();(async()=>{await flushDrafts();const value=await native.connectRemote({url:$('#remote-url').value,username:$('#remote-user').value,password:$('#remote-password').value,remember:$('#remote-remember').checked});$('#remote-password').value='';closeDialog('#remote-dialog');await adoptWorkspace(value);})().catch(error=>{$('#remote-error').textContent=errorText(error);$('#remote-password').value='';});};
-  native.onCommand(command=>{(async()=>{if(command==='connection-lost'){$('#connection-state').textContent='Disconnected';notice('The core is unavailable. Saved tasks will not be resent. Open Service and updates to reconnect.');}if(command==='new')await newTask();if(command==='workspace')await connectWorkspace();if(command==='palette')openPalette();if(command==='focus')$('#prompt').focus();if(command==='workspace-ready')await adoptWorkspace(await native.info());if(command==='preferences'){state.info.preferences=await native.preferences();applyPreferences(state.info.preferences);}if(command==='updates')await showService();})().catch(error=>toast(errorText(error)));});
+  native.onCommand(command=>{(async()=>{if(command==='connection-lost'){state.serviceLost=true;syncToolbar();if($('#connection-panel').matches(':popover-open'))renderConnectionPanel('failed',null,'The service connection was lost. Reconnect to refresh saved results.');notice('The core is unavailable. Saved tasks will not be resent. Open Service and updates to reconnect.');}if(command==='new')await newTask();if(command==='new-window')await openTaskWindow();if(command==='workspace')await connectWorkspace();if(command==='palette')openPalette();if(command==='focus')$('#prompt').focus();if(command==='workspace-ready')await adoptWorkspace(await native.info());if(command==='preferences'){state.info.preferences=await native.preferences();applyPreferences(state.info.preferences);}if(command==='updates')await showService();})().catch(error=>toast(errorText(error)));});
   window.addEventListener('resize',resizeComposer);
   document.addEventListener('keydown',event=>{const mod=event.metaKey||event.ctrlKey;if(mod&&event.key.toLowerCase()==='k'){event.preventDefault();openPalette();}if(mod&&event.key.toLowerCase()==='n'){event.preventDefault();newTask().catch(error=>toast(errorText(error)));}if(mod&&event.key==='Enter'&&event.target===$('#prompt')){event.preventDefault();runTask().catch(error=>toast(errorText(error)));}});
   $('#content-tabs').addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[role=tab]')],index=tabs.indexOf(event.target);if(index<0||!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const button=tabs[(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setTab(button.dataset.tab);button.focus();});
   document.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();$('.app').classList.add('drag-target');}});document.addEventListener('dragleave',event=>{if(!event.relatedTarget)$('.app').classList.remove('drag-target');});
   document.addEventListener('drop',async event=>{if(native.onDrop)return;event.preventDefault();$('.app').classList.remove('drag-target');try{const items=[];for(const file of [...event.dataTransfer.files].slice(0,5)){if(!file.size)continue;if(file.size>20*1024*1024)throw new Error('File exceeds 20 MB');const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));items.push({name:file.name,data:btoa(binary)});}if(items.length)await addAttachments(items);}catch(error){toast(errorText(error));}});
 }
-async function showService(){const panel=element('div');panel.append(element('p','',state.info?.workspace?(state.info.remote?'Connected to a remote server. Its lifecycle is managed on that host.':state.info.owned?'Desktop owns this core. Closing the window can keep it in the tray; quitting stops this owned service.':'This is an existing service. Quitting Desktop will not stop it.'):'No core connected.'));const reconnect=element('button','','Reconnect current host');action(reconnect,async()=>{await flushDrafts().catch(()=>{});state.info=state.info.remote?await native.reconnectRemote():await native.reconnect();state.setup=null;notice('');workspaceUI();await refresh();closeDialog('#info-dialog');});if(state.info?.workspace)panel.append(reconnect);const check=element('button','','Check for updates');action(check,async()=>{const result=await native.updates();panel.append(element('p','',result.available?'Update available: '+result.latest+'. Current app: '+result.version:result.reason||('You are up to date. Current app: '+result.version)));});const releases=element('button','','Open official releases');action(releases,()=>native.openRelease());const remote=element('button','','Connect remote server');action(remote,()=>{closeDialog('#info-dialog');showDialog('#remote-dialog');});panel.append(check,releases,remote);info('Service and updates',panel);}
+async function showService(){const panel=element('div');panel.append(element('p','',state.info?.workspace?(state.info.remote?'Connected to a remote server. Its lifecycle is managed on that host.':state.info.owned?'Desktop owns this core. Closing the window can keep it in the tray; quitting stops this owned service.':'This is an existing service. Quitting Desktop will not stop it.'):'No core connected.'));const reconnect=element('button','','Reconnect current host');action(reconnect,reconnectService);if(state.info?.workspace)panel.append(reconnect);const check=element('button','','Check for updates');action(check,async()=>{const result=await native.updates();panel.append(element('p','',result.available?'Update available: '+result.latest+'. Current app: '+result.version:result.reason||('You are up to date. Current app: '+result.version)));});const releases=element('button','','Open official releases');action(releases,()=>native.openRelease());const remote=element('button','','Connect remote server');action(remote,()=>{closeDialog('#info-dialog');showDialog('#remote-dialog');});panel.append(check,releases,remote);info('Service and updates',panel);}
 async function boot(){if(!native){showWelcome();$('#startup-error').textContent='This interface needs the native Pantheon app. The browser prototype remains in docs/desktop.';return;}state.info=await native.info();applyPreferences(state.info.preferences);workspaceUI();bind();native.onDrop?.(value=>{(async()=>{if(value.error)throw new Error(value.error);if(value.info)await adoptWorkspace(value.info);if(value.files?.length)await addAttachments(value.files);})().catch(error=>{if($('#project-feedback').dataset.phase==='opening')projectFailure(error);else toast(errorText(error));});});native.onUpdate?.(value=>{if(value.available){notice('Pantheon '+value.latest+' is available. Open Service and updates to download it.');$('#service-open').dataset.tooltip='Update available: '+value.latest;}});if(state.info.workspace)await adoptWorkspace(state.info);setInterval(tick,1800);setInterval(async()=>{if(!state.info?.workspace&&!state.projectOpening){state.info=await native.info();workspaceUI();if(state.info.workspace)await adoptWorkspace(state.info);}},1500);}
 boot().catch(error=>{$('#startup-error').textContent=errorText(error);showWelcome();});

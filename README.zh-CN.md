@@ -27,7 +27,9 @@
 
 </div>
 
-![Pantheon Web UI](docs/images/pantheon-web-ui.jpg)
+![Pantheon Web UI：月光神殿背景](docs/images/pantheon-web-temple-v2-dark.png)
+
+<p align="center"><a href="docs/images/pantheon-web-temple-v2-light.png">晨光浅色</a> · <a href="docs/images/pantheon-web-temple-v2-dark.png">月光暗色</a> · <a href="docs/web-appearance.md">更多截图与验证说明</a></p>
 
 <p align="center"><sub>Pantheon Web UI：对话、Agent 编排、Workspace、文件、终端与网页预览集中在同一个本地工作区。</sub></p>
 
@@ -49,7 +51,7 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 
 Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 Web 会话保存在所选工作区；浏览器还保留会话缓存和显示偏好。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
-桌面端开发：本分支已实现英语原生 Beta，包含内置 Python、持久任务、文件审阅、模型连接和本地/远程工作区。见[客户端说明](desktop/README.md)与[验证边界](desktop/verification.md)。下方稳定版 v0.4.0 安装命令仍对应 Web/CLI 版本。
+桌面端 Beta（`0.5.0-beta.16`）：仓库现已包含英语原生客户端，支持内置 Python、持久任务、文件审阅、模型连接和本地/远程工作区。目前仍为预览版，跨平台验证尚待补齐。见[客户端说明](desktop/README.md)与[验证边界](desktop/verification.md)。下方稳定版 v0.4.0 安装命令仍对应 Web/CLI 版本。
 
 <a id="quick-start"></a>
 

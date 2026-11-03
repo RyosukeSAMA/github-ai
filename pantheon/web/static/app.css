@@ -82,6 +82,7 @@ body {
   display: grid;
   grid-template-columns: 280px 1fr;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   position: relative;
   transition: grid-template-columns .18s ease;
@@ -774,8 +775,39 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
    ========================================================================== */
 .main {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "topbar" "update" "chat" "composer";
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  isolation: isolate;
   overflow: hidden;
+  background: var(--bg-0);
+}
+.main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at 50% 52%, rgba(8, 9, 18, .38), transparent 72%),
+    url("temple-fresco-night-v2.png");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: .22;
+  mask-image: linear-gradient(transparent, #000 8%, #000 86%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 86%, transparent);
+  transition: opacity .3s ease;
+}
+.main:has(.welcome)::before { opacity: .78; }
+.main > .topbar { grid-area: topbar; position: relative; z-index: 3; }
+.main > .update-banner { grid-area: update; position: relative; z-index: 3; }
+.main > .chat { grid-area: chat; position: relative; z-index: 1; }
+.main > .composer { grid-area: composer; z-index: 4; }
+@media (prefers-reduced-motion: reduce) {
+  .main::before { transition: none; }
 }
 .update-banner {
   display: flex;
@@ -976,9 +1008,13 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
    ========================================================================== */
 .chat {
   overflow-y: auto;
+  min-height: 0;
   padding: 24px 32px;
   scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
+.chat:has(> .welcome) { display: flex; flex-direction: column; }
+.chat:has(> .welcome) > .welcome { margin: auto auto min(4vh, 32px); }
 .chat::-webkit-scrollbar { width: 8px; }
 .chat::-webkit-scrollbar-thumb {
   background: var(--bg-3);
@@ -988,16 +1024,15 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
 
 /* Welcome screen */
 .welcome {
+  width: 100%;
   max-width: min(760px, var(--content-max));
-  margin: 56px auto;
+  flex: 0 0 auto;
+  margin: 32px auto;
   text-align: left;
   padding: 28px;
-  background: var(--panel-bg);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 .welcome-eyebrow {
   color: var(--accent);
@@ -1009,7 +1044,7 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
 }
 .welcome h2 {
   color: var(--text);
-  font-size: 26px;
+  font-size: clamp(26px, 2.5vw, 32px);
   font-weight: 720;
   letter-spacing: 0;
   margin-bottom: 8px;
@@ -1025,8 +1060,8 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
 .welcome-pantheon {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 8px;
-  margin: 20px 0 22px;
+  gap: 10px;
+  margin: 20px 0 24px;
 }
 .welcome-god {
   display: flex;
@@ -1034,9 +1069,11 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
   gap: 8px;
   min-width: 0;
   padding: 9px 10px;
-  background: var(--panel-soft);
+  background: color-mix(in srgb, var(--bg-1) 78%, transparent);
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   cursor: default;
   transition: background .12s ease, border-color .12s ease;
 }
@@ -1701,6 +1738,7 @@ body.auth-locked :is(.sidebar, .main, .workspace, .settings-panel, .modal-backdr
   background: var(--panel-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  align-self: end;
 }
 .composer-inner {
   max-width: var(--content-max); margin: 0 auto;
@@ -4468,6 +4506,14 @@ body.light .bg-glow-2 {
     linear-gradient(245deg, transparent 12%, rgba(14, 165, 233, 0.075), transparent 54%),
     linear-gradient(330deg, transparent 38%, rgba(244, 114, 182, 0.06), transparent 84%);
 }
+body.light .main { background: #f6f3ed; }
+body.light .main::before {
+  background-image:
+    radial-gradient(ellipse at 50% 52%, rgba(250, 247, 240, .38), transparent 72%),
+    url("temple-fresco-day-v2.png");
+  opacity: .25;
+}
+body.light .main:has(.welcome)::before { opacity: .88; }
 body.light .composer {
   background: var(--panel-bg);
 }
@@ -5253,6 +5299,14 @@ body.font-lg .msg-content pre code { font-size: 15px; }
   }
   .composer-inner, .composer-meta, .welcome, .msg { max-width: 100%; }
   .msg.user .msg-content { max-width: 90%; }
+}
+@media (max-width: 600px) {
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .topbar-left { min-width: 0; flex-wrap: wrap; }
+  .topbar-right { margin-left: auto; }
+  .composer { padding: 12px 14px; }
+  .welcome { padding: 14px 4px; }
+  .welcome-pantheon { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .conversation-row { display: flex; align-items: center; gap: 4px; }

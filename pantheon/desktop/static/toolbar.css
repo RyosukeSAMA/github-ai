@@ -1,0 +1,29 @@
+/* Workspace health is a separate, non-modal surface above the garden. */
+.title-actions .connection-state{display:inline-flex;align-items:center;gap:8px;max-width:190px;min-height:32px;padding:5px 10px;border:1px solid transparent;border-radius:18px;background:transparent;color:var(--muted);font-size:11px;white-space:nowrap;-webkit-app-region:no-drag}
+.title-actions .connection-state:before{content:'';width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.title-actions .connection-state[data-connected=true]:before{background:var(--green)}
+.title-actions .connection-state:hover,.title-actions .connection-state[aria-expanded=true]{border-color:var(--line);background:var(--accent-soft);color:var(--ink)}
+.title-actions .connection-state:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.connection-panel{position:fixed;inset:60px 20px auto auto;margin:0;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 80px);overflow:auto;padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);box-shadow:0 16px 65px color-mix(in srgb,var(--ink) 18%,transparent);-webkit-app-region:no-drag}
+.connection-panel::backdrop{background:transparent}
+.connection-panel header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px}
+.connection-panel header small{font-size:10px;letter-spacing:1.7px;color:var(--gold)}
+.connection-panel h2{font-size:21px;letter-spacing:-.6px;margin:7px 0 0;font-weight:600}
+.connection-panel .service-health{padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.connection-panel .health-heading{display:flex;align-items:center;gap:8px;font-size:13px}
+.connection-panel .health-heading strong{flex:1;font-weight:600}
+.connection-panel .service-health small{display:block;font-size:11px;line-height:1.6;margin-top:7px;color:var(--muted);overflow-wrap:anywhere}
+.connection-panel .health-section-label{display:flex;align-items:center;justify-content:space-between;margin:20px 0 4px;font-size:10px;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase}
+.connection-panel .connection-health-row{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--line)}
+.connection-panel .connection-health-copy{min-width:0;flex:1}
+.connection-panel .connection-health-copy strong{display:block;font-size:12px;font-weight:550}
+.connection-panel .connection-health-copy small{display:block;font-size:11px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.connection-panel .health-badge{font-size:10px;white-space:nowrap;padding:4px 7px;border:1px solid var(--line);border-radius:14px;color:var(--muted)}
+.connection-panel .health-badge[data-state=verified]{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line));background:color-mix(in srgb,var(--green) 6%,var(--surface))}
+.connection-panel .health-badge[data-state=failed]{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line))}
+.connection-panel .connection-panel-empty{font-size:12px;line-height:1.65;color:var(--muted);margin:16px 0}
+.connection-panel footer{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.connection-panel footer button{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:11px}
+.connection-panel footer button.primary{border-color:transparent}
+.connection-panel .connection-panel-note{border-top:1px solid var(--line);padding-top:14px;margin:16px 0 0;color:var(--muted);font-size:11px;line-height:1.65}
+@media(max-width:900px){.title-actions .connection-state{font-size:10px;padding:5px 7px}.connection-panel{right:16px;top:58px}}
