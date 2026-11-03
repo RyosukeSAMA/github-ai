@@ -14,7 +14,8 @@
     "package": "electron-builder",
     "test:native": "node test/native-smoke.cjs",
     "test:providers": "node test/provider-ui-smoke.cjs",
-    "test:toolbar": "node test/toolbar-ui-smoke.cjs"
+    "test:toolbar": "node test/toolbar-ui-smoke.cjs",
+    "test:packaged": "node test/packaged-suites.cjs"
   },
   "devDependencies": {
     "electron": "44.9.1",

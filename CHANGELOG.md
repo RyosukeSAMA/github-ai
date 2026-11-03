@@ -10,6 +10,8 @@ All notable changes to Pantheon are documented in this file.
 
 ## Unreleased — Desktop beta
 
+- Run full native, provider UI and toolbar UI checks against packaged apps on all CI platforms. Add bounded per-suite budgets, stage timings and aggregate failure reporting; upload every suite's evidence even on failure.
+
 - Add a non-modal title-bar connection panel separating live project-service access from saved API tests, with timestamps, reconnect and model settings. Keep Focus layouts independent per native window while sharing theme preferences. Save task/editor drafts before Open in new window, support fresh windows without a project, and reconnect sibling windows after a local-service restart.
 
 - Add locally bundled DeepSeek, OpenAI, Anthropic and Ollama marks to connection selectors, saved connection summaries, searchable model menus and configured role details. Retain watercolor role portraits, custom model IDs, native provider selection and single/mixed-provider assignment. Keep verification text separate from brand identity, explain custom endpoints and distinguish local/remote Ollama runtimes.

@@ -105,3 +105,12 @@ This remains a local preview candidate. This turn does not establish new Windows
 The beta.15 provider marks and beta.16 toolbar changes are consolidated with the current main branch. The existing Web temple update and both README screenshots are preserved. This merges the Desktop preview source; it does not publish a new installer release or claim that the old Windows/Linux CI timeouts have been resolved. The latest local preview installers remain in `dist/desktop-beta.16`. Cross-platform smoke timing and wiring the two focused UI suites into CI are the next follow-up work.
 
 Combined-source local verification on November 3 passed: 308 Python tests (three expected skips), 44 Chrome Web checks, six native proxy/release tests, development native smoke and toolbar UI checks, Ruff, JavaScript syntax, diff and referenced-image checks. The Web static files match origin/main byte for byte. These checks used disposable projects and localhost fixtures, with no paid APIs.
+
+
+## CI follow-up after the Desktop merge — 2026-11-03
+
+PR #36 merged the beta.16 preview as main commit `2317f4f324f5bc0bbbaaafd43ce25b7151d1923c`. Its Desktop CI run `41600743490` passed on macOS; Linux expired at the original 240-second whole-suite deadline before task submission, and Windows expired at 420 seconds after result rendering. The logs do not provide a failed feature assertion at those deadlines.
+
+The follow-up workflow now runs the full native, provider UI and toolbar UI suites against each actual packaged build. Every suite retains its isolated fixture state and assertions; a failed suite cannot be reported as a passing overall run. The full flow receives a bounded 600-second budget and each focused suite 300 seconds, with a 30-minute job limit. Structured timings record the elapsed time and last stage before a timeout, and all three evidence directories are uploaded on failures as well as passes. Provider UI verification is written only after a normal native exit.
+
+Local macOS packaged verification of the combined runner passed all three suites: full native flow approximately 68 seconds, provider UI approximately 3.5 seconds, toolbar UI approximately 7.5 seconds. These used the verified beta.16 bundle, localhost fixtures and no paid APIs. Cross-platform results for the follow-up commit remain pending until its own CI completes; a longer budget alone does not establish that a platform is fixed.
