@@ -5,11 +5,13 @@ const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 const {Backend} = require('./backend.cjs');
 const {randomUUID} = require('node:crypto');
-const {desktopRelease} = require('./releases.cjs');
+const {UpdateManager} = require('./updates.cjs');
+const {MaintenanceManager} = require('./maintenance.cjs');
 if (process.env.PANTHEON_DESKTOP_USER_DATA) app.setPath('userData', path.resolve(process.env.PANTHEON_DESKTOP_USER_DATA));
 protocol.registerSchemesAsPrivileged([{scheme:'pantheon', privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 const windows = new Map(), backends = new Map();
-let preferences = {theme:'light', layout:'professional', fontSize:14, panelWidth:300, notifications:false, background:false, globalShortcut:false}, recent = [], savedRemote = null, tray, quitting = false;
+let preferences = {theme:'light', layout:'professional', fontSize:14, panelWidth:300, notifications:false, background:false, globalShortcut:false,updateChannel:app.getVersion().includes('-')?'beta':'stable'}, recent = [], savedRemote = null, tray, quitting = false;
+let updates,maintenance,installerPreparing=false;const restoreTickets=new Map();
 const uiRoot = app.isPackaged ? path.join(process.resourcesPath,'ui') : path.join(__dirname,'..','pantheon','desktop','static');
 const preferenceFile = () => path.join(app.getPath('userData'),'desktop.json');
 async function savePreferences() {
@@ -25,6 +27,7 @@ function senderContext(event, requireBackend = true) {
   const context = windows.get(event.sender.id);
   if (!context || event.senderFrame !== event.sender.mainFrame || !event.senderFrame.url.startsWith('pantheon://app/')) throw new Error('Untrusted desktop message');
   if (requireBackend && !context.backend) throw new Error('Choose a project folder or connect a remote server first.');
+  if(requireBackend&&context.backend?.maintenance)throw new Error('Workspace backup or restore is in progress. Wait for it to finish.');
   return context;
 }
 function publicInfo(context) {
@@ -79,16 +82,25 @@ function configureNative() {
   if(preferences.globalShortcut) globalShortcut.register('CommandOrControl+Shift+Space',()=>{ const context=[...windows.values()][0] || createWindow();context.win.show();context.win.focus();context.win.webContents.send('desktop:command','focus'); });
 }
 async function checkUpdates(){
+  if(installerPreparing)return updates.snapshot();
   if(process.env.PANTHEON_DESKTOP_TEST==='1')return {version:app.getVersion(),available:false,reason:'Update checks are disabled in isolated tests.'};
-  const response=await fetch('https://api.github.com/repos/RyosukeSAMA/github-ai/releases/latest',{signal:AbortSignal.timeout(12000),redirect:'error'});if(!response.ok)throw new Error('Release check is unavailable.');
-  const result=desktopRelease(await response.json(),app.getVersion(),process.platform,process.arch);
-  if(result.available)for(const context of windows.values())context.win.webContents.send('desktop:update',result);return result;
+  return updates.check(preferences.updateChannel);
+}
+function initializeSystem(){
+  updates=new UpdateManager({directory:path.join(app.getPath('userData'),'updates'),version:app.getVersion(),onChange:value=>{for(const context of windows.values())if(!context.win.isDestroyed())context.win.webContents.send('desktop:update',value);}});
+  maintenance=new MaintenanceManager({directory:path.join(app.getPath('userData'),'backups'),command:coreCommand(),flush:async backend=>{
+    const drafts=await Promise.allSettled([...windows.values()].filter(context=>context.backend===backend).map(context=>context.win.webContents.executeJavaScript('flushDrafts()')));
+    if(drafts.some(item=>item.status==='rejected'))throw new Error('Resolve unsaved draft conflicts in this workspace before continuing.');
+  },reconnect:async(backend,{restored})=>{
+    const replacement=new Backend({...coreCommand(),env:backend.env}).local(backend.workspace);backends.set('local:'+backend.workspace,replacement);
+    const ready=await replacement;for(const context of windows.values())if(context.backend===backend){context.backend=ready;context.lost=false;context.win.webContents.send('desktop:command',restored?'workspace-restored':'maintenance-ready');}
+  },onChange:(backend,value)=>{for(const context of windows.values())if(context.backend?.workspace===backend.workspace&&!context.backend.remote&&!context.win.isDestroyed())context.win.webContents.send('desktop:maintenance',{...value,workspace:backend.workspace});}});
 }
 function notifyTask(backend,body){if(!preferences.notifications||!Notification.isSupported())return;const note=new Notification({title:'Pantheon',body});note.on('click',()=>{const context=[...windows.values()].find(item=>item.backend===backend)||createWindow(backend);context.win.show();context.win.focus();});note.show();}
 let monitoring=false;const observed=new WeakMap();
 async function monitorTasks(){
   if(monitoring||quitting||app.quitPending)return;monitoring=true;
-  try{for(const result of await Promise.allSettled([...backends.values()])){if(result.status!=='fulfilled')continue;const backend=result.value;try{
+  try{for(const result of await Promise.allSettled([...backends.values()])){if(result.status!=='fulfilled')continue;const backend=result.value;if(backend.maintenance)continue;try{
     const value=await backend.request('/api/desktop/sessions');let seen=observed.get(backend);if(!seen){seen=new Map();observed.set(backend,seen);}
     for(const run of value.runs){const previous=seen.get(run.id);if(previous&&['queued','running','stopping'].includes(previous.status)&&!['queued','running','stopping'].includes(run.status))notifyTask(backend,run.status==='completed'?'A task has completed.':'A task needs your attention.');
       const record={status:run.status,cursor:previous?.cursor||0};
@@ -177,6 +189,48 @@ function installIPC() {
     const notification=new Notification({title:'Pantheon',body:String(value?.body||'Task updated').slice(0,160)});notification.on('click',()=>{context.win.show();context.win.focus();});notification.show();
   }return {enabled:preferences.notifications};});
   ipcMain.handle('desktop:updates',async event=>{senderContext(event,false);return checkUpdates();});
+  ipcMain.handle('desktop:update-status',async event=>{senderContext(event,false);return {...updates.snapshot(),channel:preferences.updateChannel,history:(await updates.history()).map(({id,name,version,size,downloaded_at,rollback})=>({id,name,version,size,downloaded_at,rollback})),recovery:updates.recoveryVersions()};});
+  ipcMain.handle('desktop:update-channel',async(event,channel)=>{senderContext(event,false);if(!['stable','beta'].includes(channel))throw new Error('Choose Stable or Beta.');if(updates.controller)throw new Error('Finish or cancel the download first.');preferences.updateChannel=channel;await savePreferences();return checkUpdates();});
+  ipcMain.handle('desktop:update-download',async(event,value)=>{senderContext(event,false);if(!Number.isSafeInteger(value?.id)||typeof value.rollback!=='boolean')throw new Error('Choose a listed installer.');return updates.download(value.id,{rollback:value.rollback});});
+  ipcMain.handle('desktop:update-cancel',event=>{senderContext(event,false);updates.cancel();return {cancelled:true};});
+  ipcMain.handle('desktop:update-reveal',async(event,id)=>{senderContext(event,false);shell.showItemInFolder(await updates.verifiedFile(id));return {opened:true};});
+  ipcMain.handle('desktop:update-install',async(event,id)=>{
+    if(installerPreparing)throw new Error('Another installer preparation is already running.');installerPreparing=true;
+    try{
+    const context=senderContext(event,false),file=await updates.verifiedFile(id);
+    const choice=await dialog.showMessageBox(context.win,{type:'question',message:'Prepare this verified installer?',detail:path.basename(file)+'\n\nDesktop will back up each idle local workspace it owns before opening the installer. Remote and reused services are not stopped. Quit Pantheon before replacing the app; your existing data stays outside the app bundle.',buttons:['Cancel','Back up and open installer'],defaultId:0,cancelId:0});
+    if(choice.response!==1)return {opened:false};
+    const owned=(await Promise.all([...backends.values()])).filter(backend=>backend.owned&&!backend.remote);
+    const backups=[];for(const backend of new Set(owned))backups.push(await maintenance.automaticBackup(backend));
+    // Protect against a changed cache file during the backup operation.
+    await updates.verifiedFile(id);const error=await shell.openPath(file);if(error)throw new Error(error);
+    return {opened:true,backups:backups.length,manual_steps:process.platform==='darwin'?'Quit Pantheon, drag the app into Applications, then reopen it.':process.platform==='win32'?'Quit Pantheon and finish the installer, then reopen it.':'Quit Pantheon and install the downloaded package for your Linux distribution.'};
+    }finally{installerPreparing=false;}
+  });
+  ipcMain.handle('desktop:backups',async event=>{const context=senderContext(event);return {owned:context.backend.owned&&!context.backend.remote,items:await maintenance.list(context.backend.workspace)};});
+  ipcMain.handle('desktop:backup',async(event,options)=>{
+    const context=senderContext(event);if(typeof options?.includeSecrets!=='boolean')throw new Error('Choose whether to include credentials.');
+    if(options.includeSecrets){const answer=await dialog.showMessageBox(context.win,{type:'warning',message:'Include saved API credentials?',detail:'This private archive may contain API keys and configuration. Keep it private and do not send it to other users.',buttons:['Cancel','Include credentials'],defaultId:0,cancelId:0});if(answer.response!==1)return {cancelled:true};}
+    const selected=await dialog.showSaveDialog(context.win,{title:'Back up workspace data',defaultPath:'Pantheon-backup-'+new Date().toISOString().replace(/[:.]/g,'-')+'.zip',filters:[{name:'Pantheon backup',extensions:['zip']}]});
+    if(selected.canceled)return {cancelled:true};return maintenance.perform(context.backend,'backup',selected.filePath,{includeSecrets:options.includeSecrets});
+  });
+  ipcMain.handle('desktop:backup-reveal',async(event,id)=>{const context=senderContext(event);shell.showItemInFolder(await maintenance.revealFile(id,context.backend.workspace));return {opened:true};});
+  ipcMain.handle('desktop:restore-inspect',async event=>{
+    const context=senderContext(event);if(!context.backend.owned||context.backend.remote)throw new Error('Restore is available only for a local workspace owned by Desktop.');
+    const picked=await dialog.showOpenDialog(context.win,{title:'Choose a Pantheon backup',properties:['openFile'],filters:[{name:'Pantheon backup',extensions:['zip']}]});if(picked.canceled)return {cancelled:true};
+    const file=picked.filePaths[0],stat=await fs.stat(file);if(!stat.isFile()||stat.size<=0||stat.size>512*1024*1024)throw new Error('Choose a regular backup file within the restore size limit.');
+    const directory=path.join(app.getPath('userData'),'restore-staging');await fs.mkdir(directory,{recursive:true,mode:0o700});
+    const ticket=randomUUID(),snapshot=path.join(directory,ticket+'.zip');await fs.copyFile(file,snapshot);await fs.chmod(snapshot,0o600);
+    try{const summary=await maintenance.inspect(context.backend,snapshot);restoreTickets.set(ticket,{workspace:context.backend.workspace,path:snapshot,includes_secrets:summary.includes_secrets,created:Date.now()});return {ticket,name:path.basename(file),...summary};}catch(error){await fs.rm(snapshot,{force:true});throw error;}
+  });
+  ipcMain.handle('desktop:restore',async(event,ticket)=>{
+    const context=senderContext(event),entry=restoreTickets.get(ticket);if(!entry||entry.workspace!==context.backend.workspace||Date.now()-entry.created>15*60*1000)throw new Error('Choose and review the backup again.');
+    const answer=await dialog.showMessageBox(context.win,{type:'warning',message:'Restore the selected workspace backup?',detail:(entry.includes_secrets?'This archive includes API credentials and local configuration.\n\n':'')+'Saved workspace data will be replaced or merged. Project files are unchanged. Current files are kept in a recovery directory; pending tasks, messages and approvals are not replayed.',buttons:['Cancel','Restore backup'],defaultId:0,cancelId:0});
+    if(answer.response!==1)return {cancelled:true};
+    try{return await maintenance.perform(context.backend,'restore',entry.path);}finally{restoreTickets.delete(ticket);await fs.rm(entry.path,{force:true});}
+  });
+  ipcMain.handle('desktop:restore-cancel',async(event,ticket)=>{const context=senderContext(event,false),entry=restoreTickets.get(ticket);if(entry&&entry.workspace===context.backend?.workspace){restoreTickets.delete(ticket);await fs.rm(entry.path,{force:true});}return {cancelled:true};});
+  ipcMain.handle('desktop:quit',event=>{senderContext(event,false);app.quit();return {requested:true};});
   ipcMain.handle('desktop:open-link',async(event,value)=>{senderContext(event,false);if(typeof value!=='string'||value.length>3000)throw new Error('Invalid link');const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Only HTTPS links without credentials can be opened.');return shell.openExternal(url.href);});
   ipcMain.handle('desktop:copy-text',(event,value)=>{senderContext(event,false);if(typeof value!=='string'||value.length>1000000)throw new Error('Copy up to one million characters of text.');clipboard.writeText(value);return {copied:true};});
   ipcMain.handle('desktop:archive',async(event,id)=>{const context=senderContext(event);if(typeof id!=='string'||!/^[-A-Za-z0-9_]{1,100}$/.test(id))throw new Error('Invalid task');const archive=await context.backend.request('/api/tasks/'+id+'/archive');const selected=await dialog.showSaveDialog(context.win,{defaultPath:'pantheon-task-'+id+'.json',filters:[{name:'Task archive',extensions:['json']}]});if(selected.canceled)return {saved:false};await fs.writeFile(selected.filePath,JSON.stringify(archive,null,2),{mode:0o600});return {saved:true};});
@@ -197,13 +251,16 @@ function installIPC() {
   });
 }
 app.on('before-quit',event=>{
+  if(maintenance?.busy.size){event.preventDefault();dialog.showMessageBox({type:'info',message:'Backup or restore is still running.',detail:'Wait for workspace maintenance to finish before quitting Pantheon.',buttons:['OK']});return;}
   if(quitting)return;event.preventDefault();if(app.quitPending)return;app.quitPending=true;
   (async()=>{
+    await updates.shutdown();
     const drafts=await Promise.allSettled([...windows.values()].map(context=>context.win.webContents.executeJavaScript('typeof flushDrafts === \"function\" ? flushDrafts() : undefined')));
     if(drafts.some(item=>item.status==='rejected')){const choice=await dialog.showMessageBox({type:'warning',message:'Some drafts could not be saved.',detail:'Keep the app open to resolve the conflict, or quit while keeping the local recovery draft.',buttons:['Keep open','Quit'],cancelId:0,defaultId:0});if(choice.response!==1){app.quitPending=false;return;}}
     const values=await Promise.allSettled([...backends.values()]);const local=values.filter(item=>item.status==='fulfilled').map(item=>item.value).filter(item=>item.owned);
     let active=0;for(const backend of local){try{active+=(await backend.request('/api/desktop/sessions')).runs.filter(run=>['queued','running','stopping'].includes(run.status)).length;}catch{}}
     if(active){const answer=await dialog.showMessageBox({type:'question',message:'Quit with '+active+' active task(s)?',detail:'Owned local services will stop. Saved results remain, but unfinished work may need recovery. Reused and remote services will keep running.',buttons:['Keep running','Quit'],cancelId:0,defaultId:0});if(answer.response!==1){app.quitPending=false;return;}}
+    await Promise.allSettled([...restoreTickets.values()].map(entry=>fs.rm(entry.path,{force:true})));restoreTickets.clear();
     quitting=true;globalShortcut.unregisterAll();for(const context of windows.values())context.terminal?.abort();await Promise.allSettled(local.map(backend=>backend.stop()));tray?.destroy();for(const context of windows.values())context.win.destroy();app.exit(0);
   })().catch(error=>{console.error('Desktop cleanup failed:',error.message);quitting=false;app.quitPending=false;});
 });
@@ -216,10 +273,10 @@ app.whenReady().then(async()=>{
     const relative=decodeURIComponent(url.pathname).replace(/^\//,'')||'index.html';
     if(!/^[a-zA-Z0-9_.-]+$/.test(relative))return new Response('Not found',{status:404});
     const response=await net.fetch(pathToFileURL(path.join(uiRoot,relative)).toString());
-    const headers=new Headers(response.headers);headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'");
+    const headers=new Headers(response.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'");
     return new Response(response.body,{status:response.status,headers});
   });
-  installIPC();configureNative();setInterval(monitorTasks,3000).unref();setTimeout(()=>checkUpdates().catch(()=>{}),6000).unref();setInterval(()=>checkUpdates().catch(()=>{}),6*60*60*1000).unref();
+  initializeSystem();await updates.cleanIncomplete();installIPC();configureNative();setInterval(monitorTasks,3000).unref();setTimeout(()=>checkUpdates().catch(()=>{}),6000).unref();setInterval(()=>checkUpdates().catch(()=>{}),6*60*60*1000).unref();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform==='darwin'?[{role:'appMenu'}]:[]),
     {label:'File',submenu:[{label:'New task',accelerator:'CommandOrControl+N',click:()=>sendCommand('new')},{label:'Open project…',accelerator:'CommandOrControl+O',click:()=>sendCommand('workspace')},{label:'Open in new window',accelerator:'CommandOrControl+Shift+N',click:()=>{if(BrowserWindow.getFocusedWindow())sendCommand('new-window');else createWindow();}}, {type:'separator'},{role:'quit'}]},

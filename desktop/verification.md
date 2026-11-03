@@ -1,5 +1,7 @@
 # Desktop beta verification
 
+Current source: **0.5.0-beta.17**, verified locally on November 3, 2026. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
+
 Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-beta.1`; shared core source is based on `v0.4.0` with the new bridge. These are separate from the already-installed stable Web/CLI service.
 
 The `0.5.0-beta.2` refresh changes only application icon assets, their reproducible SVG exporter and package metadata. It retains the verified runtime below; its macOS package is recorded separately under `dist/desktop-beta.2` with local checksums. The version increment helps distinguish the refreshed bundle from cached beta.1 icons. The rounded transparent PNG was visually inspected, macOS `iconutil` decoded every ICNS size, the built bundle contains the exact new ICNS, and its ad-hoc signature and DMG integrity checks passed.
@@ -114,3 +116,10 @@ PR #36 merged the beta.16 preview as main commit `2317f4f324f5bc0bbbaaafd43ce25b
 The follow-up workflow now runs the full native, provider UI and toolbar UI suites against each actual packaged build. Every suite retains its isolated fixture state and assertions; a failed suite cannot be reported as a passing overall run. The full flow receives a bounded 600-second budget and each focused suite 300 seconds, with a 30-minute job limit. Structured timings record the elapsed time and last stage before a timeout, and all three evidence directories are uploaded on failures as well as passes. Provider UI verification is written only after a normal native exit.
 
 Local macOS packaged verification of the combined runner passed all three suites: full native flow approximately 68 seconds, provider UI approximately 3.5 seconds, toolbar UI approximately 7.5 seconds. These used the verified beta.16 bundle, localhost fixtures and no paid APIs. Cross-platform results for the follow-up commit remain pending until its own CI completes; a longer budget alone does not establish that a platform is fixed.
+
+
+## beta.17 release/update and offline recovery — 2026-11-03
+
+The real macOS arm64 packaged app passed all four isolated suites: native tasks/files, provider UI, toolbar/window lifecycle, and verified updates/offline recovery. Update fixtures exercise Stable/Beta, checksum rejection and retry, verified cached installer preparation, native file selection, real shared-core backup/restore, retained drafts, light/dark and narrow windows. Only the network transport, native consent/file dialog responses and opening the inert fixture installer are substituted by the external driver. No paid provider API or real OS installation occurs in these tests.
+
+Shared-core verification: **314 Python tests passed, 3 expected skips**; 16 Node tests and Ruff passed. The backup checks cover traversal/size limits, runtime leases, credential summary privacy, failure/reconnect and legacy enabled schedules becoming paused. Four-suite evidence is under `dist/*-evidence`; maintained screenshots: [light update](../docs/desktop/updates-light.png), [dark update](../docs/desktop/updates-dark.png), [backup review](../docs/desktop/backup-review.png) and [narrow](../docs/desktop/system-narrow.png). Windows/Linux current-head packaging and release publication are recorded after CI completes. Software signing/notarization is explicitly excluded; real account/device gaps listed above remain separate.

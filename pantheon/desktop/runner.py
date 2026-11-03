@@ -12,6 +12,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--workspace', required=True)
     parser.add_argument('--locate', action='store_true')
+    maintenance = parser.add_mutually_exclusive_group()
+    maintenance.add_argument('--backup', type=Path)
+    maintenance.add_argument('--restore', type=Path)
+    maintenance.add_argument('--inspect-backup', type=Path)
+    parser.add_argument('--include-secrets', action='store_true')
     args = parser.parse_args()
     root = Path(args.workspace).expanduser().resolve()
     if not root.is_dir():
@@ -22,6 +27,17 @@ def main():
     if args.locate:
         print(json.dumps({'descriptor': str(paths.state / 'desktop-runtime.json'),
                           'runtime_lock': str(paths.state / 'runtime.lock')}), flush=True)
+        return
+    if args.backup or args.restore or args.inspect_backup:
+        from pantheon.core.backup import export_backup, inspect_backup, restore_backup
+        if args.inspect_backup:
+            result = inspect_backup(args.inspect_backup)
+        elif args.backup:
+            export_backup(paths, args.backup, include_secrets=args.include_secrets)
+            result = {'saved': True, 'path': str(args.backup.resolve())}
+        else:
+            result = {'restored': True, 'rollback': str(restore_backup(paths, args.restore))}
+        print(json.dumps(result), flush=True)
         return
     if len(os.environ.get('PANTHEON_DESKTOP_TOKEN', '')) < 32:
         raise SystemExit('Desktop bootstrap token is missing')

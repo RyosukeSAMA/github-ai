@@ -1,5 +1,7 @@
 # Pantheon Desktop：原生 Beta 与交互设计
 
+当前源代码版本为 **0.5.0-beta.17**；下载以 [GitHub Release 的实际附件](https://github.com/RyosukeSAMA/github-ai/releases)为准。安装、系统/CPU、升级及备份恢复见[桌面端下载指引](../../desktop/downloads.md)。本页后半部分为历史设计原型，不能用作当前安装版操作说明。
+
 原生 Beta 已在 `desktop/` 实现，使用 Electron 界面和内置 Python 核心，独立于本目录的浏览器原型。启动、构建、数据路径、远程连接和验证边界见[原生客户端说明](../../desktop/README.md)与[验证记录](../../desktop/verification.md)。
 
 下图来自原生 Beta 的隔离测试，供应商响应来自本地模拟服务，不代表真实商业账号已验证。

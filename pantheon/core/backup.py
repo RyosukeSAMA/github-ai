@@ -50,6 +50,21 @@ def _sanitize_channel_snapshot(path: Path, name: str):
                 db.execute('UPDATE preferences SET value=? WHERE name=?', (json.dumps(data), name))
 
 
+def _sanitize_scheduler_snapshot(path: Path) -> None:
+    """Restored automations require review before they can execute again."""
+    data = json.loads(path.read_text())
+    if (not isinstance(data, dict) or not isinstance(data.get('jobs', []), list)
+            or not isinstance(data.get('runs', []), list)
+            or any(not isinstance(item, dict) for item in [*data.get('jobs', []), *data.get('runs', [])])):
+        raise ValueError('Invalid Chronos backup state.')
+    for job in data.get('jobs', []):
+        job.update(enabled=False, running=False, last_status='paused')
+    for run in data.get('runs', []):
+        if run.get('status') in {'queued', 'running'}:
+            run['status'] = 'interrupted'
+    path.write_text(json.dumps(data), encoding='utf8')
+
+
 def _require_idle(paths: DataPaths) -> None:
     database = paths.state / 'tasks.sqlite'
     if database.exists() and any(task['status'] == 'running' for task in TaskStore(database).list()):
@@ -93,6 +108,12 @@ def _export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool
                         _copy_database(source, snapshot)
                         _sanitize_channel_snapshot(snapshot, source.name)
                         archive.write(snapshot, name)
+                elif source.relative_to(paths.state).as_posix() == 'chronos_jobs.json':
+                    with tempfile.TemporaryDirectory() as directory:
+                        snapshot = Path(directory) / 'chronos_jobs.json'
+                        shutil.copy2(source, snapshot)
+                        _sanitize_scheduler_snapshot(snapshot)
+                        archive.write(snapshot, name)
                 else:
                     archive.write(source, name)
             if include_secrets:
@@ -101,6 +122,8 @@ def _export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool
                         raise ValueError('Backups do not follow symbolic links.')
                     if source.is_file():
                         archive.write(source, name)
+        with zipfile.ZipFile(temporary) as archive:
+            _validate_archive(archive)
         os.replace(temporary, destination)
         temporary = None
     finally:
@@ -109,6 +132,38 @@ def _export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool
                 Path(temporary).unlink(missing_ok=True)
         finally:
             lease.release()
+
+
+def _validate_archive(archive: zipfile.ZipFile) -> dict:
+    entries = archive.infolist()
+    if len(entries) > 10000 or sum(item.file_size for item in entries) > MAX_BYTES:
+        raise ValueError('Backup exceeds restore limits.')
+    names: set[str] = set()
+    for entry in entries:
+        path = PurePosixPath(entry.filename)
+        if ('\\' in entry.filename or ':' in entry.filename or path.is_absolute() or '..' in path.parts
+                or entry.filename in names or (entry.external_attr >> 16) & 0o170000 == 0o120000):
+            raise ValueError('Unsafe backup entry.')
+        names.add(entry.filename)
+        if entry.filename not in {'manifest.json', 'config.yaml', 'credentials.env'} and not (
+            len(path.parts) > 1 and path.parts[0] == 'state' and not (EPHEMERAL | {'.locks'}).intersection(path.parts)
+        ):
+            raise ValueError('Unknown backup entry.')
+    manifest = json.loads(archive.read('manifest.json'))
+    if not isinstance(manifest, dict) or manifest.get('format') != 1:
+        raise ValueError('Unsupported backup format.')
+    return manifest
+
+
+def inspect_backup(source: Path) -> dict:
+    """Inspect an archive without writing state or exposing credential values."""
+    with zipfile.ZipFile(source.expanduser().resolve()) as archive:
+        manifest = _validate_archive(archive)
+        entries = archive.infolist()
+        return {'format': manifest['format'], 'files': len(entries),
+                'uncompressed_bytes': sum(item.file_size for item in entries),
+                'includes_secrets': bool(manifest.get('includes_secrets')) or
+                    any(item.filename in {'config.yaml', 'credentials.env'} for item in entries)}
 
 
 def restore_backup(paths: DataPaths, source: Path) -> Path:
@@ -128,23 +183,7 @@ def _restore_backup(paths: DataPaths, source: Path) -> Path:
         rollback = Path(tempfile.mkdtemp(prefix='pantheon-before-restore-', dir=paths.state.parent))
         _require_idle(paths)
         with zipfile.ZipFile(source) as archive:
-            entries = archive.infolist()
-            if len(entries) > 10000 or sum(item.file_size for item in entries) > MAX_BYTES:
-                raise ValueError('Backup exceeds restore limits.')
-            names: set[str] = set()
-            for entry in entries:
-                path = PurePosixPath(entry.filename)
-                if ('\\' in entry.filename or ':' in entry.filename or path.is_absolute() or '..' in path.parts
-                        or entry.filename in names or (entry.external_attr >> 16) & 0o170000 == 0o120000):
-                    raise ValueError('Unsafe backup entry.')
-                names.add(entry.filename)
-                if entry.filename not in {'manifest.json', 'config.yaml', 'credentials.env'} and not (
-                    len(path.parts) > 1 and path.parts[0] == 'state' and not (EPHEMERAL | {'.locks'}).intersection(path.parts)
-                ):
-                    raise ValueError('Unknown backup entry.')
-            manifest = json.loads(archive.read('manifest.json'))
-            if manifest.get('format') != 1:
-                raise ValueError('Unsupported backup format.')
+            _validate_archive(archive)
             archive.extractall(staging)
         for saved in staging.rglob('*'):
             if not saved.is_file() or saved.name == 'manifest.json':
@@ -168,6 +207,8 @@ def _restore_backup(paths: DataPaths, source: Path) -> Path:
                     shutil.copy2(target, previous)
             target.parent.mkdir(parents=True, exist_ok=True)
             changed.append((target, previous))
+            if relative.as_posix() == 'state/chronos_jobs.json':
+                _sanitize_scheduler_snapshot(saved)
             if target.suffix == '.sqlite':
                 _sanitize_channel_snapshot(saved, target.name)
                 _copy_database(saved, target)
