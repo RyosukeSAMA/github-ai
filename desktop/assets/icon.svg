@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Pantheon application icon</title>
+  <defs>
+    <clipPath id="tile">
+      <rect x="100" y="100" width="824" height="824" rx="184"/>
+    </clipPath>
+    <filter id="shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#0b1625" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <g clip-path="url(#tile)">
+      <image href="../../docs/images/pantheon-mark.png" x="100" y="100" width="824" height="824"/>
+      <rect x="101" y="101" width="822" height="822" rx="183" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2"/>
+    </g>
+  </g>
+</svg>

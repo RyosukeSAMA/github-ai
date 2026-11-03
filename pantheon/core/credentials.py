@@ -17,11 +17,11 @@ class CredentialError(RuntimeError):
     pass
 
 
-def atomic_text(path: Path, text: str):
+def atomic_text(path: Path, text: str, *, newline: str | None = None):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.' + path.name)
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as output:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline=newline) as output:
             output.write(text)
         os.chmod(temporary, 0o600)
         os.replace(temporary, path)

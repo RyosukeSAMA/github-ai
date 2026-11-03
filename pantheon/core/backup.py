@@ -15,6 +15,7 @@ from pantheon.core.runtime import RuntimeLease, maintenance_lease
 from pantheon.core.tasks import TaskStore
 
 MAX_BYTES = 512 * 1024 * 1024
+EPHEMERAL = {'runtime.lock', 'maintenance.lock', 'desktop-runtime.json', 'desktop-sessions.lock', 'desktop-writes.lock'}
 
 
 def _copy_database(source: Path, target: Path) -> None:
@@ -33,12 +34,15 @@ def _lease(paths: DataPaths) -> RuntimeLease:
 
 def _sanitize_channel_snapshot(path: Path, name: str):
     """Restoring a backup must not replay queued messages or reactivate callbacks."""
-    if name not in {'channels.sqlite', 'readiness.sqlite'}:
+    if name not in {'channels.sqlite', 'readiness.sqlite', 'desktop.sqlite'}:
         return
     with closing(sqlite3.connect(path)) as db, db:
         if name == 'channels.sqlite':
             db.execute('UPDATE events SET state="interrupted" WHERE state IN ("queued", "running")')
             db.execute('UPDATE events SET data=json_remove(data, "$.route.token")')
+        elif name == 'desktop.sqlite':
+            db.execute('UPDATE runs SET status="interrupted" WHERE status IN ("queued", "running", "stopping")')
+            db.execute('UPDATE reviews SET status="rejected" WHERE status="pending"')
         else:
             for name, raw in db.execute('SELECT name, value FROM preferences WHERE name LIKE "channel:%"').fetchall():
                 data = json.loads(raw)
@@ -78,7 +82,7 @@ def _export_backup(paths: DataPaths, destination: Path, *, include_secrets: bool
                     raise ValueError('Backups do not follow symbolic links.')
                 if '.locks' in source.relative_to(paths.state).parts:
                     continue
-                if not source.is_file() or source.name in {'runtime.lock', 'maintenance.lock'} or source.name.endswith(('-wal', '-shm', '-journal')):
+                if not source.is_file() or source.name in EPHEMERAL or source.name.endswith(('-wal', '-shm', '-journal')):
                     continue
                 if not include_secrets and source.name in {'mcp_servers.json', 'plugins.json', '.env'}:
                     continue
@@ -135,7 +139,7 @@ def _restore_backup(paths: DataPaths, source: Path) -> Path:
                     raise ValueError('Unsafe backup entry.')
                 names.add(entry.filename)
                 if entry.filename not in {'manifest.json', 'config.yaml', 'credentials.env'} and not (
-                    len(path.parts) > 1 and path.parts[0] == 'state' and not {'runtime.lock', 'maintenance.lock', '.locks'}.intersection(path.parts)
+                    len(path.parts) > 1 and path.parts[0] == 'state' and not (EPHEMERAL | {'.locks'}).intersection(path.parts)
                 ):
                     raise ValueError('Unknown backup entry.')
             manifest = json.loads(archive.read('manifest.json'))

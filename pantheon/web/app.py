@@ -563,6 +563,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     channel_cancel = threading.Event()
     model_catalog_attempts: dict[str, int] = {}
     model_catalog_errors: dict[str, str] = {}
+    desktop_holder: dict[str, Any] = {}
 
     runtime = RuntimeLease(data_paths.state / "runtime.lock", {
         "host": bind_host, "port": bind_port, "workspace": str(workspace_root), "version": __version__,
@@ -572,6 +573,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     async def lifespan(_app: FastAPI):
         runtime.acquire()
         try:
+            desktop_holder["runtime"].start(bind_host, bind_port)
             workspace_services.channels.recover_interrupted()
             channel_cancel.clear()
             channel_runner['task'] = asyncio.create_task(channel_loop())
@@ -581,6 +583,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
             yield
         finally:
+            await desktop_holder["runtime"].close()
             channel_cancel.set()
             runner_tasks = [
                 channel_runner.get('task'),
@@ -1805,6 +1808,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
             if parsed.scheme not in {"http", "https"} or parsed.netloc != request.headers.get("host"):
                 return JSONResponse({"detail": "Cross-origin access is not allowed"}, status_code=403)
         cfg = auth_config()
+        desktop_token = request.headers.get("x-pantheon-desktop-token", "")
+        desktop_authorized = bool(desktop_token and hmac.compare_digest(desktop_token, desktop_holder["runtime"].token))
+        if desktop_authorized and not remote_bind:
+            return await call_next(request)
+        if request.url.path.startswith("/api/desktop/"):
+            if not (remote_bind and cfg["enabled"] and request_is_authenticated(request)):
+                return JSONResponse({"detail": "desktop authentication required"}, status_code=401)
         if remote_bind and not cfg["enabled"]:
             return JSONResponse({"detail": "Remote access requires configured authentication"}, status_code=403)
         if not cfg["enabled"]:
@@ -3603,4 +3613,11 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
+    from pantheon.desktop.runtime import DesktopRuntime, install_routes
+    desktop = DesktopRuntime(workspace_services, conversation_store, workspace_root,
+                             ask_stream, AskRequest, resolve_workspace_path)
+    desktop_holder["runtime"] = desktop
+    app.state.desktop = desktop
+    app.state.workspace_services = workspace_services
+    install_routes(app, desktop)
     return app

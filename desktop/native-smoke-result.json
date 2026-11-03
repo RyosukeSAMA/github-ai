@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "packaged": true,
+  "platform": "darwin",
+  "architecture": "arm64",
+  "provider_calls": 1,
+  "paid_api_calls": 0,
+  "page_errors": [],
+  "workspace": "isolated temporary test project"
+}

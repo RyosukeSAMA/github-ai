@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 290" fill="none">
+  <defs>
+    <radialGradient id="blue"><stop stop-color="#cadfea" stop-opacity=".65"/><stop offset="1" stop-color="#e6eef4" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gold"><stop stop-color="#e9d8b5" stop-opacity=".65"/><stop offset="1" stop-color="#f9f2e6" stop-opacity="0"/></radialGradient>
+    <linearGradient id="sky" x1="480" y1="30" x2="480" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#ecf3f6" stop-opacity=".8"/><stop offset="1" stop-color="#fdfbf7" stop-opacity=".1"/></linearGradient>
+    <linearGradient id="stone" x1="424" y1="90" x2="540" y2="225" gradientUnits="userSpaceOnUse"><stop stop-color="#fbf8f0"/><stop offset="1" stop-color="#e0e8e9"/></linearGradient>
+    <linearGradient id="column"><stop stop-color="#c8d3d8"/><stop offset=".35" stop-color="#fffdf5"/><stop offset=".72" stop-color="#f3f3ec"/><stop offset="1" stop-color="#cbd6db"/></linearGradient>
+    <g id="pillar"><path d="M-8 139h16v5H-8z" fill="#f7f3e8"/><path d="m-5 145-2 65H7l-2-65Z" fill="url(#column)"/><path d="M-2 148v59m4-59v59" stroke="#c1cdd2" stroke-width=".6"/><path d="M-8 210H8v5H-8z" fill="#f0f1e9"/></g>
+    <g id="leaf"><path d="M0 0c-16-2-22-12-22-12C-9-13-2-9 0 0Zm0 0c-3-16 3-23 3-23C11-11 7-4 0 0Z" fill="#c5d2c4" fill-opacity=".45" stroke="#a4b69e" stroke-width=".6"/></g>
+  </defs>
+  <ellipse cx="415" cy="136" rx="228" ry="134" fill="url(#blue)"/>
+  <ellipse cx="570" cy="157" rx="240" ry="130" fill="url(#gold)"/>
+  <path d="M343 221V175a137 137 0 0 1 274 0v46" fill="url(#sky)"/>
+  <g stroke="#aebec9" stroke-width=".7" opacity=".45">
+    <path d="M480 8v252m-243-40h487" stroke-dasharray="2 7"/>
+    <path d="M325 223V175a155 155 0 0 1 310 0v48M338 223V175a142 142 0 0 1 284 0v48"/>
+    <path d="M305 225V175a175 175 0 0 1 350 0v50" stroke-dasharray="1 6"/>
+    <path d="m352 31 7 7m-7 0 7-7m270 125 7 7m-7 0 7-7M297 123h8m-4-4v8"/>
+  </g>
+  <g stroke="#c3aa75" stroke-width=".8" opacity=".75"><circle cx="480" cy="61" r="18"/><circle cx="480" cy="61" r="24" stroke-dasharray="1 5"/><path d="M480 28v5m0 56v5m-33-33h5m56 0h5m-56-23 4 4m38 38 4 4m-46 0 4-4m38-38 4-4"/></g>
+  <g stroke="#adbac0" stroke-width=".9" stroke-linejoin="round">
+    <path d="M411 135h138v80H411z" fill="url(#stone)"/>
+    <path d="M466 215v-47a14 14 0 0 1 28 0v47" fill="#b0c3d0" fill-opacity=".55"/>
+    <path d="m398 122 82-54 82 54Z" fill="#f7f1e2"/>
+    <path d="m411 117 69-44 69 44Z" stroke="#c7bca3"/>
+    <path d="m423 113 57-36 57 36Z" stroke="#d7c7a7" stroke-width=".6"/>
+    <circle cx="480" cy="104" r="5.5" stroke="#b69b65"/>
+    <path d="M397 122h166v6H397zm7 6h152v11H404z" fill="#faf7ed"/>
+    <path d="M410 133h140" stroke="#c0ac85"/>
+    <use href="#pillar" x="418"/><use href="#pillar" x="443"/><use href="#pillar" x="468"/><use href="#pillar" x="493"/><use href="#pillar" x="518"/><use href="#pillar" x="543"/>
+    <path d="M404 215h152v5H404zm-8 5h168v5H396zm-9 5h186v5H387z" fill="url(#stone)"/>
+  </g>
+  <g stroke="#b6c4cb" stroke-width=".7" opacity=".65">
+    <path d="M191 232c72-20 113-10 180-4m213 1c67-20 120-16 197 4M238 243c38-7 90-10 145-8m196 1c38-6 88-5 138 3M303 250c95-11 253-11 358-1"/>
+    <path d="m192 205 46-36 40 20 40-40 48 38m-141 24 38-23 16 8m347-13 47-34 34 25 50-14 49 45m-142-21 15 8 24-13"/>
+    <path d="M267 146c7-7 14-7 21 0m7-10c6-6 12-6 18 0m342-45c7-7 14-7 21 0"/>
+  </g>
+  <path d="M210 240C277 93 403 43 575 107s186 138 57 148c-111 9-277-33-345-81" stroke="#b69b69" stroke-width=".8" opacity=".5"/>
+  <path d="M272 239C209 184 290 83 412 46" stroke="#97b7c8" stroke-width="1" opacity=".6"/>
+  <g stroke="#a8b69e" stroke-width=".8" opacity=".85"><path d="M300 241c-15-14-29-33-34-62m389 63c20-19 36-40 44-72"/><use href="#leaf" x="286" y="224"/><use href="#leaf" x="275" y="205" transform="rotate(8 275 205)"/><use href="#leaf" x="269" y="185" transform="rotate(12 269 185)"/><g transform="translate(960 0) scale(-1 1)"><use href="#leaf" x="286" y="224"/><use href="#leaf" x="275" y="205"/><use href="#leaf" x="269" y="185"/></g></g>
+  <g><circle cx="320" cy="103" r="5" fill="#99b6c7"/><circle cx="631" cy="165" r="4" fill="#bd9c67"/><circle cx="593" cy="248" r="3" fill="#9faf9b"/></g>
+  <path d="M141 247h52m573 0h52" stroke="#c4b393" stroke-width=".8"/><g fill="#bda77f"><circle cx="148" cy="247" r="1.5"/><circle cx="810" cy="247" r="1.5"/></g>
+</svg>

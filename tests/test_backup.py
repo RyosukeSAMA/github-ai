@@ -146,3 +146,30 @@ def test_documented_cli_backup_and_restore_work_in_a_new_workspace(tmp_path, mon
     restored = runner.invoke(app, ['restore', str(archive)])
     assert restored.exit_code == 0, restored.output
     assert data.read_text() == 'before backup'
+
+
+def test_backup_excludes_desktop_capabilities_and_invalidates_active_actions(tmp_path):
+    paths = DataPaths.for_workspace(tmp_path)
+    paths.state.mkdir(parents=True)
+    (paths.state / 'desktop-runtime.json').write_text('{"token":"private-local-capability"}')
+    with sqlite3.connect(paths.state / 'desktop.sqlite') as db:
+        db.execute('CREATE TABLE runs (id TEXT, status TEXT)')
+        db.execute('CREATE TABLE reviews (id TEXT, status TEXT)')
+        db.execute('INSERT INTO runs VALUES ("one", "running")')
+        db.execute('INSERT INTO reviews VALUES ("one", "pending")')
+    archive = tmp_path / 'desktop.zip'
+    export_backup(paths, archive, include_secrets=True)
+    with zipfile.ZipFile(archive) as saved:
+        assert 'state/desktop-runtime.json' not in saved.namelist()
+    with sqlite3.connect(paths.state / 'desktop.sqlite') as db:
+        assert db.execute('SELECT status FROM runs').fetchone()[0] == 'running'
+    restore_backup(paths, archive)
+    with sqlite3.connect(paths.state / 'desktop.sqlite') as db:
+        assert db.execute('SELECT status FROM runs').fetchone()[0] == 'interrupted'
+        assert db.execute('SELECT status FROM reviews').fetchone()[0] == 'rejected'
+    bad = tmp_path / 'capability.zip'
+    with zipfile.ZipFile(bad, 'w') as saved:
+        saved.writestr('manifest.json', '{"format":1}')
+        saved.writestr('state/desktop-runtime.json', '{"token":"forged"}')
+    with pytest.raises(ValueError, match='Unknown backup entry'):
+        restore_backup(paths, bad)
