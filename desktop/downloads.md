@@ -8,7 +8,7 @@ Open the [official Desktop beta releases](https://github.com/RyosukeSAMA/github-
 
 | Computer | Installer filename ends with | Installation |
 | --- | --- | --- |
-| macOS 12+ on Apple Silicon (M1 or later) | `mac-arm64.dmg` | Open the DMG, then drag Pantheon into Applications. |
+| macOS 13+ on Apple Silicon (M1 or later) | `mac-arm64.dmg` | Open the DMG, then drag Pantheon into Applications. |
 | Windows 11 on Intel/AMD 64-bit | `win-x64.exe` | Run the installer; choose the installation location when prompted. No WSL is needed. |
 | Ubuntu 24.04 on Intel/AMD 64-bit | `linux-x64.deb` | Open the package manager, or run `sudo apt install ./Pantheon-*-linux-x64.deb` from the download directory. |
 | Linux 64-bit with AppImage support | `linux-x64.AppImage` | Mark the file executable, then open it. This format requires the desktop's AppImage/FUSE support. |
