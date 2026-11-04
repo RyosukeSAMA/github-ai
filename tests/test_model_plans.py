@@ -38,3 +38,14 @@ def test_disabled_missing_key_and_unlisted_models_are_excluded():
 def test_quality_rating_requires_an_explicit_finite_score(value):
     with pytest.raises(ValueError):
         validate_ratings({'fixture/small': {'quality': value, 'capabilities': ['text']}})
+
+
+def test_successful_model_specific_probe_can_verify_a_catalog_omitted_alias():
+    value = providers()
+    value[0]['models'][0]['available'] = False
+    result = suggest_plans(value, {'fixture/small': {'input': 1, 'output': 1}}, {})
+    assert result['plans'][0]['choice']['model'] == 'small'
+    assert result['plans'][0]['choice']['verified'] is True
+    value[0]['api_health']['state'] = 'expired'
+    assert suggest_plans(value, {}, {}, verified_only=False)['candidates'] == [
+        item for item in suggest_plans(providers(), {}, {}, verified_only=False)['candidates'] if item['model'] == 'large']

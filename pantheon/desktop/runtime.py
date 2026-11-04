@@ -71,7 +71,7 @@ class DesktopRuntime:
             db.close()
 
     def identity(self, challenge: str = ''):
-        return {'api_version': 1, 'version': __version__, 'instance_id': self.instance_id,
+        return {'api_version': 1, 'api_revision': 2, 'version': __version__, 'instance_id': self.instance_id,
                 'workspace': str(self.workspace), 'workspace_name': self.workspace.name,
                 'challenge': challenge, 'pid': os.getpid()}
 
@@ -120,9 +120,15 @@ class DesktopRuntime:
         return self.conversations.get()['sessions']
 
     @staticmethod
+    def draft_revision(item):
+        fields = {key: item.get(key) for key in ['draft', 'title', 'mode', 'pinned', 'archived', 'overrides', 'updatedAt', 'desktop_version']}
+        fields['message_count'] = len(item.get('messages', []))
+        return digest(json.dumps(fields, sort_keys=True).encode())
+
+    @staticmethod
     def public_session(item):
-        return {**{k: v for k, v in item.items() if k not in {'messages', 'editor_draft'}},
-                'message_count': len(item.get('messages', [])), 'has_editor_draft': bool(item.get('editor_draft'))}
+        return {**{k: v for k, v in item.items() if k not in {'messages', 'editor_draft', '_desktop_sync_ops'}},
+                'sync_revision': DesktopRuntime.draft_revision(item), 'message_count': len(item.get('messages', [])), 'has_editor_draft': bool(item.get('editor_draft'))}
 
     def session(self, session_id):
         return next((item for item in self.sessions() if item['id'] == session_id), None)
@@ -191,6 +197,55 @@ class DesktopRuntime:
                 raise HTTPException(400, str(exc)) from exc
         item = self.mutate(session_id, lambda item: item.update({k: v for k, v in body.items() if k != 'expected_version'}), expected=body['expected_version'])
         return self.public_session(item)
+
+    def sync_draft(self, body):
+        operation, session_id = body.get('operation_id'), body.get('session_id')
+        changes, expected, create = body.get('changes'), body.get('expected_version'), body.get('create', False)
+        if (set(body) != {'operation_id', 'session_id', 'changes', 'expected_version', 'expected_revision', 'create'}
+                or not isinstance(operation, str) or not re.fullmatch(r'[a-f0-9]{32}', operation)
+                or not isinstance(session_id, str) or not re.fullmatch(r'[a-f0-9]{32}', session_id)
+                or type(expected) is not int or expected < 0 or type(create) is not bool
+                or not isinstance(changes, dict) or set(changes)-{'draft', 'title', 'mode', 'pinned', 'archived'}):
+            raise HTTPException(400, 'Sync accepts versioned text drafts and task metadata only')
+        for key in ('title', 'draft', 'mode'):
+            if key in changes and (not isinstance(changes[key], str) or len(changes[key]) > (24000 if key == 'draft' else 200)):
+                raise HTTPException(400, 'Invalid draft metadata')
+        for key in ('pinned', 'archived'):
+            if key in changes and type(changes[key]) is not bool:
+                raise HTTPException(400, 'Invalid task flag')
+        if 'mode' in changes and changes['mode'] not in {'auto', 'multi', *(f'role:{name}' for name in ROLES | {'chronos'})}:
+            raise HTTPException(400, 'Unsupported task mode')
+        revision = body.get('expected_revision')
+        if revision is not None and (not isinstance(revision, str) or not re.fullmatch(r'[a-f0-9]{64}', revision)):
+            raise HTTPException(400, 'Use the cached server draft revision')
+        operation_hash = digest(json.dumps(body, sort_keys=True).encode())
+        with file_mutex(self.services.paths.state / 'desktop-sessions.lock'):
+            for _ in range(5):
+                current = self.conversations.get()
+                items = current['sessions']
+                item = next((value for value in items if value['id'] == session_id), None)
+                previous = next((value for value in (item or {}).get('_desktop_sync_ops', []) if value['id'] == operation), None)
+                if previous:
+                    if previous['hash'] != operation_hash:
+                        raise HTTPException(409, 'This sync operation ID was already used with different content')
+                    return {**{key: value for key, value in item.items() if key != '_desktop_sync_ops'}, 'sync_revision': self.draft_revision(item), 'sync_applied': True}
+                if item is None:
+                    if not create or expected != 0:
+                        raise HTTPException(404, 'Task not found on this server')
+                    now = int(time.time()*1000)
+                    item = {'id': session_id, 'title': 'New task', 'draft': '', 'mode': 'auto', 'overrides': {},
+                            'messages': [], 'pinned': False, 'archived': False, 'createdAt': now, 'updatedAt': now, 'desktop_version': 0}
+                    items.insert(0, item)
+                elif create or item.get('desktop_version', 0) != expected or revision != self.draft_revision(item):
+                    raise HTTPException(409, {'message': 'This task changed on another device. Review both drafts.',
+                                              'current': self.public_session(item)})
+                item.update(changes)
+                item['desktop_version'] = item.get('desktop_version', 0)+1
+                item['updatedAt'] = int(time.time()*1000)
+                item['_desktop_sync_ops'] = [*item.get('_desktop_sync_ops', []), {'id': operation, 'hash': operation_hash}][-200:]
+                if self.conversations.replace(items, current['revision']) is not None:
+                    return {**{key: value for key, value in item.items() if key != '_desktop_sync_ops'}, 'sync_revision': self.draft_revision(item), 'sync_applied': True}
+            raise HTTPException(409, 'Conversations changed. Refresh and review before syncing.')
 
     def event(self, run_id, event, data, *, db=None):
         value = json.dumps({'event': event, 'data': data}, ensure_ascii=False)
@@ -534,7 +589,7 @@ def install_routes(app, desktop: DesktopRuntime):
                 attachments.append(desktop.services.media.get(identity)[0])
             except ValueError:
                 pass
-        return {**item, 'messages': messages[start:end], 'message_start': start, 'message_count': len(messages), 'attachments': attachments}
+        return {**{key: value for key, value in item.items() if key != '_desktop_sync_ops'}, 'sync_revision': desktop.draft_revision(item), 'messages': messages[start:end], 'message_start': start, 'message_count': len(messages), 'attachments': attachments}
 
     @router.post('/sessions')
     async def new_session(body: dict):
@@ -566,6 +621,14 @@ def install_routes(app, desktop: DesktopRuntime):
         if not item:
             raise HTTPException(404, 'Artifact not found')
         return item
+
+    @router.get('/sync')
+    async def sync_capabilities():
+        return {'version': 1, 'revision': 'draft-hash-v1', 'fields': ['draft', 'title', 'mode', 'pinned', 'archived'], 'execution': False}
+
+    @router.post('/sync')
+    async def sync_draft(body: dict):
+        return desktop.sync_draft(body)
 
     @router.get('/model-plans')
     async def model_plans():

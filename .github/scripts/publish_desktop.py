@@ -27,13 +27,13 @@ def file_hash(file):
     return hasher.hexdigest()
 
 
-def prepare_artifacts(root, output, version):
+def prepare_artifacts(root, output, version, required_suites=None):
     expected = {
         'pantheon-desktop-macOS-ARM64': ('darwin', [f'Pantheon-{version}-mac-arm64.dmg', f'Pantheon-{version}-mac-arm64.zip']),
         'pantheon-desktop-Windows-X64': ('win32', [f'Pantheon-{version}-win-x64.exe']),
         'pantheon-desktop-Linux-X64': ('linux', [f'Pantheon-{version}-linux-x86_64.AppImage', f'Pantheon-{version}-linux-amd64.deb']),
     }
-    required = {'native-smoke', 'provider-ui-smoke', 'toolbar-ui-smoke', 'system-ui-smoke'}
+    required = required_suites or {'native-smoke', 'provider-ui-smoke', 'toolbar-ui-smoke', 'system-ui-smoke'}
     reports = {}
     output.mkdir(parents=True, exist_ok=True)
     for platform_name, (platform, assets) in expected.items():
@@ -90,7 +90,11 @@ def main():
     if root.exists() or output.exists():
         raise ValueError('Use a fresh release job directory')
     subprocess.run(['gh', 'run', 'download', args.run_id, '--repo', repo, '--dir', str(root)], check=True)
-    hashes, reports = prepare_artifacts(root, output, version)
+    suite_source = command('git', 'show', args.target+':desktop/test/packaged-suites.cjs')
+    required_suites = set(re.findall(r"\['([a-z-]+smoke)',\s*\d+\]", suite_source))
+    if not {'native-smoke', 'provider-ui-smoke', 'toolbar-ui-smoke', 'system-ui-smoke'}.issubset(required_suites):
+        raise ValueError('Could not validate every required suite from the tested source')
+    hashes, reports = prepare_artifacts(root, output, version, required_suites)
     (output/f'verification-beta.{version.rsplit(".", 1)[-1]}.json').write_text(json.dumps({
         'version': version, 'validated_ci_commit': tested, 'merged_commit': args.target,
         'ci_run': int(args.run_id), 'platforms': reports, 'sha256': hashes,

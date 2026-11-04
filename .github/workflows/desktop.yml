@@ -9,6 +9,7 @@ on:
       - 'pantheon/**'
       - 'tests/test_desktop.py'
       - 'tests/test_desktop_maintenance.py'
+      - 'tests/test_desktop_sync.py'
       - 'tests/test_backup.py'
       - '.github/workflows/desktop.yml'
       - 'requirements.lock'
@@ -21,7 +22,7 @@ jobs:
   desktop:
     name: Native build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       DEBUG: pw:browser
     strategy:
@@ -50,7 +51,7 @@ jobs:
         run: npx --prefix desktop playwright install-deps chromium
       - name: Test shared contracts and proxy
         run: |
-          python -m pytest tests/test_desktop.py tests/test_desktop_maintenance.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
+          python -m pytest tests/test_desktop.py tests/test_desktop_maintenance.py tests/test_desktop_sync.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
           npm test --prefix desktop
       - name: Freeze the Python runtime
         run: python scripts/desktop/build_runtime.py
@@ -94,3 +95,5 @@ jobs:
             dist/toolbar-ui-evidence/**
             dist/system-ui-evidence/**
             dist/productivity-ui-evidence/**
+            dist/sync-ui-evidence/**
+            dist/operations-ui-evidence/**

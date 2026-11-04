@@ -34,10 +34,10 @@ def suggest_plans(providers, prices, ratings, *, verified_only=True, required=('
         if not provider.get('connection_saved') or not provider.get('key_configured') or not provider.get('enabled', True):
             continue
         for model in provider.get('models', []):
-            if model.get('available') is False:
-                continue
             identity = provider['id']+'/'+model['id']
             verified = provider.get('test_model') == model['id'] and provider.get('api_health', {}).get('state') == 'verified'
+            if model.get('available') is False and not verified:
+                continue
             if verified_only and not verified:
                 continue
             rating = ratings.get(identity, {})

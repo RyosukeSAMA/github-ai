@@ -28,6 +28,7 @@ class Backend {
     const challenge = crypto.randomBytes(20).toString('hex');
     const value = await this.request('/api/desktop/identity?challenge='+challenge);
     if (value.challenge !== challenge || value.api_version !== 1) throw new Error('Incompatible Pantheon desktop service');
+    if (!Number.isInteger(value.api_revision) || value.api_revision < 2) throw new Error('Update this Pantheon host to the current Desktop source, then reconnect. Its API revision is too old for this client.');
     return value;
   }
   async local(workspace) {
@@ -88,10 +89,10 @@ class Backend {
     if (options.body && JSON.stringify(options.body).length > 40000000) throw new Error('Request is too large');
     return fetch(this.base+safePath, {method, headers:{'content-type':'application/json', ...(this.token ? {'x-pantheon-desktop-token':this.token} : {}), ...(this.cookie ? {cookie:this.cookie} : {})}, body:options.body === undefined ? undefined : JSON.stringify(options.body), redirect:'error', signal:signal || AbortSignal.timeout(requestTimeout(safePath))});
   }
-  async request(target, options) {
-    const response = await this.response(target, options);
+  async request(target, options, signal) {
+    const response = await this.response(target, options, signal);
     const value = await response.json();
-    if (!response.ok) { const error = new Error(typeof value.detail === 'string' ? value.detail : JSON.stringify(value.detail || 'Request failed')); error.status = response.status; throw error; }
+    if (!response.ok) { const error = new Error(typeof value.detail === 'string' ? value.detail : JSON.stringify(value.detail || 'Request failed')); error.status = response.status;error.detail=value.detail; throw error; }
     return value;
   }
   async stop() {

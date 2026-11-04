@@ -1,5 +1,6 @@
 'use strict';
 async function refreshUsage(){
+  if(state.offline){$('#usage-summary').textContent='Usage is unavailable offline. Reconnect to refresh recorded usage.';return;}
   const run=latestRun();if(!run?.task_id){$('#usage-summary').textContent='No calls recorded for this task.';return;}
   const selected=state.selected;const value=await api('/api/usage/details?task_id='+encodeURIComponent(run.task_id));if(selected!==state.selected)return;
   const calls=value.groups.reduce((n,item)=>n+item.calls,0),unknown=value.groups.some(item=>item.input_tokens===null||item.output_tokens===null),unpriced=value.groups.some(item=>item.unpriced);

@@ -69,3 +69,7 @@ test('Linux update selection matches actual electron-builder AppImage and Debian
   const release={tag_name:'v0.6.0',assets:[{id:1,name:'Pantheon-0.6.0-linux-x86_64.AppImage'},{id:2,name:'Pantheon-0.6.0-linux-amd64.deb'}]};
   assert.equal(desktopRelease(release,'0.5.0','linux','x64').assets.length,2);
 });
+
+test('a new client rejects an older core revision with upgrade guidance instead of reusing missing routes',async()=>{
+  const {Backend}=require('../backend.cjs');const backend=new Backend({executable:'unused'});let revision;backend.request=async target=>({api_version:1,api_revision:revision,challenge:new URL(target,'http://localhost').searchParams.get('challenge')});await assert.rejects(backend.identity(),/Update this Pantheon host/);revision=2;assert.equal((await backend.identity()).api_revision,2);
+});
