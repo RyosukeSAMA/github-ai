@@ -1,0 +1,40 @@
+name: Publish verified Desktop beta
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful official Desktop beta build run ID
+        required: true
+        type: string
+      target:
+        description: Full reviewed commit with exactly the tested source tree
+        required: true
+        type: string
+      tag:
+        description: Existing unpublished beta draft tag
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: desktop-release-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate build, verify assets and publish existing draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN: ${{ inputs.run_id }}
+          RELEASE_TARGET: ${{ inputs.target }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python .github/scripts/publish_desktop.py --run-id "$RELEASE_RUN" --target "$RELEASE_TARGET" --tag "$RELEASE_TAG"
