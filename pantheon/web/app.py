@@ -3619,5 +3619,6 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     desktop_holder["runtime"] = desktop
     app.state.desktop = desktop
     app.state.workspace_services = workspace_services
+    desktop.setup_status = setup_status_payload
     install_routes(app, desktop)
     return app
