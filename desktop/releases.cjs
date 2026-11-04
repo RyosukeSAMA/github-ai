@@ -10,7 +10,7 @@ function desktopRelease(release,current,platform,arch,channel='stable'){
   if(!['stable','beta'].includes(channel))throw new Error('Choose the Stable or Beta update channel.');
   const newer=compareVersions(release.tag_name,current)===1;
   const extension=platform==='darwin'?/\.dmg$/:platform==='win32'?/\.exe$/:/\.(AppImage|deb)$/;
-  const matching=(release.assets||[]).filter(item=>/^Pantheon[-_]/i.test(item.name)&&extension.test(item.name)&&new RegExp('(?:^|[-_])'+(arch==='x64'?'(?:x64|amd64)':arch)+'(?:[-_.]|$)','i').test(item.name));
+  const matching=(release.assets||[]).filter(item=>/^Pantheon[-_]/i.test(item.name)&&extension.test(item.name)&&new RegExp('(?:^|[-_])'+(arch==='x64'?'(?:x64|amd64|x86_64)':arch)+'(?:[-_.]|$)','i').test(item.name));
   const allowed=!release.draft&&(!release.prerelease||channel==='beta');
   return {version:current,latest:release.tag_name,channel,available:!!newer&&matching.length>0&&allowed,assets:allowed?matching:[],notes:String(release.body||'').slice(0,20000),published_at:release.published_at||null,url:'https://github.com/RyosukeSAMA/github-ai/releases',reason:!allowed?'This release is outside your update channel.':!newer?'This app is up to date.':matching.length?'':'A newer core release exists, but no desktop installer for this platform is published yet.'};
 }

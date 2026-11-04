@@ -52,7 +52,7 @@ Pantheon turns a request into an observable, controllable local workflow. Use **
 
 Pantheon is local-first. Configuration, memory, scheduled jobs, and extension state stay in the selected workspace. Conversations persist locally, with a browser cache; display preferences stay in the browser. Task content is sent only to model providers and external integrations that you enable.
 
-Desktop beta (`0.5.0-beta.17`): an English native client with bundled Python, durable tasks, reviewed file changes, model connections and local/remote workspaces is included here. It remains a preview; use the [Desktop downloads and OS/CPU guide](desktop/downloads.md) to choose an installer. Real-account/device acceptance remains separate from CI. See the [Desktop guide](desktop/README.md) and [verification boundaries](desktop/verification.md). The stable v0.4.0 installer below remains the Web/CLI release.
+Desktop beta (`0.5.0-beta.18`): an English native client with bundled Python, durable tasks, reviewed file changes, model connections and local/remote workspaces is included here. It remains a preview; use the [Desktop downloads and OS/CPU guide](desktop/downloads.md) to choose an installer. Real-account/device acceptance remains separate from CI. See the [Desktop guide](desktop/README.md) and [verification boundaries](desktop/verification.md). The stable v0.4.0 installer below remains the Web/CLI release.
 
 <a id="quick-start"></a>
 

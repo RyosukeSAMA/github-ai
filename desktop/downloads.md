@@ -10,8 +10,8 @@ Open the [official Desktop beta releases](https://github.com/RyosukeSAMA/github-
 | --- | --- | --- |
 | macOS 13+ on Apple Silicon (M1 or later) | `mac-arm64.dmg` | Open the DMG, then drag Pantheon into Applications. |
 | Windows 11 on Intel/AMD 64-bit | `win-x64.exe` | Run the installer; choose the installation location when prompted. No WSL is needed. |
-| Ubuntu 24.04 on Intel/AMD 64-bit | `linux-x64.deb` | Open the package manager, or run `sudo apt install ./Pantheon-*-linux-x64.deb` from the download directory. |
-| Linux 64-bit with AppImage support | `linux-x64.AppImage` | Mark the file executable, then open it. This format requires the desktop's AppImage/FUSE support. |
+| Ubuntu 24.04 on Intel/AMD 64-bit | `linux-amd64.deb` | Open the package manager, or run `sudo apt install ./Pantheon-*-linux-amd64.deb` from the download directory. |
+| Linux 64-bit with AppImage support | `linux-x86_64.AppImage` | Mark the file executable, then open it. This format requires the desktop's AppImage/FUSE support. |
 
 macOS Intel, Windows ARM64 and Linux ARM64 installers are not currently published or established by the release matrix. Automated packaging on the three listed CI hosts does not establish every desktop environment or native permission behavior. These preview builds are not Apple notarized or Windows Authenticode signed. Software signing/notarization is outside the current delivery.
 

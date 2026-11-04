@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('pantheonDesktop', Object.freeze({
   newWindow: sessionId => ipcRenderer.invoke('desktop:window', sessionId),
   openWorktree: target => ipcRenderer.invoke('desktop:worktree', target),
   preferences: value => ipcRenderer.invoke('desktop:preferences', value),
+  exportDiagnostics: () => ipcRenderer.invoke('desktop:diagnostics'),
   notify: value => ipcRenderer.invoke('desktop:notify', value),
   updates: () => ipcRenderer.invoke('desktop:updates'),
   updateStatus: () => ipcRenderer.invoke('desktop:update-status'),

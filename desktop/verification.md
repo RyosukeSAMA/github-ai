@@ -1,6 +1,6 @@
 # Desktop beta verification
 
-Current source: **0.5.0-beta.17**, verified locally on November 3, 2026. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
+Current source: **0.5.0-beta.18**, verified locally on November 3, 2026. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
 
 Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-beta.1`; shared core source is based on `v0.4.0` with the new bridge. These are separate from the already-installed stable Web/CLI service.
 
@@ -123,3 +123,10 @@ Local macOS packaged verification of the combined runner passed all three suites
 The real macOS arm64 packaged app passed all four isolated suites: native tasks/files, provider UI, toolbar/window lifecycle, and verified updates/offline recovery. Update fixtures exercise Stable/Beta, checksum rejection and retry, verified cached installer preparation, native file selection, real shared-core backup/restore, retained drafts, light/dark and narrow windows. Only the network transport, native consent/file dialog responses and opening the inert fixture installer are substituted by the external driver. No paid provider API or real OS installation occurs in these tests.
 
 Shared-core verification: **314 Python tests passed, 3 expected skips**; 16 Node tests and Ruff passed. The backup checks cover traversal/size limits, runtime leases, credential summary privacy, failure/reconnect and legacy enabled schedules becoming paused. Four-suite evidence is under `dist/*-evidence`; maintained screenshots: [light update](../docs/desktop/updates-light.png), [dark update](../docs/desktop/updates-dark.png), [backup review](../docs/desktop/backup-review.png) and [narrow](../docs/desktop/system-narrow.png). Windows/Linux current-head packaging and release publication are recorded after CI completes. Software signing/notarization is explicitly excluded; real account/device gaps listed above remain separate.
+
+
+## beta.18 productivity and explicit plans — 2026-11-04
+
+324 Python tests passed (3 expected skips); 18 Node tests, Ruff and syntax/diff checks passed. Actual macOS arm64 packaged native, provider, toolbar, system and productivity suites all passed. The productivity driver exercises project-aware commands, immediate Enter after typing, keyboard results, asynchronous loading/empty/error/retry, native System theme changes and explicit override/reload, a private local diagnostic export checked against sentinel prompts/paths, persisted budget limits/prices and duplicate rejection, actual file snapshots and reviewed restoration, and explicit model plan preview versus application. It uses dummy saved connections, no paid calls or model test. Backend tests cover version retention/reopening, CRLF snapshots and external-edit conflicts, as well as unknown price/rating/access behavior and finite user quality ratings.
+
+Current screenshots: [search](../docs/desktop/search-light.png), [help](../docs/desktop/help-light.png), [budget form](../docs/desktop/budget-light.png), [version comparison](../docs/desktop/version-compare.png) and [model plans](../docs/desktop/model-plans.png). Current-head cross-platform acceptance is recorded after CI, not inferred from the macOS run.
