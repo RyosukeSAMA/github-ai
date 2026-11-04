@@ -35,19 +35,24 @@ class Backend {
     this.workspace = await fs.realpath(workspace); this.remote = false;
     const {stdout} = await exec(this.executable, [...this.args, '--workspace', this.workspace, '--locate'], {env: this.env, timeout: 20000, windowsHide: true});
     const locations = JSON.parse(stdout.trim());
-    let metadata, lock;
-    try { metadata = JSON.parse(await fs.readFile(locations.descriptor, 'utf8')); lock = JSON.parse(await fs.readFile(locations.runtime_lock, 'utf8')); } catch {}
-    if (metadata && lock && metadata.pid === lock.pid && metadata.workspace === this.workspace && Number.isInteger(metadata.port) && metadata.port > 0 && metadata.port <= 65535) {
+    let metadata, lock, lockError;
+    try { metadata = JSON.parse(await fs.readFile(locations.descriptor, 'utf8')); } catch {}
+    // Windows byte-range locks deny reading the locked JSON bytes. The private
+    // descriptor plus an authenticated challenge/PID/instance check still proves
+    // which live service is being reused; never start another service on read errors.
+    try { lock = JSON.parse(await fs.readFile(locations.runtime_lock, 'utf8')); } catch (error) { lockError = error; }
+    if (metadata && (!lock || metadata.pid === lock.pid) && Number.isInteger(metadata.pid) && metadata.pid > 0 && metadata.workspace === this.workspace && Number.isInteger(metadata.port) && metadata.port > 0 && metadata.port <= 65535 && typeof metadata.token === 'string' && metadata.token.length >= 32) {
       try {
         if (process.platform !== 'win32' && ((await fs.stat(locations.descriptor)).mode & 0o077)) throw new Error('Runtime capability file permissions are too broad');
         this.base = 'http://127.0.0.1:'+metadata.port; this.token = metadata.token;
         const identity = await this.identity();
-        if (identity.instance_id === metadata.instance_id && identity.workspace === this.workspace) { this.info = identity; return this; }
+        if (identity.instance_id === metadata.instance_id && identity.workspace === this.workspace && identity.pid === metadata.pid) { this.info = identity; return this; }
       } catch { this.token = ''; }
     }
-    if (lock?.pid) {
+    if (lockError && lockError.code !== 'ENOENT') throw new Error('An existing Pantheon runtime registration could not be verified. Check folder permissions or close its older service before retrying.');
+    if (lock?.pid || metadata?.pid) {
       let alive = false;
-      try { process.kill(lock.pid, 0); alive = true; } catch (error) { alive = error.code === 'EPERM'; }
+      try { process.kill(lock?.pid || metadata.pid, 0); alive = true; } catch (error) { alive = error.code === 'EPERM'; }
       if (alive) throw new Error('A different or older Pantheon service owns this workspace. Update or stop that service before opening it in Desktop.');
     }
     this.token = crypto.randomBytes(36).toString('base64url');
