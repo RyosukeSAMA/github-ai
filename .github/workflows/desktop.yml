@@ -21,7 +21,7 @@ jobs:
   desktop:
     name: Native build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       DEBUG: pw:browser
     strategy:
@@ -93,3 +93,4 @@ jobs:
             dist/provider-ui-evidence/**
             dist/toolbar-ui-evidence/**
             dist/system-ui-evidence/**
+            dist/productivity-ui-evidence/**

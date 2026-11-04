@@ -62,6 +62,8 @@ class DesktopRuntime:
                 CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, run_id TEXT, session_id TEXT,
                 title TEXT, kind TEXT, created REAL, data TEXT);
                 CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, status TEXT, data TEXT);
+                CREATE TABLE IF NOT EXISTS file_versions (id TEXT PRIMARY KEY, path TEXT, created REAL, hash TEXT, content TEXT, source TEXT, artifact_id TEXT);
+                CREATE INDEX IF NOT EXISTS file_version_path ON file_versions(path,created);
             ''')
             with db:
                 yield db
@@ -360,6 +362,53 @@ class DesktopRuntime:
             item.pop('data', None)
         return [item for item in result if query.casefold() in (item['title'] + item['content']).casefold()]
 
+    def _record_version(self, db, path, content, source, artifact_id=None):
+        hashed = digest(content.encode('utf8'))
+        previous = db.execute('SELECT hash FROM file_versions WHERE path=? ORDER BY created DESC LIMIT 1', (path,)).fetchone()
+        if previous and previous['hash'] == hashed:
+            return
+        db.execute('INSERT INTO file_versions VALUES (?,?,?,?,?,?,?)',
+                   (uuid.uuid4().hex, path, time.time(), hashed, content, source, artifact_id))
+        db.execute('DELETE FROM file_versions WHERE path=? AND id NOT IN (SELECT id FROM file_versions WHERE path=? ORDER BY created DESC LIMIT 20)', (path, path))
+        db.execute('DELETE FROM file_versions WHERE id NOT IN (SELECT id FROM file_versions ORDER BY created DESC LIMIT 200)')
+
+    def file_versions(self, raw):
+        target = self.safe_path(raw)
+        path = target.relative_to(self.workspace).as_posix()
+        if target.is_file() and target.stat().st_size > 1000000:
+            raise HTTPException(413, 'Current file is too large for text version history')
+        with self.db() as db:
+            rows = db.execute('SELECT id,path,created,hash,source,artifact_id FROM file_versions WHERE path=? ORDER BY created DESC LIMIT 20', (path,)).fetchall()
+        return {'path': path, 'current_hash': digest(target.read_bytes()) if target.is_file() else None,
+                'versions': [dict(row) for row in rows], 'retention': 'Latest 20 snapshots per file, up to 200 per workspace. Workspace backups include these snapshots but do not back up the project tree.'}
+
+    def compare_version(self, version_id):
+        with self.db() as db:
+            version = db.execute('SELECT * FROM file_versions WHERE id=?', (version_id,)).fetchone()
+        if not version:
+            raise HTTPException(404, 'File version not found')
+        target = self.safe_path(version['path'])
+        original = target.read_bytes() if target.is_file() else b''
+        if len(original) > 1000000:
+            raise HTTPException(413, 'Current file is too large to compare')
+        try:
+            current = original.decode('utf8')
+        except UnicodeDecodeError as exc:
+            raise HTTPException(400, 'Current file must be UTF-8 text') from exc
+        difference = ''.join(difflib.unified_diff(current.splitlines(True), version['content'].splitlines(True), fromfile='Current '+version['path'], tofile='Snapshot '+version['path']))
+        return {'id': version_id, 'path': version['path'], 'expected_hash': digest(original) if target.exists() else None,
+                'diff': difference[:100000], 'truncated': len(difference) > 100000, 'snapshot_hash': version['hash']}
+
+    def restore_version_review(self, version_id, body):
+        if 'expected_hash' not in body:
+            raise HTTPException(400, 'Compare the version before preparing restoration')
+        with self.db() as db:
+            version = db.execute('SELECT * FROM file_versions WHERE id=?', (version_id,)).fetchone()
+        if not version:
+            raise HTTPException(404, 'File version not found')
+        return self.prepare_review({'path': version['path'], 'content': version['content'],
+                                    'expected_hash': body['expected_hash'], 'artifact_id': version['artifact_id'], 'restore_version': version_id})
+
     def safe_path(self, raw):
         if not isinstance(raw, str) or not raw or any(part in PRIVATE_NAMES or part.startswith('.env') or part.endswith(('.key', '.pem')) for part in Path(raw).parts):
             raise HTTPException(403, 'Choose a non-secret project file')
@@ -387,7 +436,7 @@ class DesktopRuntime:
         if 'expected_hash' in body and body['expected_hash'] != expected:
             raise HTTPException(409, 'File changed outside this editor. Reload and review again.')
         review = {'path': raw, 'content': content, 'expected_hash': expected,
-                  'artifact_id': body.get('artifact_id'), 'created': time.time()}
+                  'artifact_id': body.get('artifact_id'), 'restore_version': body.get('restore_version'), 'created': time.time()}
         review_id = uuid.uuid4().hex
         with self.db() as db:
             db.execute('INSERT INTO reviews VALUES (?,?,?)', (review_id, 'pending', json.dumps(review)))
@@ -404,9 +453,13 @@ class DesktopRuntime:
             current = digest(target.read_bytes()) if target.is_file() else None
             if current != review['expected_hash']:
                 raise HTTPException(409, 'File changed since review. Prepare a new diff before saving.')
+            path = target.relative_to(self.workspace).as_posix()
+            if target.exists():
+                self._record_version(db, path, target.read_bytes().decode('utf8'), 'before save')
             mode = target.stat().st_mode & 0o777 if target.exists() else 0o600
             atomic_text(target, review['content'], newline='')
             os.chmod(target, mode)
+            self._record_version(db, path, review['content'], 'restored' if review.get('restore_version') else 'reviewed save', review.get('artifact_id'))
             db.execute("UPDATE reviews SET status='accepted' WHERE id=?", (review_id,))
             if review.get('artifact_id'):
                 artifact = db.execute('SELECT data FROM artifacts WHERE id=?', (review['artifact_id'],)).fetchone()
@@ -414,7 +467,7 @@ class DesktopRuntime:
                     value = json.loads(artifact['data'])
                     history = value.get('saved_versions', [])
                     history.append({'path': review['path'], 'hash': digest(target.read_bytes()), 'saved_at': time.time()})
-                    value.update(saved_path=review['path'], saved_versions=history[-10:], version=len(history))
+                    value.update(saved_path=review['path'], saved_versions=history[-10:], version=int(value.get('version', 1)) + 1)
                     db.execute('UPDATE artifacts SET data=? WHERE id=?', (json.dumps(value), review['artifact_id']))
             return {'path': review['path'], 'hash': digest(target.read_bytes()), 'saved': True}
 
@@ -513,6 +566,44 @@ def install_routes(app, desktop: DesktopRuntime):
         if not item:
             raise HTTPException(404, 'Artifact not found')
         return item
+
+    @router.get('/model-plans')
+    async def model_plans():
+        return {'ratings': desktop.services.readiness.preference('desktop_model_ratings', {}),
+                'note': 'Quality ratings and additional capability declarations are entered by you.'}
+
+    @router.post('/model-plans/ratings')
+    async def model_ratings(body: dict):
+        from pantheon.desktop.plans import validate_ratings
+        try:
+            ratings = validate_ratings(body)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        desktop.services.readiness.set_preference('desktop_model_ratings', ratings)
+        return {'ratings': ratings, 'saved': True}
+
+    @router.post('/model-plans/suggest')
+    async def suggest_models(body: dict):
+        from pantheon.desktop.plans import suggest_plans
+        try:
+            providers = desktop.setup_status()['providers']
+            return suggest_plans(providers, desktop.services.budget.policy()['prices'],
+                                 desktop.services.readiness.preference('desktop_model_ratings', {}),
+                                 verified_only=body.get('verified_only', True), required=body.get('required', ['text']))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.get('/versions')
+    async def file_versions(path: str):
+        return desktop.file_versions(path)
+
+    @router.get('/versions/{version_id}/compare')
+    async def compare_version(version_id: str):
+        return desktop.compare_version(version_id)
+
+    @router.post('/versions/{version_id}/review')
+    async def restore_version(version_id: str, body: dict):
+        return desktop.restore_version_review(version_id, body)
 
     @router.post('/attachments')
     async def attachment(body: dict):

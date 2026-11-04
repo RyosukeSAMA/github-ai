@@ -1,5 +1,5 @@
 'use strict';
-const {app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, Tray, nativeImage, Notification, globalShortcut, shell, safeStorage, clipboard} = require('electron');
+const {app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, Tray, nativeImage, Notification, globalShortcut, shell, safeStorage, clipboard, nativeTheme} = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
@@ -7,10 +7,11 @@ const {Backend} = require('./backend.cjs');
 const {randomUUID} = require('node:crypto');
 const {UpdateManager} = require('./updates.cjs');
 const {MaintenanceManager} = require('./maintenance.cjs');
+const {diagnosticSummary}=require('./diagnostics.cjs');
 if (process.env.PANTHEON_DESKTOP_USER_DATA) app.setPath('userData', path.resolve(process.env.PANTHEON_DESKTOP_USER_DATA));
 protocol.registerSchemesAsPrivileged([{scheme:'pantheon', privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 const windows = new Map(), backends = new Map();
-let preferences = {theme:'light', layout:'professional', fontSize:14, panelWidth:300, notifications:false, background:false, globalShortcut:false,updateChannel:app.getVersion().includes('-')?'beta':'stable'}, recent = [], savedRemote = null, tray, quitting = false;
+let preferences = {theme:'system', layout:'professional', fontSize:14, panelWidth:300, notifications:false, background:false, globalShortcut:false,updateChannel:app.getVersion().includes('-')?'beta':'stable'}, recent = [], savedRemote = null, tray, quitting = false;
 let updates,maintenance,installerPreparing=false;const restoreTickets=new Map();
 const uiRoot = app.isPackaged ? path.join(process.resourcesPath,'ui') : path.join(__dirname,'..','pantheon','desktop','static');
 const preferenceFile = () => path.join(app.getPath('userData'),'desktop.json');
@@ -36,7 +37,7 @@ function publicInfo(context) {
           savedRemote: savedRemote ? {url:savedRemote.url,username:savedRemote.username} : null,
           initialSession:context.initialSession || '', startupError:context.startupError || '', packaged:app.isPackaged};
 }
-function windowPreferences(context) { return {...preferences, layout:context.layout}; }
+function windowPreferences(context) { return {...preferences, layout:context.layout,resolvedTheme:preferences.theme==='system'?(nativeTheme.shouldUseDarkColors?'dark':'light'):preferences.theme}; }
 async function attachLocal(context, target) {
   if(!context.win.isDestroyed())context.win.webContents.send('desktop:workspace-status',{phase:'opening',path:target});
   try {
@@ -175,7 +176,7 @@ function installIPC() {
       const allowed=['layout','theme','fontSize','panelWidth','notifications','background','globalShortcut'];
       if(Object.keys(value).some(key=>!allowed.includes(key)))throw new Error('Unsupported preference');
       if(value.layout && !['professional','focus'].includes(value.layout))throw new Error('Invalid layout');
-      if(value.theme && !['light','dark'].includes(value.theme))throw new Error('Invalid theme');
+      if(value.theme && !['system','light','dark'].includes(value.theme))throw new Error('Invalid theme');
       if(value.fontSize!==undefined && (!Number.isInteger(value.fontSize)||value.fontSize<13||value.fontSize>20))throw new Error('Choose a font size from 13 to 20');
       if(value.panelWidth!==undefined && (!Number.isInteger(value.panelWidth)||value.panelWidth<260||value.panelWidth>460))throw new Error('Choose a context width from 260 to 460');
       for(const key of ['notifications','background','globalShortcut'])if(value[key]!==undefined && typeof value[key]!=='boolean')throw new Error('Invalid preference');
@@ -184,6 +185,13 @@ function installIPC() {
       preferences={...preferences,...shared};await savePreferences();
       if(Object.keys(shared).length){configureNative();for(const target of windows.values())target.win.webContents.send('desktop:command','preferences');}
     }return windowPreferences(context);
+  });
+  ipcMain.handle('desktop:diagnostics',async event=>{
+    const context=senderContext(event,false);let data={},reachable=false;
+    if(context.backend&&!context.backend.maintenance)try{data=await context.backend.request('/api/desktop/sessions');reachable=true;}catch{}
+    const report=diagnosticSummary({version:app.getVersion(),versions:process.versions,platform:process.platform,arch:process.arch,osRelease:require('node:os').release(),backend:context.backend,reachable,sessions:data.sessions||[],runs:data.runs||[]});
+    const result=await dialog.showSaveDialog(context.win,{title:'Save private diagnostic summary',defaultPath:'Pantheon-diagnostics-'+new Date().toISOString().slice(0,10)+'.json',filters:[{name:'Diagnostic summary',extensions:['json']}]});
+    if(result.canceled)return {saved:false};await fs.writeFile(result.filePath,JSON.stringify(report,null,2),{mode:0o600});return {saved:true};
   });
   ipcMain.handle('desktop:notify',(event,value)=>{const context=senderContext(event);if(preferences.notifications && Notification.isSupported()){
     const notification=new Notification({title:'Pantheon',body:String(value?.body||'Task updated').slice(0,160)});notification.on('click',()=>{context.win.show();context.win.focus();});notification.show();
@@ -276,12 +284,13 @@ app.whenReady().then(async()=>{
     const headers=new Headers(response.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'");
     return new Response(response.body,{status:response.status,headers});
   });
+  nativeTheme.on('updated',()=>{if(preferences.theme==='system')for(const context of windows.values())if(!context.win.isDestroyed())context.win.webContents.send('desktop:command','preferences');});
   initializeSystem();await updates.cleanIncomplete();installIPC();configureNative();setInterval(monitorTasks,3000).unref();setTimeout(()=>checkUpdates().catch(()=>{}),6000).unref();setInterval(()=>checkUpdates().catch(()=>{}),6*60*60*1000).unref();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform==='darwin'?[{role:'appMenu'}]:[]),
     {label:'File',submenu:[{label:'New task',accelerator:'CommandOrControl+N',click:()=>sendCommand('new')},{label:'Open project…',accelerator:'CommandOrControl+O',click:()=>sendCommand('workspace')},{label:'Open in new window',accelerator:'CommandOrControl+Shift+N',click:()=>{if(BrowserWindow.getFocusedWindow())sendCommand('new-window');else createWindow();}}, {type:'separator'},{role:'quit'}]},
     {role:'editMenu'}, {label:'View',submenu:[{label:'Command palette',accelerator:'CommandOrControl+K',click:()=>sendCommand('palette')},{role:'reload'},{role:'togglefullscreen'},...(!app.isPackaged?[{role:'toggleDevTools'}]:[])]},
-    {role:'windowMenu'}, {label:'Help',submenu:[{label:'Check for updates',click:()=>sendCommand('updates')}]}]));
+    {role:'windowMenu'}, {label:'Help',submenu:[{label:'Help and diagnostics',click:()=>sendCommand('help')},{label:'Check for updates',click:()=>sendCommand('updates')}]}]));
   const context=createWindow();
   const initial=process.env.PANTHEON_DESKTOP_WORKSPACE || recent[0];
   if(initial){try{await attachLocal(context,initial);context.win.webContents.send('desktop:command','workspace-ready');}catch(error){context.startupError=error.message;}}

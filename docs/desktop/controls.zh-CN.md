@@ -1,6 +1,6 @@
 # Pantheon Desktop：按钮与功能说明
 
-对应本地 **0.5.0-beta.17**，核对日期：2026-11-03（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
+对应本地 **0.5.0-beta.18**，核对日期：2026-11-03（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
 
 ## 先认识界面
 
@@ -293,3 +293,12 @@ DeepSeek/OpenAI/Anthropic 图标用于识别连接；Ollama 图标识别运行�
 打开 **Service & updates**，在 Updates 选择 Stable 或 Beta + Stable。下载显示进度，支持取消/重试；必须通过 SHA-256 校验才能打开。**Back up & open installer** 先备份空闲且由 Desktop 管理的本地工作区，再打开系统安装器，随后退出应用并安装。它不会静默替换应用或自动降级。
 
 **Backups & recovery** 创建/检查/恢复归档。默认不包含项目源文件、API 凭证和配置；勾选包含凭证时还需要系统确认。恢复必须在空闲本地工作区进行，恢复后的定时任务保持暂停，运行中任务、待发消息和审批不会自动重放。远程或复用服务需要在拥有服务的主机上维护。完整步骤见[下载与恢复说明](../../desktop/downloads.md)。
+
+
+## beta.18 新入口
+
+- **Help and diagnostics**：新手步骤、快捷键、版本和本地诊断导出。诊断文件不含密钥、聊天、项目名/路径、地址或原始日志，也不会自动上传。
+- **Desktop preferences → Appearance**：System 跟随系统；Light/Dark 固定主题，同时切换花园。
+- **Usage and budgets**：表单设置请求上限、每次输出 Token 上限、估算费用上限与自填单价；空值表示不设上限。未知费用不会当作免费。
+- **Project files / 已保存成果 → Version history**：比较真实文本快照；Review restoration 只准备差异，再点接受才写入，并检查文件是否又被外部修改。
+- **Assign role models → Compare model plans**：按自填单价/评分比较费用优先、均衡、质量偏好。先填入分配界面审阅，再 Apply to this task。比较本身不测试 API 或切换模型。

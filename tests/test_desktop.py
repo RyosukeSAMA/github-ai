@@ -187,3 +187,43 @@ def test_review_writes_the_exact_previewed_line_endings(desktop):
     saved = client.post('/api/desktop/reviews/'+review['id']+'/accept')
     assert saved.status_code == 200
     assert (root/'line-endings.txt').read_bytes() == content.encode('utf-8')
+
+
+def test_file_history_compares_and_restores_only_after_fresh_review(desktop):
+    client, runtime, root = desktop
+    target = root / 'versions.txt'
+    target.write_bytes(b'original\r\n')
+    saved = client.post('/api/desktop/reviews', json={'path': 'versions.txt', 'content': 'updated\n'}).json()
+    client.post('/api/desktop/reviews/'+saved['id']+'/accept').raise_for_status()
+    history = client.get('/api/desktop/versions?path=versions.txt').json()
+    assert len(history['versions']) == 2
+    assert all('content' not in item for item in history['versions'])
+    original = history['versions'][-1]['id']
+    compare = client.get('/api/desktop/versions/'+original+'/compare').json()
+    assert '-updated' in compare['diff'] and '+original' in compare['diff']
+    assert target.read_bytes() == b'updated\n'
+    assert client.post('/api/desktop/versions/'+original+'/review', json={}).status_code == 400
+    review = client.post('/api/desktop/versions/'+original+'/review', json={'expected_hash': compare['expected_hash']}).json()
+    target.write_text('external change')
+    assert client.post('/api/desktop/reviews/'+review['id']+'/accept').status_code == 409
+    assert client.post('/api/desktop/versions/'+original+'/review', json={'expected_hash': compare['expected_hash']}).status_code == 409
+    current = client.get('/api/desktop/versions/'+original+'/compare').json()
+    review = client.post('/api/desktop/versions/'+original+'/review', json={'expected_hash': current['expected_hash']}).json()
+    client.post('/api/desktop/reviews/'+review['id']+'/accept').raise_for_status()
+    assert target.read_bytes() == b'original\r\n'
+    assert client.get('/api/desktop/versions?path=versions.txt').json()['versions'][0]['source'] == 'restored'
+
+
+def test_history_is_bounded_private_and_survives_runtime_reopening(desktop):
+    client, runtime, root = desktop
+    for number in range(23):
+        review = runtime.prepare_review({'path': 'history.txt', 'content': str(number)})
+        runtime.accept_review(review['id'])
+    history = runtime.file_versions('history.txt')
+    assert len(history['versions']) == 20
+    from pantheon.desktop.runtime import DesktopRuntime
+    reopened = DesktopRuntime(runtime.services, runtime.conversations, root, runtime.ask, runtime.request_type, runtime.resolve_path)
+    assert reopened.file_versions('history.txt') == history
+    assert client.get('/api/desktop/versions?path=.env').status_code == 403
+    assert client.get('/api/desktop/versions?path=../outside').status_code in {400, 403}
+    assert client.get('/api/desktop/versions/missing/compare').status_code == 404

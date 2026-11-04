@@ -63,3 +63,9 @@ test('older installers require an explicit recovery operation and cached paths c
   const records=await manager.history();records[0].path=path.join(directory,'..','unexpected.dmg');await fs.writeFile(path.join(directory,'downloads.json'),JSON.stringify(records));
   await assert.rejects(manager.verifiedFile(records[0].id),/not in the update cache/);
 });
+
+test('Linux update selection matches actual electron-builder AppImage and Debian architecture names',()=>{
+  const {desktopRelease}=require('../releases.cjs');
+  const release={tag_name:'v0.6.0',assets:[{id:1,name:'Pantheon-0.6.0-linux-x86_64.AppImage'},{id:2,name:'Pantheon-0.6.0-linux-amd64.deb'}]};
+  assert.equal(desktopRelease(release,'0.5.0','linux','x64').assets.length,2);
+});
