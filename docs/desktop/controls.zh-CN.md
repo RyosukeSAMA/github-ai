@@ -1,6 +1,6 @@
 # Pantheon Desktop：按钮与功能说明
 
-对应本地 **0.5.0-beta.18**，核对日期：2026-11-03（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
+对应本地 **0.5.0-beta.19**，核对日期：2026-11-03（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
 
 ## 先认识界面
 
@@ -302,3 +302,10 @@ DeepSeek/OpenAI/Anthropic 图标用于识别连接；Ollama 图标识别运行�
 - **Usage and budgets**：表单设置请求上限、每次输出 Token 上限、估算费用上限与自填单价；空值表示不设上限。未知费用不会当作免费。
 - **Project files / 已保存成果 → Version history**：比较真实文本快照；Review restoration 只准备差异，再点接受才写入，并检查文件是否又被外部修改。
 - **Assign role models → Compare model plans**：按自填单价/评分比较费用优先、均衡、质量偏好。先填入分配界面审阅，再 Apply to this task。比较本身不测试 API 或切换模型。
+
+
+## beta.19 离线草稿与操作区
+
+**Service & updates → Offline drafts**：对同一 HTTPS 主机/账号/工作区启用本地私有缓存。断网时可以编辑草稿、新建未发送任务及搜索已缓存内容，状态为 Saved locally。重新连接不自动同步；点击 Sync drafts 后，如另一台设备或网页端改过草稿，会展示两端文本供选择。选择保留本机草稿后仍需再次 Sync drafts；选择服务器稿件会保留一份本机恢复副本。Export local drafts 导出私有文本。主机需升级到支持该修订协议的当前源码；工作区 ZIP 不含本设备尚未同步的应用缓存。
+
+**Operation sessions**：先明确批准浏览器来源或 macOS 应用，再添加步骤并 Review & run steps。浏览器在单独窗口运行，可填写/点击/截图；跨来源导航、下载和弹窗受限，不共享 Pantheon 登录 Cookie。Stop 取消剩余步骤，已经发出的请求可能继续完成。macOS 应用控制需要实际辅助功能与自动化权限，支持范围以内置应用列表为准；Windows/Linux 目前只有浏览器适配器。该入口不会给模型授予无需审阅的桌面权限。详见[完整步骤与验证边界](../../desktop/offline-and-operations.md)。

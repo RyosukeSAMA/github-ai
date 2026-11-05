@@ -48,3 +48,9 @@ def test_a_false_overall_pass_cannot_hide_a_failed_or_missing_packaged_suite(art
 def test_mismatched_package_version_never_publishes_another_versions_assets(artifacts, tmp_path):
     with pytest.raises(ValueError, match='Missing or invalid installer'):
         publisher.prepare_artifacts(artifacts, tmp_path/'output', '0.5.0-beta.18')
+
+
+def test_publisher_requires_the_extra_suites_declared_by_the_tested_source(artifacts, tmp_path):
+    required = {'native-smoke', 'provider-ui-smoke', 'toolbar-ui-smoke', 'system-ui-smoke', 'productivity-ui-smoke', 'sync-ui-smoke', 'operations-ui-smoke'}
+    with pytest.raises(ValueError, match='suites must pass'):
+        publisher.prepare_artifacts(artifacts, tmp_path/'output', '0.5.0-beta.17', required)

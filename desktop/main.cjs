@@ -3,11 +3,13 @@ const {app, BrowserWindow, ipcMain, dialog, protocol, net, Menu, Tray, nativeIma
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
-const {Backend} = require('./backend.cjs');
+const {Backend,remoteURL:remoteURLForCache} = require('./backend.cjs');
 const {randomUUID} = require('node:crypto');
 const {UpdateManager} = require('./updates.cjs');
 const {MaintenanceManager} = require('./maintenance.cjs');
 const {diagnosticSummary}=require('./diagnostics.cjs');
+const {OfflineWorkspace,identityKey,offlineList}=require('./offline.cjs');
+const {Operations}=require('./operations.cjs');
 if (process.env.PANTHEON_DESKTOP_USER_DATA) app.setPath('userData', path.resolve(process.env.PANTHEON_DESKTOP_USER_DATA));
 protocol.registerSchemesAsPrivileged([{scheme:'pantheon', privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 const windows = new Map(), backends = new Map();
@@ -35,13 +37,30 @@ function publicInfo(context) {
   return {version:app.getVersion(),platform:process.platform,workspace:context.backend?.info || null,
           remote:!!context.backend?.remote,remoteOrigin:context.backend?.remote?context.backend.base:'', owned:!!context.backend?.owned, preferences:windowPreferences(context),recent,
           savedRemote: savedRemote ? {url:savedRemote.url,username:savedRemote.username} : null,
-          initialSession:context.initialSession || '', startupError:context.startupError || '', packaged:app.isPackaged};
+          sync:context.backend?.offlineStore?.status()||null,initialSession:context.initialSession || '', startupError:context.startupError || '', packaged:app.isPackaged};
+}
+const offlineRoot=()=>path.join(app.getPath('userData'),'offline');
+const offlineStores=new Map();
+async function offlineFor(backend){
+  if(!backend?.remote)return null;
+  if(!backend.offlineStore){const identity={origin:backend.base,username:backend.username,workspace:backend.workspace},key=identityKey(identity);
+    if(!offlineStores.has(key)){let store;store=new OfflineWorkspace({directory:path.join(offlineRoot(),key),identity,onChange:value=>{for(const context of windows.values())if(context.backend?.offlineStore===store&&!context.win.isDestroyed())context.win.webContents.send('desktop:sync-status',value);}});offlineStores.set(key,store.load().catch(error=>{offlineStores.delete(key);throw error;}));}
+    backend.offlineStore=await offlineStores.get(key);
+  }return backend.offlineStore;
+}
+async function desktopRequest(context,target,options){const store=await offlineFor(context.backend);if(store?.data.enabled){if(store.busy&&options?.method&&options.method!=='GET')throw new Error('Draft sync is in progress. Wait before editing.');return store.request(context.backend,target,options);}if(context.backend.offlineOnly)throw new Error('Sign in to the remote host before using this action.');return context.backend.request(target,options);}
+async function operationsFor(context){
+  const workspace=(context.backend?.remote?context.backend.base:'local')+'|'+(context.backend?.workspace||'');
+  if(context.operations&&context.operations.workspace!==workspace){await context.operations.stop();context.operations=null;}
+  if(!context.operations)context.operations=new Operations({parent:context.win,workspace,onChange:value=>{if(!context.win.isDestroyed())context.win.webContents.send('desktop:operation-status',value);}});
+  return context.operations;
 }
 function windowPreferences(context) { return {...preferences, layout:context.layout,resolvedTheme:preferences.theme==='system'?(nativeTheme.shouldUseDarkColors?'dark':'light'):preferences.theme}; }
 async function attachLocal(context, target) {
   if(!context.win.isDestroyed())context.win.webContents.send('desktop:workspace-status',{phase:'opening',path:target});
   try {
   const root = await fs.realpath(target);
+  if(context.operations&&(context.backend?.remote||context.backend?.workspace!==root)){await context.operations.stop();context.operations=null;}
   const key = 'local:'+root;
   if (!backends.has(key)) backends.set(key, new Backend({...coreCommand(),env:{...process.env,PYTHONPATH:app.isPackaged?'':path.join(__dirname,'..')}}).local(root));
   try { context.backend = await backends.get(key);context.lost=false;context.startupError=''; } catch(error) { backends.delete(key); throw error; }
@@ -66,7 +85,7 @@ function createWindow(backend = null, initialSession = '') {
     event.preventDefault();
     if(preferences.background && tray) win.hide(); else app.quit();
   });
-  win.on('closed',()=>{context.terminal?.abort(); windows.delete(windowId);});
+  win.on('closed',()=>{context.terminal?.abort();context.operations?.stop().catch(()=>{}); windows.delete(windowId);});
   win.loadURL('pantheon://app/index.html');
   return context;
 }
@@ -101,7 +120,7 @@ function notifyTask(backend,body){if(!preferences.notifications||!Notification.i
 let monitoring=false;const observed=new WeakMap();
 async function monitorTasks(){
   if(monitoring||quitting||app.quitPending)return;monitoring=true;
-  try{for(const result of await Promise.allSettled([...backends.values()])){if(result.status!=='fulfilled')continue;const backend=result.value;if(backend.maintenance)continue;try{
+  try{for(const result of await Promise.allSettled([...backends.values()])){if(result.status!=='fulfilled')continue;const backend=result.value;if(backend.maintenance||backend.offlineStore?.offline||backend.offlineOnly)continue;try{
     const value=await backend.request('/api/desktop/sessions');let seen=observed.get(backend);if(!seen){seen=new Map();observed.set(backend,seen);}
     for(const run of value.runs){const previous=seen.get(run.id);if(previous&&['queued','running','stopping'].includes(previous.status)&&!['queued','running','stopping'].includes(run.status))notifyTask(backend,run.status==='completed'?'A task has completed.':'A task needs your attention.');
       const record={status:run.status,cursor:previous?.cursor||0};
@@ -114,22 +133,43 @@ function installIPC() {
   ipcMain.handle('desktop:info',event=>publicInfo(senderContext(event,false)));
   ipcMain.handle('desktop:workspace',async event=>{const context=senderContext(event,false);const result=await dialog.showOpenDialog(context.win,{title:'Choose a Pantheon project',properties:['openDirectory','createDirectory']});return result.canceled?{canceled:true,info:publicInfo(context)}:{canceled:false,info:await attachLocal(context,result.filePaths[0])};});
   ipcMain.handle('desktop:reconnect',async event=>{const context=senderContext(event),old=context.backend;if(old.remote)throw new Error('Sign in to the remote host again.');try{await old.identity();context.lost=false;return publicInfo(context);}catch{}if(old.owned&&old.child?.exitCode===null&&old.child?.signalCode===null)throw new Error('The core process is still running. Wait for it to recover before reconnecting.');backends.delete('local:'+old.workspace);const value=await attachLocal(context,old.workspace);for(const target of windows.values())if(target!==context&&target.backend===old){target.backend=context.backend;target.lost=false;target.win.webContents.send('desktop:command','workspace-ready');}return value;});
-  ipcMain.handle('desktop:api',async(event,target,options)=>senderContext(event).backend.request(target,options));
+  ipcMain.handle('desktop:api',async(event,target,options)=>desktopRequest(senderContext(event),target,options));
   ipcMain.handle('desktop:remote',async(event,value)=>{
     const context=senderContext(event,false);
     if(value?.remember && (!safeStorage.isEncryptionAvailable() || (process.platform==='linux' && safeStorage.getSelectedStorageBackend()==='basic_text')))throw new Error('Secure storage is unavailable. Connect without remembering the password.');
     if(!value || typeof value.url!=='string' || typeof value.username!=='string' || typeof value.password!=='string')throw new Error('Server, username and password are required.');
-    const backend=await new Backend(coreCommand()).connectRemote(value);backends.set('remote:'+backend.base+':'+value.username,Promise.resolve(backend));context.backend=backend;
+    const backend=await new Backend(coreCommand()).connectRemote(value);await context.operations?.stop();context.operations=null;backends.set('remote:'+backend.base+':'+value.username,Promise.resolve(backend));context.backend=backend;
     if(value.remember){
       if(!safeStorage.isEncryptionAvailable() || (process.platform==='linux' && safeStorage.getSelectedStorageBackend()==='basic_text'))throw new Error('Secure storage is unavailable. Connect without remembering the password.');
       savedRemote={url:backend.base,username:value.username,password:safeStorage.encryptString(value.password).toString('base64')};await savePreferences();
     }else if(savedRemote?.url===backend.base&&savedRemote.username===value.username){savedRemote=null;await savePreferences();}
-    return publicInfo(context);
+    await offlineFor(backend);return publicInfo(context);
   });
   ipcMain.handle('desktop:remote-reconnect',async event=>{
     const context=senderContext(event,false);if(!savedRemote || !safeStorage.isEncryptionAvailable() || context.backend?.remote&&(context.backend.base!==savedRemote.url||context.backend.username!==savedRemote.username))throw new Error('Sign in to the current remote server again. Saved credentials belong to a different server or account.');
     context.backend=await new Backend(coreCommand()).connectRemote({...savedRemote,password:safeStorage.decryptString(Buffer.from(savedRemote.password,'base64'))});
-    backends.set('remote:'+context.backend.base+':'+savedRemote.username,Promise.resolve(context.backend));return publicInfo(context);
+    backends.set('remote:'+context.backend.base+':'+savedRemote.username,Promise.resolve(context.backend));await offlineFor(context.backend);return publicInfo(context);
+  });
+  ipcMain.handle('desktop:operations-status',async event=>(await operationsFor(senderContext(event,false))).available());
+  ipcMain.handle('desktop:operations-start',async(event,value)=>{const context=senderContext(event);return (await operationsFor(context)).start(value);});
+  ipcMain.handle('desktop:operations-run',async(event,value)=>(await operationsFor(senderContext(event))).run(value));
+  ipcMain.handle('desktop:operations-stop',async event=>{const context=senderContext(event,false);return context.operations?context.operations.stop():{active:false,busy:false,audit:[],has_capture:false};});
+  ipcMain.handle('desktop:operations-accessibility',async event=>(await operationsFor(senderContext(event,false))).requestAccess());
+  ipcMain.handle('desktop:operations-capture',async(event,save)=>{const context=senderContext(event),operation=await operationsFor(context);if(typeof save!=='boolean'||!operation.capture)throw new Error('Run a browser capture step first.');if(!save)return {data:'data:image/png;base64,'+operation.capture.toString('base64')};const selected=await dialog.showSaveDialog(context.win,{title:'Save this operation capture',defaultPath:'Pantheon-browser-capture.png',filters:[{name:'PNG image',extensions:['png']}]});if(selected.canceled)return {saved:false};await fs.writeFile(selected.filePath,operation.capture,{mode:0o600});return {saved:true};});
+  ipcMain.handle('desktop:sync-status',async event=>{const context=senderContext(event,false),store=await offlineFor(context.backend);return {...(store?.status()||{enabled:false,offline:false,busy:false,pending:0,conflicts:[],recovered:[]}),remote:!!context.backend?.remote,workspaces:await offlineList(offlineRoot())};});
+  ipcMain.handle('desktop:sync-enable',async event=>{
+    const context=senderContext(event);if(!context.backend.remote)throw new Error('Offline drafts use an authenticated remote host. Local projects already save on this computer.');
+    const choice=await dialog.showMessageBox(context.win,{type:'question',message:'Keep private offline drafts on this computer?',detail:'This saves the workspace task list/drafts and viewed conversation/artifact details in your private app profile. Credentials and project files are not copied. Offline edits sync only when you choose Sync drafts. Conflicts require review. Tasks, messages and file writes are never replayed.',buttons:['Cancel','Enable offline drafts'],defaultId:0,cancelId:0});if(choice.response!==1)return {cancelled:true};
+    const store=await offlineFor(context.backend);await store.enable(context.backend);for(const target of ['/api/desktop/sessions','/api/setup/status','/api/roles','/api/tasks','/api/budgets'])await store.request(context.backend,target).catch(()=>{});return store.status();
+  });
+  ipcMain.handle('desktop:sync-disable',async event=>{const context=senderContext(event),store=await offlineFor(context.backend);if(!store)throw new Error('No remote cache selected.');if(store.status().pending)throw new Error('Sync or resolve pending drafts before removing the offline cache.');const choice=await dialog.showMessageBox(context.win,{type:'warning',message:'Remove this offline cache?',detail:'Cached conversations and recovered draft copies on this computer will be removed. Remote data is kept.',buttons:['Cancel','Remove cache'],defaultId:0,cancelId:0});if(choice.response!==1)return {cancelled:true};await store.disable();return store.status();});
+  ipcMain.handle('desktop:sync',async event=>{const context=senderContext(event),store=await offlineFor(context.backend);if(!store?.data.enabled)throw new Error('Enable offline drafts first.');await Promise.all([...windows.values()].filter(item=>item.backend===context.backend).map(item=>item.win.webContents.executeJavaScript('flushDrafts()')));const result=await store.sync(context.backend);for(const item of windows.values())if(item.backend===context.backend)item.win.webContents.send('desktop:command','sync-ready');return {...result,...store.status()};});
+  ipcMain.handle('desktop:sync-resolve',async(event,value)=>{const context=senderContext(event),store=await offlineFor(context.backend);if(!store?.data.enabled||!value||!['local','remote'].includes(value.choice)||typeof value.id!=='string')throw new Error('Choose a pending draft conflict.');const result=await store.resolve(value.id,value.choice);if(value.choice==='remote')for(const item of windows.values())if(item.backend===context.backend)item.win.webContents.send('desktop:command','sync-ready');return result;});
+  ipcMain.handle('desktop:sync-export',async event=>{const context=senderContext(event),store=await offlineFor(context.backend);if(!store?.data.enabled)throw new Error('No offline drafts selected.');const notes=Object.values(store.data.queue).map(item=>({title:item.local.title,draft:item.local.draft||'',updated:item.local.updatedAt}));const report={format:1,kind:'pantheon-offline-draft-text',created_at:new Date().toISOString(),workspace:context.backend.info.workspace_name,notes,recovered:store.data.recovered};const result=await dialog.showSaveDialog(context.win,{title:'Export private local draft text',defaultPath:'Pantheon-local-drafts.json',filters:[{name:'Private draft text',extensions:['json']}]});if(result.canceled)return {saved:false};await fs.writeFile(result.filePath,JSON.stringify(report,null,2),{mode:0o600});return {saved:true};});
+  ipcMain.handle('desktop:sync-open',async(event,id)=>{
+    const context=senderContext(event,false),items=await offlineList(offlineRoot()),selected=items.find(item=>item.id===id);if(!selected)throw new Error('Choose a cached remote workspace.');await context.win.webContents.executeJavaScript('flushDrafts()');
+    const temporary=new OfflineWorkspace({directory:path.join(offlineRoot(),id),identity:{origin:selected.origin,username:selected.username,workspace:''}});const saved=JSON.parse(await fs.readFile(path.join(temporary.directory,'workspace.json'),'utf8'));if(saved.info?.workspace!==saved.identity.workspace)throw new Error('Offline workspace identity does not match.');
+    const backend=new Backend(coreCommand());Object.assign(backend,{remote:true,owned:false,offlineOnly:true,base:remoteURLForCache(saved.identity.origin),username:saved.identity.username,workspace:saved.identity.workspace,info:saved.info});context.backend=backend;const store=await offlineFor(backend);store.offline=true;store.changed();return publicInfo(context);
   });
   ipcMain.handle('desktop:files',async(event,kind='vision')=>{if(!['vision','audio'].includes(kind))throw new Error('Choose images/PDF or audio.');
     const context=senderContext(event);
@@ -262,7 +302,7 @@ app.on('before-quit',event=>{
   if(maintenance?.busy.size){event.preventDefault();dialog.showMessageBox({type:'info',message:'Backup or restore is still running.',detail:'Wait for workspace maintenance to finish before quitting Pantheon.',buttons:['OK']});return;}
   if(quitting)return;event.preventDefault();if(app.quitPending)return;app.quitPending=true;
   (async()=>{
-    await updates.shutdown();
+    await updates.shutdown();await Promise.allSettled([...windows.values()].map(context=>context.operations?.stop()));
     const drafts=await Promise.allSettled([...windows.values()].map(context=>context.win.webContents.executeJavaScript('typeof flushDrafts === \"function\" ? flushDrafts() : undefined')));
     if(drafts.some(item=>item.status==='rejected')){const choice=await dialog.showMessageBox({type:'warning',message:'Some drafts could not be saved.',detail:'Keep the app open to resolve the conflict, or quit while keeping the local recovery draft.',buttons:['Keep open','Quit'],cancelId:0,defaultId:0});if(choice.response!==1){app.quitPending=false;return;}}
     const values=await Promise.allSettled([...backends.values()]);const local=values.filter(item=>item.status==='fulfilled').map(item=>item.value).filter(item=>item.owned);

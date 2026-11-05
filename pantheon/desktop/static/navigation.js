@@ -1,13 +1,13 @@
 'use strict';
 let paletteRequest=0;
 function paletteCommands(){
-  const project=!!state.info?.workspace&&!state.maintenance;
+  const project=!!state.info?.workspace&&!state.maintenance,live=project&&!state.offline&&!state.syncBusy&&!state.creatingTask;
   return [
     ['New task',newTask,project],['Choose project',connectWorkspace,!state.maintenance],
     ['Task center',()=>setView('tasks'),project],['Artifact library',()=>setView('library'),project],
-    ['Project files',()=>setView('files'),project],['Models and connections',openConnections,project],
-    ['Capabilities',()=>setView('capabilities'),project],['Open terminal',()=>showTerminal(true),project],
-    ['Usage and budgets',openUsage,project],['Toggle Focus layout',toggleLayout,true],
+    ['Project files',()=>setView('files'),live],['Models and connections',openConnections,live],
+    ['Capabilities',()=>setView('capabilities'),live],['Open terminal',()=>showTerminal(true),live],
+    ['Usage and budgets',openUsage,live],['Toggle Focus layout',toggleLayout,true],
     ['Connect remote server',()=>showDialog('#remote-dialog'),!state.maintenance],
     ['Service and updates',showService,true],['Help and diagnostics',openHelp,true]
   ];

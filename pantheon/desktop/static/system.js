@@ -1,8 +1,9 @@
 'use strict';
 const desktopSystem={update:null,ticket:null,maintenanceControls:new Map()};
-function systemTab(name){for(const key of ['updates','backups']){$('#system-tab-'+key).setAttribute('aria-selected',String(key===name));$('#system-'+key).hidden=key!==name;}}
+function systemTab(name){for(const key of ['updates','backups','sync']){$('#system-tab-'+key).setAttribute('aria-selected',String(key===name));$('#system-'+key).hidden=key!==name;}}
 function formatSize(size){return size>=1024*1024?(size/1024/1024).toFixed(1)+' MB':Math.ceil(size/1024)+' KB';}
 async function openSystemDialog(tab='updates'){
+  await renderSyncPanel();
   systemTab(tab);$('#system-version').textContent=state.info.version;$('#update-channel').value=state.info.preferences.updateChannel||'stable';
   $('#system-project').textContent=state.info.workspace?.workspace_name||'No project selected';
   $('#system-project-status').textContent=state.info.workspace?(state.info.remote?'Remote project':state.info.owned?'Local project':'Connected local service'):'Choose a project to create a workspace backup.';
@@ -62,7 +63,7 @@ function maintenanceStatus(value){
   else{for(const [control,disabled] of desktopSystem.maintenanceControls)control.disabled=disabled;desktopSystem.maintenanceControls.clear();updateComposerState();notice(value.phase==='failed'?value.error:'');if($('#system-dialog').open)loadWorkspaceBackups().catch(error=>toast(errorText(error)));}
 }
 function bindSystem(){
-  $('.system-tabs').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const name=event.target.id==='system-tab-updates'?'backups':'updates';systemTab(name);$('#system-tab-'+name).focus();});
+  $('.system-tabs').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const names=['updates','backups','sync'],current=names.indexOf(event.target.id.replace('system-tab-','')),name=names[(current+(event.key==='ArrowRight'?1:2))%3];systemTab(name);$('#system-tab-'+name).focus();});
   action($('#system-tab-updates'),()=>systemTab('updates'));action($('#system-tab-backups'),()=>systemTab('backups'));
   action($('#system-reconnect'),async()=>{await reconnectService();await openSystemDialog();});
   action($('#system-remote'),()=>{closeDialog('#system-dialog');showDialog('#remote-dialog');});action($('#system-quit'),()=>native.quit());
