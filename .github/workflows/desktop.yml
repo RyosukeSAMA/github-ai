@@ -97,3 +97,4 @@ jobs:
             dist/productivity-ui-evidence/**
             dist/sync-ui-evidence/**
             dist/operations-ui-evidence/**
+            dist/journey-ui-evidence/**

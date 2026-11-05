@@ -8,7 +8,17 @@ async function refreshUsage(){
   const target=$('#usage-summary');target.replaceChildren();if(!calls){target.textContent='No calls recorded for this task.';return;}
   const metrics=element('div','usage-metrics');for(const [number,label] of [[calls.toLocaleString(),calls===1?'Model call':'Model calls'],[tokens.toLocaleString(),unknown?'Reported tokens · incomplete':'Reported tokens']]){const metric=element('div','usage-metric');metric.append(element('strong','',number),element('small','',label));metrics.append(metric);}target.append(metrics,element('div','usage-cost',unpriced?'Cost unknown · provider price is unavailable':'$'+cost.toFixed(4)+' estimated · not a bill'));
 }
-async function loadResultArtifacts(){if(!state.selected||state.tab!=='result')return;const selected=state.selected;const value=await api('/api/desktop/artifacts');if(state.selected!==selected)return;$('#result-artifacts').replaceChildren();for(const item of value.artifacts.filter(item=>item.session_id===selected))$('#result-artifacts').append(artifactCard(item));}
+async function loadResultArtifacts(){
+  if(!state.selected||state.tab!=='result')return;
+  const selected=state.selected,epoch=state.epoch,run=latestRun()?.id,request=++journey.request;
+  if(journey.artifactSession!==selected||journey.artifactRun!==run||journey.artifactEpoch!==epoch)empty($('#result-artifacts'),'Loading this run’s outputs…');
+  try{const value=await api('/api/desktop/artifacts');if(request!==journey.request||state.selected!==selected||state.epoch!==epoch||latestRun()?.id!==run)return;
+    journey.artifactSession=selected;journey.artifactRun=run;journey.artifactEpoch=epoch;journey.artifacts=value.artifacts;journey.artifactError='';
+    $('#result-artifacts').replaceChildren();for(const item of value.artifacts.filter(item=>item.session_id===selected&&item.run_id===run))$('#result-artifacts').append(artifactCard(item));
+    if(!$('#result-artifacts').children.length)empty($('#result-artifacts'),'No separate output artifacts are recorded for this run. The council response is above.');renderDelivery();
+  }catch(error){if(request!==journey.request||state.selected!==selected||state.epoch!==epoch||latestRun()?.id!==run)return;journey.artifactError=errorText(error);journey.artifactErrorContext={session:selected,run,epoch};renderDelivery();}
+}
+
 function formField(form,label,value='',type='text'){
   const wrapper=element('label','field',label),input=element(type==='textarea'?'textarea':'input');if(type!=='textarea')input.type=type;else input.rows=6;input.value=value;wrapper.append(input);form.append(wrapper);return input;
 }

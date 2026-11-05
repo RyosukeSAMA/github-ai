@@ -1,6 +1,6 @@
 # Pantheon Desktop：按钮与功能说明
 
-对应本地 **0.5.0-beta.19**，核对日期：2026-11-03（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
+对应本地 **0.5.0-beta.20**，核对日期：2026-11-05（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
 
 ## 先认识界面
 
@@ -309,3 +309,14 @@ DeepSeek/OpenAI/Anthropic 图标用于识别连接；Ollama 图标识别运行�
 **Service & updates → Offline drafts**：对同一 HTTPS 主机/账号/工作区启用本地私有缓存。断网时可以编辑草稿、新建未发送任务及搜索已缓存内容，状态为 Saved locally。重新连接不自动同步；点击 Sync drafts 后，如另一台设备或网页端改过草稿，会展示两端文本供选择。选择保留本机草稿后仍需再次 Sync drafts；选择服务器稿件会保留一份本机恢复副本。Export local drafts 导出私有文本。主机需升级到支持该修订协议的当前源码；工作区 ZIP 不含本设备尚未同步的应用缓存。
 
 **Operation sessions**：先明确批准浏览器来源或 macOS 应用，再添加步骤并 Review & run steps。浏览器在单独窗口运行，可填写/点击/截图；跨来源导航、下载和弹窗受限，不共享 Pantheon 登录 Cookie。Stop 取消剩余步骤，已经发出的请求可能继续完成。macOS 应用控制需要实际辅助功能与自动化权限，支持范围以内置应用列表为准；Windows/Linux 目前只有浏览器适配器。该入口不会给模型授予无需审阅的桌面权限。详见[完整步骤与验证边界](../../desktop/offline-and-operations.md)。
+
+
+## beta.20 任务体验
+
+- **What’s new**：升级条说明四项变化并提供直达入口；Got it 后本版本不反复提示，帮助和命令菜单仍可打开。
+- **Explore features**：集中进入任务模板、模型、预算、文件历史、离线草稿、备份、操作会话及更新。
+- 四张起步卡打开 **Task brief**，编辑 Goal / Deliverables / Acceptance criteria / Constraints。Use task brief 只填入草稿；替换已有草稿需确认；切换项目或草稿发生新修改会阻止旧表单覆盖。
+- 输入框上方显示当前项目、供应商和配置准备情况。Ready to start 表示已配置，不等于实际 API 已验证；读取的是当前会话的模型分配。
+- **View progress**：查看真实事件驱动的步骤、当前角色和审批等待。完成后顶部入口变为 **Review delivery**。
+- **Result**：本次运行的完成步骤、成果、已审阅保存文件、检查证据和完整回复。旧运行成果保留在 Artifact library。模型自述测试通过不会变成独立验证通过。
+- **Review for gaps / Refine this result**：只生成可编辑的追问草稿，仍需手动发送。

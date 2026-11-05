@@ -10,7 +10,6 @@ state.serviceLost=false;state.connectionPanelRequest=0;
 const roleNames = ['hermes','hephaestus','athena','apollo'];
 const councilRoles={hermes:{name:'Hermes',purpose:'Plan & coordinate'},hephaestus:{name:'Hephaestus',purpose:'Build & refine'},athena:{name:'Athena',purpose:'Research & reason'},apollo:{name:'Apollo',purpose:'Create & imagine'},chronos:{name:'Chronos',purpose:'Schedule & deliver'}};
 const councilModes=[['auto','Auto route','Hermes selects the right specialist for your task.','route'],['multi','Multi-role council','Hermes plans a collaboration across several roles.','council'],['role:hephaestus','Hephaestus','Work directly with your coding and engineering specialist.','build'],['role:athena','Athena','Work directly with your research and reasoning specialist.','search'],['role:apollo','Apollo','Work directly with your creative specialist.','capabilities'],['role:chronos','Chronos','Create a schedule with your local scheduling specialist.','clock']];
-const taskStarters={explore:'Explore this project and explain its structure, main components, and how to run it. Start with a read-only overview.',build:'Help me build a new feature in this project. The idea is: ',fix:'Help me diagnose and fix an issue in this project. The problem is: ',research:'Research the following topic and provide a clear recommendation with sources: '};
 const currentSession = () => state.sessions.find(item => item.id === state.selected);
 const latestRun = id => state.runs.filter(run => run.session_id === (id || state.selected)).sort((a,b)=>b.created-a.created)[0];
 const activeRun = id => state.offline?undefined:state.runs.find(run => run.session_id === (id || state.selected) && activeStatuses.has(run.status));
@@ -54,6 +53,7 @@ function syncToolbar() {
   $('#connection-state').dataset.tooltip='Connection status · Service and saved API tests';
   setIconButton($('#new-window'),'open',state.info?.workspace?'Open in new window':'New window','⌘ / Ctrl Shift N');
   $('#new-window').dataset.tooltip=state.info?.workspace?'Open in new window · Same project and task; saves your draft first':'New window · Choose a project in the new window';
+  renderJourneyReadiness();
 }
 function closeConnectionPanel() {
   const panel=$('#connection-panel');if(panel.matches(':popover-open'))panel.hidePopover();
@@ -212,7 +212,7 @@ function workspaceUI() {
   $('#service-status').textContent=connected?(state.info.owned?'Desktop-owned local service':state.info.remote?'Remote service':'Reused local service'):'Choose a workspace';
   $('#terminal-host').textContent=state.info?.remote?'Remote project terminal':'Local project terminal';
   $('#startup-error').textContent='';
-  renderOnboarding();
+  renderOnboarding();renderJourney();
   if(state.info?.startupError&&!state.projectOpening){projectFailure(state.info.startupError);$('#startup-error').textContent='';}
   if(!connected){showWelcome();}else $('.app').classList.remove('welcome-state');
 }
@@ -360,7 +360,7 @@ function syncTaskPresentation() {
   if(preparing){$('#task-heading').hidden=true;$('#content-tabs').hidden=true;$('#council-route').hidden=true;}
   else if(state.view==='work'&&state.selected&&$('#welcome').hidden){$('#task-heading').hidden=false;$('#content-tabs').hidden=false;}
   if(state.selected&&$('#project-feedback').dataset.phase==='connected')$('#project-feedback').hidden=true;
-  updateComposerState();
+  updateComposerState();renderJourneyReadiness();renderJourneyProgress();
 }
 function updateComposerState() {$('#run').disabled=state.offline||state.syncBusy||state.creatingTask||state.sending||state.projectOpening||(!activeRun()&&!$('#prompt').value.trim());resizeComposer();}
 function resizeComposer() {
@@ -389,12 +389,8 @@ function openCouncilMenu() {
   menu.style.left=Math.max(10,Math.min(innerWidth-width-10,bounds.left))+'px';menu.style.top=Math.max(10,bounds.top-height-10)+'px';
   menu.querySelector('[aria-checked=true]')?.focus({preventScroll:true});
 }
-async function useTaskStarter(id) {
-  if(!taskStarters[id]||activeRun()||state.sending)return;
-  const text=$('#prompt').value,session=state.selected,epoch=state.epoch;if(text.trim()&&!await confirmChoice('Replace this draft?','Your current prompt has not been sent. Replace it with this starting point?','Replace draft'))return;
-  if(session!==state.selected||epoch!==state.epoch||text!==$('#prompt').value){toast('The task or draft changed. Choose the starting point again.');return;}
-  $('#prompt').value=taskStarters[id];$('#prompt').dispatchEvent(new Event('input',{bubbles:true}));$('#prompt').focus({preventScroll:true});$('#prompt').setSelectionRange($('#prompt').value.length,$('#prompt').value.length);
-}
+async function useTaskStarter(id) {return openTaskBrief(id);}
+
 function renderTask() {
   const session=currentSession();if(!session)return;
   if(state.view==='work'){$('#task-heading').hidden=false;$('#content-tabs').hidden=false;$('#composer').hidden=false;$('#welcome').hidden=true;$('.app').classList.remove('welcome-state');}
@@ -406,10 +402,10 @@ function renderTask() {
   $('#task-attention').textContent=$('#task-subtitle').textContent;
   setIconButton($('#run'),activeRun()?'stop':'send',activeRun()?'Stop task':'Run task');
   renderMessages();renderActivity();renderRoles();
-  const result=(state.detail?.messages||[]).filter(item=>item.role==='assistant').at(-1);
+  const result=(state.detail?.messages||[]).filter(item=>item.role==='assistant'&&(!run||item.runId===run.id)).at(-1);
   const resultKey=JSON.stringify([state.selected,result?.text]);if($('#result-content').dataset.signature!==resultKey){$('#result-content').dataset.signature=resultKey;$('#result-content').replaceChildren(markdown(result?.text||'Your completed result will appear here.'));}
   $('#export-archive').disabled=!run?.task_id;$('#resume-open').hidden=!run?.task_id || !['failed','partial_failure','stopped','interrupted'].includes(run.status);
-  $('#task-recover').hidden=$('#resume-open').hidden;syncTaskPresentation();renderCouncilMode();syncControls();
+  $('#task-recover').hidden=$('#resume-open').hidden;syncTaskPresentation();renderCouncilMode();syncControls();renderJourney();
 }
 function renderMessages() {
   const target=$('#messages'),detail=state.detail;if(!detail)return;const outputKey=activeRun()?state.output.get(activeRun().id):null;const signature=JSON.stringify([state.selected,detail.messages,activeRun()?.status,outputKey]);if(target.dataset.signature===signature)return;target.dataset.signature=signature;const scroll=$('.content-scroll'),nearEnd=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80,position=scroll.scrollTop;target.replaceChildren();
@@ -441,7 +437,7 @@ async function runTask(resume) {
   const running=activeRun();if(running){await api('/api/desktop/runs/'+running.id+'/stop',{});toast('Stop requested. Completed work is retained.');await refresh();return;}
   state.sending=true;updateComposerState();
   try{if(!state.selected)await newTask();await flushDrafts();const prompt=resume?.prompt || $('#prompt').value.trim();if(!prompt){$('#prompt').focus();return;}
-    const session=currentSession();if(session.title==='New task')await patchSession({title:prompt.slice(0,80)});
+    const session=currentSession();if(session.title==='New task')await patchSession({title:prompt.split(/\r?\n/)[0].trim().slice(0,80)});
     const request={prompt,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
     const run=await api('/api/desktop/sessions/'+state.selected+'/runs',request);state.runs.unshift(run);$('#prompt').value='';state.detail.draft='';state.attachments.set(state.selected,[]);renderAttachments();setTab('conversation');await refresh();}
   catch(error){if(/timeout|fetch|network/i.test(errorText(error)))notice('The send status is uncertain. Refresh task history before trying again; do not resend automatically.');throw error;}
@@ -463,7 +459,7 @@ async function pollEvents() {
     state.eventCache.set(run.id,cache.slice(-6000));state.output.set(run.id,output);
     const index=state.runs.findIndex(item=>item.id===run.id);state.runs[index]={...run,...response.run};
   }
-  if(state.selected){renderMessages();renderActivity();}
+  if(state.selected){renderMessages();renderActivity();renderJourneyProgress();renderDelivery();}
   if(state.approvals.size&&!$('#approval-dialog').open){const pending=[...state.approvals.values()][0];$('#approval-dialog').dataset.approvalId=pending.approval_id;$('#approval-details').textContent=JSON.stringify(pending,null,2);showDialog('#approval-dialog');}
 }
 async function tick(){if(state.polling||state.projectOpening||state.maintenance||!state.info?.workspace)return;state.polling=true;try{await pollEvents();await refresh();if(state.file && !$('#files-pane').hidden){const disk=await api('/api/desktop/file?path='+encodeURIComponent(state.file.path));if(disk.hash!==state.file.hash){$('#file-change-notice').textContent='This file changed outside the editor. Reload it or review against the new version before saving.';$('#file-change-notice').hidden=false;}}}catch(error){notice(errorText(error));}finally{state.polling=false;}}
@@ -659,7 +655,7 @@ async function recoverTask(){const run=latestRun();if(!run?.task_id)return;const
 async function addAttachments(items){if(!state.selected)await newTask();const list=state.attachments.get(state.selected)||[];for(const item of items){if(list.length>=5)throw new Error('Use up to five attachments per message.');const uploaded=await api('/api/desktop/attachments',item);if(uploaded.type.startsWith('audio/')){toast('Transcribe audio in Capabilities → Media, then use the text in your task.');continue;}list.push(uploaded);}state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(item=>item.id)});renderAttachments();}
 function renderAttachments(){$('#attachment-list').replaceChildren();for(const item of state.attachments.get(state.selected)||[]){const chip=element('span','attachment-chip',item.name),remove=element('button','','×');remove.setAttribute('aria-label','Remove '+item.name);action(remove,async()=>{const list=state.attachments.get(state.selected).filter(value=>value.id!==item.id);state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(value=>value.id)});renderAttachments();});chip.append(remove);$('#attachment-list').append(chip);}}
 function bind() {
-  bindSystem();bindNavigation();bindSync();bindOperations();
+  bindSystem();bindNavigation();bindSync();bindOperations();bindJourney();
   action($('#connection-state'),openConnectionPanel);action($('#connection-panel-close'),closeConnectionPanel);
   $('#connection-panel').addEventListener('toggle',event=>{$('#connection-state').setAttribute('aria-expanded',String(event.newState==='open'));});
   action($('#connection-configure'),async()=>{closeConnectionPanel();await openConnections();});
