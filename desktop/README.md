@@ -10,6 +10,10 @@ Top-bar **Connection status** opens a non-modal panel separating project-service
 
 Toolbar previews: [Light](../docs/desktop/toolbar-status-light.png) · [Dark](../docs/desktop/toolbar-status-dark.png) · [Narrow](../docs/desktop/toolbar-status-narrow.png). The screenshots use isolated fixture connections and do not show the user's real API status.
 
+## beta.21 project continuity
+
+The local preview adds a shared **Project overview** to Desktop and Web: user-controlled goals, decisions, outputs and next steps, tracked file observations and a reviewed continuation into a new conversation. Existing drafts remain intact. See [project continuity behavior and limits](project-continuity.md).
+
 ## beta.20 task journey
 
 The local preview adds a version-aware **What’s new**, an **Explore features** guide, editable task briefs, current-task setup, real-event progress and a per-run delivery summary with reviewed saves and deliberate follow-ups. See [task journey behavior and verification scope](task-journey.md). The approved floral themes remain intact.

@@ -3660,6 +3660,7 @@
     ]);
     pinChatModels();
     renderSettingsModels();
+    void projectUI.refresh(true);
     if (latestSetupStatus?.onboarding?.show) openSettingsPane('setup');
   }
 
@@ -6737,8 +6738,14 @@
            /网页|页面|网站|前端|落地页/.test(task);
   }
 
+  let projectPreflight = false;
   async function sendAsk(task, opts = {}) {
-    if (isStreaming) return;
+    if (isStreaming || projectPreflight) return;
+    let projectReview;
+    projectPreflight = true;
+    try { projectReview = await projectUI.checkReview(task); }
+    catch (error) { inputEl.value = task; inputEl.dispatchEvent(new Event("input", {bubbles:true})); showSaveNotice(error.message); setComposerStatus(error.message + " Open Project overview and choose Review current draft.", "warn", true); return; }
+    finally { projectPreflight = false; }
     invalidatePromptEnhancement();
     const history = conversationHistory();
     const agentTask = opts.agentTask || task;
@@ -6870,6 +6877,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task: agentTask,
+          project_review: projectReview || undefined,
           history: opts.resumeTaskId ? undefined : history,
           user_task: task,
           mode: currentMode,
@@ -6887,6 +6895,7 @@
         throw new Error(err.detail || `HTTP ${resp.status}`);
       }
 
+      projectUI.clearReview();
       streamConnected = true;
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -8215,7 +8224,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, content, overwrite: false }),
       });
-      if (resp.ok) return await resp.json();
+      if (resp.ok) { const saved = await resp.json(); if (saved.project_state_warning) showSaveNotice('File saved. ' + saved.project_state_warning); void projectUI.refresh(true); return saved; }
       const data = await resp.json().catch(() => ({}));
       lastError = data.detail || `HTTP ${resp.status}`;
       if (resp.status !== 409) break;
@@ -8493,6 +8502,22 @@
   renderSessions();
   if (activeSessionId) activateSession(activeSessionId, true);
   else setMode('auto');
+  const projectUI = PantheonProject.mount({
+    request: async (path, body, method) => {
+      const response = await fetch(path, {method:method || (body === undefined ? 'GET':'POST'), headers:{'Content-Type':'application/json'}, signal:AbortSignal.timeout(15000), ...(body === undefined ? {} : {body:JSON.stringify(body)})});
+      const value = await response.json();
+      if (!response.ok) { const error = new Error(typeof value.detail === 'string' ? value.detail : 'Project request failed'); error.status = response.status; throw error; }
+      return value;
+    },
+    scope:()=>location.origin, session:()=>activeSessionId,
+    unavailable:()=>!protectedDataLoaded || (authState.enabled && !authState.authenticated),
+    busy:()=>isStreaming || projectPreflight,
+    currentDraft:()=>inputEl.value,
+    confirm:async (title, text)=>window.confirm(title + '\n\n' + text),
+    prepare:async prompt=>{await flushConversationSync(); const old=activeSessionId; startNewSession(); if (!activeSessionId || old === activeSessionId) throw Error('A new chat could not be created. The original draft is retained.'); inputEl.value=prompt; inputEl.dispatchEvent(new Event('input',{bubbles:true})); inputEl.focus();},
+    notify:showSaveNotice, strip:document.querySelector('#project-context-strip')
+  });
+  document.querySelector('#project-overview-open').addEventListener('click',()=>projectUI.open().catch(error=>showSaveNotice(error.message)));
   loadAuthStatus().then(() => initProtectedData());
   setInterval(() => {
     if (protectedDataLoaded && (!authState.enabled || authState.authenticated)) loadUpdateStatus();

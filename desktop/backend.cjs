@@ -14,7 +14,7 @@ function apiPath(value, allowTerminal = false) {
   if (typeof value !== 'string' || value.length > 3000 || !/^\/api\/[a-z]/.test(value) || /[\\\r\n#]/.test(value)) throw new Error('Invalid API path');
   const parsed = new URL(value, 'http://localhost');
   if (parsed.origin !== 'http://localhost' || parsed.pathname.includes('..')) throw new Error('Invalid API path');
-  const allowed = /^\/api\/(desktop|setup|connections|models|roles|tasks|usage|budgets|workflow|memory|skills|plugins|mcp|chronos|media|channels|integrations|info|workspace|onboarding|update)(\/|$)/;
+  const allowed = /^\/api\/(desktop|setup|connections|models|roles|tasks|usage|budgets|workflow|project|memory|skills|plugins|mcp|chronos|media|channels|integrations|info|workspace|onboarding|update)(\/|$)/;
   const decoded=decodeURIComponent(parsed.pathname);if(/[\\\r\n]/.test(decoded)||decoded.split('/').includes('..'))throw new Error('Invalid API path');
   if (decoded === '/api/workspace/file' || decoded === '/api/workspace/preview') throw new Error('Use the desktop file review API.');
   if (!allowTerminal && /^\/api\/workspace\/terminal(?:\/|$)/.test(decoded))throw new Error('Terminal commands require native confirmation.');
@@ -28,7 +28,7 @@ class Backend {
     const challenge = crypto.randomBytes(20).toString('hex');
     const value = await this.request('/api/desktop/identity?challenge='+challenge);
     if (value.challenge !== challenge || value.api_version !== 1) throw new Error('Incompatible Pantheon desktop service');
-    if (!Number.isInteger(value.api_revision) || value.api_revision < 2) throw new Error('Update this Pantheon host to the current Desktop source, then reconnect. Its API revision is too old for this client.');
+    if (!Number.isInteger(value.api_revision) || value.api_revision < 3) throw new Error('Update this Pantheon host to the current Desktop source, then reconnect. Its API revision is too old for this client.');
     return value;
   }
   async local(workspace) {

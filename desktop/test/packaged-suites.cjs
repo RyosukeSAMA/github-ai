@@ -8,7 +8,7 @@ if(!process.env.PANTHEON_TEST_EXECUTABLE)throw new Error('Set PANTHEON_TEST_EXEC
 const repo=path.resolve(__dirname,'../..'),results=[];
 const output=path.join(repo,'dist','desktop-evidence');fs.mkdirSync(output,{recursive:true});
 fs.rmSync(path.join(output,'packaged-suites.json'),{force:true});
-for(const [suite,fallback] of [['native-smoke',600000],['provider-ui-smoke',300000],['toolbar-ui-smoke',300000],['system-ui-smoke',300000],['productivity-ui-smoke',300000],['sync-ui-smoke',300000],['operations-ui-smoke',300000],['journey-ui-smoke',300000]]){
+for(const [suite,fallback] of [['native-smoke',600000],['provider-ui-smoke',300000],['toolbar-ui-smoke',300000],['system-ui-smoke',300000],['productivity-ui-smoke',300000],['sync-ui-smoke',300000],['operations-ui-smoke',300000],['journey-ui-smoke',300000],['project-ui-smoke',300000]]){
   const timeout=smokeTimeout(fallback),start=Date.now();
   console.log('PACKAGED_SUITE_START: '+suite+' (budget '+timeout+' ms)');
   const child=spawnSync(process.execPath,[path.join(__dirname,suite+'.cjs')],{env:{...process.env,PANTHEON_DESKTOP_TEST_TIMEOUT_MS:String(timeout)},stdio:'inherit',timeout:timeout+30000});

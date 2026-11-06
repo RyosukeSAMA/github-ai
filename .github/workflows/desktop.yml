@@ -7,6 +7,7 @@ on:
       - 'desktop/**'
       - 'scripts/desktop/**'
       - 'pantheon/**'
+      - 'tests/test_project.py'
       - 'tests/test_desktop.py'
       - 'tests/test_desktop_maintenance.py'
       - 'tests/test_desktop_sync.py'
@@ -51,7 +52,7 @@ jobs:
         run: npx --prefix desktop playwright install-deps chromium
       - name: Test shared contracts and proxy
         run: |
-          python -m pytest tests/test_desktop.py tests/test_desktop_maintenance.py tests/test_desktop_sync.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
+          python -m pytest tests/test_project.py tests/test_desktop.py tests/test_desktop_maintenance.py tests/test_desktop_sync.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
           npm test --prefix desktop
       - name: Freeze the Python runtime
         run: python scripts/desktop/build_runtime.py
@@ -98,3 +99,4 @@ jobs:
             dist/sync-ui-evidence/**
             dist/operations-ui-evidence/**
             dist/journey-ui-evidence/**
+            dist/project-ui-evidence/**

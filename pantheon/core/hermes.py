@@ -41,6 +41,8 @@ class Hermes:
         self.roles = roles  # name -> Role instance
         self.router = router
         self.memory_context_provider: Any = None
+        self.project_context_provider: Any = None
+        self.active_project_context = ''
         self.skill_context_provider: Any = None
         self.skill_catalog_provider: Any = None
         self.skill_lookup_provider: Any = None
@@ -70,6 +72,7 @@ class Hermes:
             TASK_ID.reset(budget_token)
             raise
         try:
+            self.active_project_context = self.project_context_provider(task.content, 'hermes') if callable(self.project_context_provider) else ''
             if task.attachments:
                 self._checkpoint()
                 media_context = (resume_checkpoint or {}).get('media_context')
@@ -107,6 +110,7 @@ class Hermes:
             raise
         finally:
             self.active_task_id = None
+            self.active_project_context = ''
             TASK_ID.reset(budget_token)
 
     def _dispatch(
@@ -820,6 +824,8 @@ Workflow rules:
                 memories = list(details)
             if provider_kind == "skill" and details:
                 skills = list(details)
+        if self.active_project_context:
+            blocks.append(self.active_project_context)
         if not blocks:
             return task, memories, skills
         return (

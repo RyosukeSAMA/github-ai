@@ -320,7 +320,7 @@ app.whenReady().then(async()=>{
     const url=new URL(request.url);if(url.hostname!=='app')return new Response('Not found',{status:404});
     const relative=decodeURIComponent(url.pathname).replace(/^\//,'')||'index.html';
     if(!/^[a-zA-Z0-9_.-]+$/.test(relative))return new Response('Not found',{status:404});
-    const response=await net.fetch(pathToFileURL(path.join(uiRoot,relative)).toString());
+    const response=await net.fetch(pathToFileURL(path.join(!app.isPackaged&&['project-overview.js','project-overview.css'].includes(relative)?path.join(__dirname,'../pantheon/project_ui'):uiRoot,relative)).toString());
     const headers=new Headers(response.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'");
     return new Response(response.body,{status:response.status,headers});
   });

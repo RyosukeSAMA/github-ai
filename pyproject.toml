@@ -78,6 +78,7 @@ pantheon = [
     "defaults/*.yaml",
     "web/static/*",
     "desktop/static/*",
+    "project_ui/*",
     "web/static/avatars/*",
     "skills/*/SKILL.md",
     "skills/*/pantheon.json",

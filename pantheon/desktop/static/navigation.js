@@ -5,7 +5,7 @@ function paletteCommands(){
   return [
     ['New task',newTask,project],['Choose project',connectWorkspace,!state.maintenance],
     ['Task center',()=>setView('tasks'),project],['Artifact library',()=>setView('library'),project],
-    ['Project files',()=>setView('files'),live],['Models and connections',openConnections,live],
+    ['Project overview',()=>nativeProject.open(),live],['Project files',()=>setView('files'),live],['Models and connections',openConnections,live],
     ['Capabilities',()=>setView('capabilities'),live],['Open terminal',()=>showTerminal(true),live],
     ['Usage and budgets',openUsage,live],['Toggle Focus layout',toggleLayout,true],
     ['Connect remote server',()=>showDialog('#remote-dialog'),!state.maintenance],

@@ -11,7 +11,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 
-  <link rel="stylesheet" href="/static/app.css?v=0.4.0-fresco.2" />
+  <link rel="stylesheet" href="/static/app.css?v=0.4.0-fresco.2" /><link rel="stylesheet" href="/project-assets/project-overview.css" />
   <style>
     html.file-open body {
       display: block;
@@ -152,6 +152,8 @@
       <span>New Chat</span>
     </button>
 
+    <button type="button" class="project-web-open" id="project-overview-open">Project overview &amp; continue</button>
+
     <!-- Conversations -->
     <div class="chats-section">
       <h3 class="section-title">Conversations</h3>
@@ -279,6 +281,7 @@
 
     <!-- Bottom composer -->
     <form class="composer" id="composer">
+      <div id="project-context-strip" hidden></div>
       <input id="attachment-input" type="file" multiple hidden />
       <div class="composer-inner">
         <button type="button" id="attach-btn" class="composer-tool-btn" data-composer-tool="attach" title="Attach files" aria-label="Attach files" onpointerdown="window.pantheonComposerTool && window.pantheonComposerTool(event, 'attach')" onclick="window.pantheonComposerTool && window.pantheonComposerTool(event, 'attach')">
@@ -1070,6 +1073,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=0.4.0"></script>
+  <script src="/project-assets/project-overview.js"></script><script src="/static/app.js?v=0.4.0"></script>
 </body>
 </html>

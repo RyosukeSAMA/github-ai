@@ -2,6 +2,13 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Project continuity (Desktop beta.21 and Web)
+
+- Add revisioned project goals, candidate/confirmed/superseded decisions, current outputs, todos and explicitly unverified check notes. New dispatches share a bounded current-state snapshot across planning and role execution; ordinary memory and prior model summaries are not promoted to confirmed decisions.
+- Add a shared Project overview in Desktop and Web, editable provenance, correction/deletion and conflict-retaining edits. Explicit reviewed/file saves register actual output references without turning hash matches into passed tests.
+- Prepare a new continuation conversation while retaining the previous draft. Validate the reviewed project identity, revision and file observations again before dispatch; stale drafts remain unsent for review. Track only public, bounded, explicitly registered files.
+- Keep both Desktop floral themes and Web fresco artwork. Require core API revision 3 for the new Desktop client and add packaged cross-client continuity acceptance with fixture models.
+
 ## Unreleased — Web workspace
 
 - Add locally bundled morning and moonlit fresco-style temple backgrounds, showing a complete pediment, colonnade and broad steps above the foreground courtyard. Keep artwork centered in narrow panels, fade it during conversations and honor reduced-motion preferences.

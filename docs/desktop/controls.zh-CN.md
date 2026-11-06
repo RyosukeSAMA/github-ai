@@ -320,3 +320,12 @@ DeepSeek/OpenAI/Anthropic 图标用于识别连接；Ollama 图标识别运行�
 - **View progress**：查看真实事件驱动的步骤、当前角色和审批等待。完成后顶部入口变为 **Review delivery**。
 - **Result**：本次运行的完成步骤、成果、已审阅保存文件、检查证据和完整回复。旧运行成果保留在 Artifact library。模型自述测试通过不会变成独立验证通过。
 - **Review for gaps / Refine this result**：只生成可编辑的追问草稿，仍需手动发送。
+
+
+## beta.21 本地预览：项目概览与续做
+
+客户端左侧 **Project overview**、Web 左侧 **Project overview & continue** 打开同一套项目状态界面。**Add project entry** 可以添加目标、决定、成果、待办或检查说明；候选决定要确认后才进入新任务上下文。**Edit / Delete / Replace decision / Mark done** 用于纠正、删除、替换或完成条目。
+
+在 **Continue this project** 写下本次目标，再点 **Prepare new task**：只新建会话并准备草稿，之前未发送的草稿会保留，不会自动调用模型。之后仍由你确认发送。文件或项目状态变化后，先重新查看概览，再用 **Review current draft** 确认当前草稿。
+
+**Accept current file version** 只更新已登记文件的哈希基线；“文件未变化”“任务执行完成”“独立测试通过”是不同的状态。检查说明始终是用户报告，不会显示为独立验收通过。两端需要连接同一个工作区/服务才能共享数据；不同电脑上的独立文件夹不会自动同步。完整边界见[项目续做说明](../../desktop/project-continuity.md)。

@@ -1,6 +1,6 @@
 # Desktop beta verification
 
-Current source: **0.5.0-beta.19**, verified locally on November 4, 2026. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
+Current source: **0.5.0-beta.21 local preview**, November 6, 2026. The beta.21 record below states the checks completed for this source. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
 
 Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-beta.1`; shared core source is based on `v0.4.0` with the new bridge. These are separate from the already-installed stable Web/CLI service.
 
@@ -154,3 +154,16 @@ Local verification passed **41 Node tests**, **29 focused shared-core Desktop/sy
 Screenshots: [introduction](../docs/desktop/journey/whats-new-light.png), [task brief](../docs/desktop/journey/task-brief-light.png), [ready draft](../docs/desktop/journey/task-ready-light.png), [live work](../docs/desktop/journey/task-working-light.png), [delivery](../docs/desktop/journey/delivery-light.png), [dark delivery](../docs/desktop/journey/delivery-dark.png), [narrow delivery](../docs/desktop/journey/delivery-narrow.png), [narrow dark brief](../docs/desktop/journey/task-brief-dark-narrow.png). Fixture tasks and connections are illustrative, not the user's API acceptance.
 
 This is a local beta.20 preview. Current-head Windows/Linux native acceptance, GitHub publication and real-account/OS-permission acceptance are not established by the local macOS checks. Developer ID/Authenticode signing and notarization remain excluded. The installed beta.19 app, real conversations and provider assignments were not replaced.
+
+
+## beta.21 project continuity local preview — 2026-11-06
+
+The first three continuity milestones are implemented: a user-controlled project state, a shared Desktop/Web overview and reviewed continuation into a fresh conversation. See [behavior, beginner steps and limits](project-continuity.md). This batch changes the shared core and Web as well as the native renderer. Existing project memory is kept separately; inferred/model claims do not become confirmed decisions or independently passed tests.
+
+Final local checks passed **358 Python tests** (three existing environment/platform skips), **41 Node tests**, **44 real-browser Web checks**, Ruff, JavaScript syntax and diff checks, and **all nine actual macOS ARM64 packaged suites**. The new continuity suite uses the packaged shared core, an actual Web page in an isolated Chromium window and three streamed localhost-fixture model requests. It confirms cross-client state, prior-draft retention, candidate exclusion, explicit output tracking, external-file invalidation before dispatch, concurrent-edit retention, correction/deletion propagation, Web stale-draft recovery, deliberate new-chat preparation and normal/narrow dark/light dialogs. It records no paid API calls or page errors.
+
+The state/index failure regression also verifies that a successfully saved Web or native file remains a successful save with a separate warning when project-index registration fails. State edits and continuation proofs are bound to project identity and revision; prepared continuations include current file observations. API access uses the existing authentication/origin protections. New Desktop clients require core API revision 3 and give upgrade guidance for older hosts.
+
+Screenshots: [Desktop light](../docs/desktop/continuity/desktop-project-light.png), [Desktop dark](../docs/desktop/continuity/desktop-project-dark.png), [tracked file change](../docs/desktop/continuity/desktop-file-changed.png), [retained conflict](../docs/desktop/continuity/desktop-edit-conflict.png), [Web](../docs/desktop/continuity/web-project-state.png), [narrow Web](../docs/desktop/continuity/web-project-narrow.png). All content is from isolated fixture workspaces.
+
+This is a local preview. Windows/Linux current-source native execution, public publication and real commercial-account acceptance are separate from these checks. Independent automated delivery validation and the bounded repair loop remain later milestones; recorded check notes do not claim those capabilities. Signing/notarization remains excluded. Existing installed apps, production Web services, real conversation data and saved API assignments were not replaced by these tests.

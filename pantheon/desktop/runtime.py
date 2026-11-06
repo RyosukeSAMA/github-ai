@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from pantheon import __version__
 from pantheon.core.context import HISTORY_MESSAGE_CHARACTERS, HISTORY_MESSAGES
 from pantheon.core.credentials import atomic_text
+from pantheon.core.project import ProjectConflictError
 from pantheon.core.runtime import file_mutex
 
 ACTIVE = {'queued', 'running', 'stopping'}
@@ -71,7 +72,7 @@ class DesktopRuntime:
             db.close()
 
     def identity(self, challenge: str = ''):
-        return {'api_version': 1, 'api_revision': 2, 'version': __version__, 'instance_id': self.instance_id,
+        return {'api_version': 1, 'api_revision': 3, 'version': __version__, 'instance_id': self.instance_id,
                 'workspace': str(self.workspace), 'workspace_name': self.workspace.name,
                 'challenge': challenge, 'pid': os.getpid()}
 
@@ -292,7 +293,7 @@ class DesktopRuntime:
         try:
             req = self.request_type(task=prompt, mode=item['mode'], overrides=item.get('overrides', {}), history=history,
                                     attachments=body.get('attachments', []), resume_task_id=resume_id,
-                                    acknowledge_effects=body.get('acknowledge_effects', False))
+                                    acknowledge_effects=body.get('acknowledge_effects', False), project_review=body.get('project_review'))
         except ValidationError as exc:
             raise HTTPException(400, 'Invalid task, attachment or model assignment') from exc
         run_id = uuid.uuid4().hex
@@ -303,6 +304,10 @@ class DesktopRuntime:
                 if self.run(previous['id'])['session_id'] != session_id:
                     raise HTTPException(409, 'Request ID already belongs to another task')
                 return self.run(previous['id'])
+            try:
+                self.services.project.validate_review(body.get('project_review'))
+            except ProjectConflictError as exc:
+                raise HTTPException(409, str(exc)) from exc
             if db.execute("SELECT 1 FROM runs WHERE session_id=? AND status IN ('queued','running','stopping')", (session_id,)).fetchone():
                 raise HTTPException(409, 'This conversation already has an active run')
             if db.execute("SELECT COUNT(*) FROM runs WHERE status IN ('queued','running','stopping')").fetchone()[0] >= 4:
@@ -524,7 +529,12 @@ class DesktopRuntime:
                     history.append({'path': review['path'], 'hash': digest(target.read_bytes()), 'saved_at': time.time()})
                     value.update(saved_path=review['path'], saved_versions=history[-10:], version=int(value.get('version', 1)) + 1)
                     db.execute('UPDATE artifacts SET data=? WHERE id=?', (json.dumps(value), review['artifact_id']))
-            return {'path': review['path'], 'hash': digest(target.read_bytes()), 'saved': True}
+        value = {'path': review['path'], 'hash': digest(target.read_bytes()), 'saved': True}
+        try:
+            self.services.project.record_output(path, 'Explicit Desktop reviewed save')
+        except (ValueError, OSError, sqlite3.Error):
+            value['project_state_warning'] = 'The file was saved, but its project-state reference could not be updated. Inspect Project overview.'
+        return value
 
     def git(self, *arguments):
         try:

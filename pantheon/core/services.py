@@ -11,6 +11,7 @@ from pantheon.core.extensions import MCPError, MCPManager, PluginStore, SkillSto
 from pantheon.core.media import MediaService
 from pantheon.core.memory import MemoryStore, detect_memory_candidate, normalize_memory_role
 from pantheon.core.paths import DataPaths
+from pantheon.core.project import ProjectStore
 from pantheon.core.readiness import ReadinessStore
 from pantheon.core.scheduler import ChronosScheduler
 from pantheon.core.tasks import TaskStore
@@ -19,6 +20,7 @@ from pantheon.core.tasks import TaskStore
 class WorkspaceServices:
     def __init__(self, paths: DataPaths) -> None:
         self.paths = paths
+        self.project = ProjectStore(paths.state / 'project.sqlite', paths.workspace)
         self.credentials = CredentialStore(paths.env)
         self.budget = BudgetStore(paths.state / 'budgets.sqlite')
         self.tasks = TaskStore(paths.state / 'tasks.sqlite')
@@ -75,6 +77,7 @@ class WorkspaceServices:
         hermes.media_context_provider = self.media.agent_context
         hermes.image_generator = self.media.generate_image
         hermes.memory_context_provider = self.memory_context
+        hermes.project_context_provider = self.project.context_block
         hermes.skill_context_provider = self.skills.context_block
         hermes.skill_catalog_provider = self.skills.catalog_for_roles
         hermes.skill_lookup_provider = self.skills.get

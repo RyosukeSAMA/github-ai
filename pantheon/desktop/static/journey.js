@@ -1,6 +1,7 @@
 'use strict';
 const journey={artifacts:[],artifactSession:'',artifactRun:'',request:0,brief:null};
 const journeyNotes=[
+  ['Pick up where your project left off','Review confirmed decisions, outputs and next steps across Desktop and Web.','Open project overview','project'],
   ['Your next step, within reach','What’s new and quick links make capabilities easier to find.','Explore features','features'],
   ['Start with a clearer brief','Turn a starting point into an editable goal, deliverables and acceptance criteria.','Try a task template','template'],
   ['Follow the actual work','See recorded steps, active roles and requests for approval as they happen.','Open task activity','activity'],
@@ -11,7 +12,7 @@ function featureAction(id){
   closeDialog('#whats-new-dialog');closeDialog('#feature-guide');
   if(id==='template')return (async()=>{if(!state.info?.workspace&&!await connectWorkspace())return;if(!state.selected)await newTask();return openTaskBrief('build');})();
   if(id==='activity'||id==='delivery'){if(!state.selected){toast('Choose or create a task first.');return setView('tasks');}return setTab(id==='delivery'?'result':'activity');}
-  if(id==='models')return openModels();if(id==='budgets')return openUsage();if(id==='operations')return openOperations();
+  if(id==='project')return nativeProject.open();if(id==='models')return openModels();if(id==='budgets')return openUsage();if(id==='operations')return openOperations();
   if(id==='files')return setView('files');if(id==='features')return openFeatureGuide();
   return openSystemDialog(id==='sync'?'sync':id==='backups'?'backups':'updates');
 }
@@ -24,6 +25,7 @@ function syncJourneyNotice(){let seen=false;try{seen=localStorage.getItem('panth
 function openFeatureGuide(){
   const content=$('#feature-guide-list');content.replaceChildren();
   for(const [title,text,id,needsProject] of [
+    ['Project continuity','Review shared state, tracked file changes and prepare a continuation.','project',true],
     ['Task templates','Shape a goal and decide what a useful delivery looks like.','template',true],
     ['Role models','Use one provider or mix saved connections for this conversation.','models',true],
     ['Usage and budgets','Review recorded usage and set workspace limits.','budgets',true],

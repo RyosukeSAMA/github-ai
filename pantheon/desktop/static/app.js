@@ -212,7 +212,7 @@ function workspaceUI() {
   $('#service-status').textContent=connected?(state.info.owned?'Desktop-owned local service':state.info.remote?'Remote service':'Reused local service'):'Choose a workspace';
   $('#terminal-host').textContent=state.info?.remote?'Remote project terminal':'Local project terminal';
   $('#startup-error').textContent='';
-  renderOnboarding();renderJourney();
+  renderOnboarding();renderJourney();refreshProjectOverview();
   if(state.info?.startupError&&!state.projectOpening){projectFailure(state.info.startupError);$('#startup-error').textContent='';}
   if(!connected){showWelcome();}else $('.app').classList.remove('welcome-state');
 }
@@ -438,8 +438,9 @@ async function runTask(resume) {
   state.sending=true;updateComposerState();
   try{if(!state.selected)await newTask();await flushDrafts();const prompt=resume?.prompt || $('#prompt').value.trim();if(!prompt){$('#prompt').focus();return;}
     const session=currentSession();if(session.title==='New task')await patchSession({title:prompt.split(/\r?\n/)[0].trim().slice(0,80)});
-    const request={prompt,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
-    const run=await api('/api/desktop/sessions/'+state.selected+'/runs',request);state.runs.unshift(run);$('#prompt').value='';state.detail.draft='';state.attachments.set(state.selected,[]);renderAttachments();setTab('conversation');await refresh();}
+    const projectReview=await nativeProject.checkReview(prompt);
+    const request={prompt,project_review:projectReview||undefined,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
+    const run=await api('/api/desktop/sessions/'+state.selected+'/runs',request);state.runs.unshift(run);nativeProject.clearReview();$('#prompt').value='';state.detail.draft='';state.attachments.set(state.selected,[]);renderAttachments();setTab('conversation');await refresh();}
   catch(error){if(/timeout|fetch|network/i.test(errorText(error)))notice('The send status is uncertain. Refresh task history before trying again; do not resend automatically.');throw error;}
   finally{state.sending=false;updateComposerState();}
 }
@@ -655,7 +656,7 @@ async function recoverTask(){const run=latestRun();if(!run?.task_id)return;const
 async function addAttachments(items){if(!state.selected)await newTask();const list=state.attachments.get(state.selected)||[];for(const item of items){if(list.length>=5)throw new Error('Use up to five attachments per message.');const uploaded=await api('/api/desktop/attachments',item);if(uploaded.type.startsWith('audio/')){toast('Transcribe audio in Capabilities → Media, then use the text in your task.');continue;}list.push(uploaded);}state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(item=>item.id)});renderAttachments();}
 function renderAttachments(){$('#attachment-list').replaceChildren();for(const item of state.attachments.get(state.selected)||[]){const chip=element('span','attachment-chip',item.name),remove=element('button','','×');remove.setAttribute('aria-label','Remove '+item.name);action(remove,async()=>{const list=state.attachments.get(state.selected).filter(value=>value.id!==item.id);state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(value=>value.id)});renderAttachments();});chip.append(remove);$('#attachment-list').append(chip);}}
 function bind() {
-  bindSystem();bindNavigation();bindSync();bindOperations();bindJourney();
+  bindSystem();bindNavigation();bindSync();bindOperations();bindJourney();bindProjectOverview();
   action($('#connection-state'),openConnectionPanel);action($('#connection-panel-close'),closeConnectionPanel);
   $('#connection-panel').addEventListener('toggle',event=>{$('#connection-state').setAttribute('aria-expanded',String(event.newState==='open'));});
   action($('#connection-configure'),async()=>{closeConnectionPanel();await openConnections();});
@@ -712,7 +713,7 @@ function bind() {
   action($('#reveal-project'),()=>native.reveal(''));action($('#context-reveal'),()=>native.reveal(''));action($('#reload-file'),()=>state.file?openFile(state.file.path):Promise.resolve());
   action($('#file-history'),()=>state.file?openFileHistory(state.file.path):toast('Choose a text file first.'));
   action($('#prepare-file'),async()=>{if(state.file)await prepareReview({path:state.file.path,content:$('#file-editor').value,expected_hash:state.file.hash});});
-  action($('#review-accept'),async()=>{if(!state.activeReview)return;const review=state.activeReview,value=await api('/api/desktop/reviews/'+review.id+'/accept',{});$('#review-state').textContent='Saved to '+value.path;$('#review-state').dataset.state='success';state.activeReview=null;$('#review-accept').disabled=true;if(state.file?.path===value.path){const fresh=await api('/api/desktop/file?path='+encodeURIComponent(value.path));state.file.hash=fresh.hash;if($('#file-editor').value===review.editor_content_before)$('#file-editor').value=fresh.content;await patchSession({editor_draft:{...state.file,content:$('#file-editor').value}});}toast('Reviewed changes saved.');});
+  action($('#review-accept'),async()=>{if(!state.activeReview)return;const review=state.activeReview,value=await api('/api/desktop/reviews/'+review.id+'/accept',{});$('#review-state').textContent='Saved to '+value.path;$('#review-state').dataset.state='success';state.activeReview=null;$('#review-accept').disabled=true;if(state.file?.path===value.path){const fresh=await api('/api/desktop/file?path='+encodeURIComponent(value.path));state.file.hash=fresh.hash;if($('#file-editor').value===review.editor_content_before)$('#file-editor').value=fresh.content;await patchSession({editor_draft:{...state.file,content:$('#file-editor').value}});}toast(value.project_state_warning?'File saved. '+value.project_state_warning:'Reviewed changes saved and registered in Project overview.');refreshProjectOverview();});
   action($('#review-reject'),async()=>{if(state.activeReview)await api('/api/desktop/reviews/'+state.activeReview.id+'/reject',{});state.activeReview=null;$('#review-state').textContent='Changes not applied.';$('#review-state').dataset.state='neutral';$('#review-accept').disabled=true;});
   action($('#export-archive'),async()=>{if(latestRun()?.task_id)await native.exportArchive(latestRun().task_id);});action($('#usage-open'),openUsage);action($('#resume-open'),recoverTask);action($('#task-recover'),recoverTask);
   for(const [id,approved] of [['allow-approval',true],['deny-approval',false]])action($('#'+id),async()=>{const id=$('#approval-dialog').dataset.approvalId;try{await api('/api/mcp/approvals/'+id,{approved});}finally{state.approvals.delete(id);closeDialog('#approval-dialog');}});

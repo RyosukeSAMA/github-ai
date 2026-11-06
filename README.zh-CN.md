@@ -51,7 +51,7 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 
 Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 Web 会话保存在所选工作区；浏览器还保留会话缓存和显示偏好。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
-桌面端 Beta（`0.5.0-beta.19`）：仓库现已包含英语原生客户端，支持内置 Python、持久任务、文件审阅、模型连接和本地/远程工作区。目前仍为预览版；请按[桌面端下载与系统/CPU指引](desktop/downloads.md)选择安装包。真实账号与设备验收和自动化 CI 分开记录。见[客户端说明](desktop/README.md)与[验证边界](desktop/verification.md)。下方稳定版 v0.4.0 安装命令仍对应 Web/CLI 版本。
+桌面端 Beta（`0.5.0-beta.19`）：仓库现已包含英语原生客户端，支持内置 Python、持久任务、文件审阅、模型连接和本地/远程工作区。目前仍为预览版；请按[桌面端下载与系统/CPU指引](desktop/downloads.md)选择安装包。真实账号与设备验收和自动化 CI 分开记录。见[客户端说明](desktop/README.md)与[验证边界](desktop/verification.md)。下方稳定版 v0.4.0 安装命令仍对应 Web/CLI 版本。当前源码另含 beta.21 [项目续做本地预览](desktop/project-continuity.md)，Desktop 与 Web 共用项目状态；源码功能与实际 Release 安装包分别记录。
 
 <a id="quick-start"></a>
 
