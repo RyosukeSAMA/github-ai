@@ -50,6 +50,12 @@ class OpenAIClient(BaseLLMClient):
             model or self.default_model
         )
 
+    def _chat_completion_options(self, model: str, options: dict[str, Any]) -> dict[str, Any]:
+        if self.provider_name == "ollama" and model.lower().startswith("gemma4"):
+            # Gemma 4 thinking can consume the entire connection probe budget.
+            options.setdefault("reasoning_effort", "none")
+        return options
+
     @staticmethod
     def _flatten_response_text(resp: Any) -> str:
         output_text = getattr(resp, "output_text", None)
@@ -101,7 +107,7 @@ class OpenAIClient(BaseLLMClient):
             model=target_model,
             messages=full_messages,
             temperature=temperature,
-            **kwargs,
+            **self._chat_completion_options(target_model, kwargs),
         )
         self._record_usage(target_model, resp)
         return (resp.choices[0].message.content or "").strip()
@@ -121,7 +127,8 @@ class OpenAIClient(BaseLLMClient):
             full = ([{'role':'system', 'content':system}] if system else []) + list(messages)
             options = kwargs.pop('stream_options', {})
             stream = self._get_client().chat.completions.create(model=target, messages=full,
-                temperature=temperature, stream=True, stream_options={**options, 'include_usage':True}, **kwargs)
+                temperature=temperature, stream=True, stream_options={**options, 'include_usage':True},
+                **self._chat_completion_options(target, kwargs))
         parts, final, completed = [], None, False
         try:
             for event in stream:
