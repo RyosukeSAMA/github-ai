@@ -17,6 +17,12 @@ macOS Intel, Windows ARM64 and Linux ARM64 installers are not currently publishe
 
 For macOS, **Apple menu → About This Mac** shows the chip. On Windows, **Settings → System → About → System type** shows the CPU architecture. On Linux, `uname -m` should show `x86_64` for these Linux builds.
 
+## Continue a project in beta.22
+
+Use **Project overview** to keep decisions, output files and next steps. For a small static website, **Delivery checks** records what was observed in a real browser before you accept the result. Follow the [website workflow](delivery-checks.md) or [three-session trial guide](website-trial.md).
+
+A separately installed stable Web/CLI service stays on its own version. To try the beta workflows in standalone Web/CLI, use the beta.22 source and follow the [checker setup](delivery-checks.md#browser-availability).
+
 ## Start your first task
 
 1. Launch Pantheon and choose a local project folder. Wait for the folder name and connected confirmation. The app does not copy that folder into the installer.

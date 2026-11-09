@@ -9,7 +9,7 @@
 <h1 align="center">Pantheon</h1>
 
 <p align="center">
-  <strong>A local multi-agent workspace</strong><br>
+  <strong>A local AI team that can pick up your project again</strong><br>
   Hermes plans and orchestrates while specialist gods execute.
 </p>
 
@@ -52,7 +52,17 @@ Pantheon turns a request into an observable, controllable local workflow. Use **
 
 Pantheon is local-first. Configuration, memory, scheduled jobs, and extension state stay in the selected workspace. Conversations persist locally, with a browser cache; display preferences stay in the browser. Task content is sent only to model providers and external integrations that you enable.
 
-Desktop beta (`0.5.0-beta.19`): an English native client with bundled Python, durable tasks, reviewed file changes, model connections and local/remote workspaces is included here. It remains a preview; use the [Desktop downloads and OS/CPU guide](desktop/downloads.md) to choose an installer. Real-account/device acceptance remains separate from CI. See the [Desktop guide](desktop/README.md) and [verification boundaries](desktop/verification.md). The stable v0.4.0 installer below remains the Web/CLI release. Source also includes local [project continuity](desktop/project-continuity.md) and beta.22 [checked website delivery](desktop/delivery-checks.md) previews shared by Desktop, Web and CLI; release availability is separate from the source.
+### Desktop beta.22 · Continue a project and review the delivery
+
+Choose the installer for **Apple Silicon macOS, x64 Windows or x64 Linux**. Desktop bundles Python. [Downloads and first-run instructions](desktop/downloads.md)
+
+Save decisions and open work in [Project overview](desktop/project-continuity.md). For small static websites, [Delivery checks](desktop/delivery-checks.md) records browser observations, screenshots and reviewed repairs. The task can finish, checks can pass, and you can accept the delivery separately.
+
+![Pantheon Desktop beta.22 showing an accepted website and browser evidence](docs/desktop/delivery/delivery-overview-light.png)
+
+[Web preview](docs/desktop/delivery/web-delivery.png) · [Project overview screenshot](docs/desktop/continuity/desktop-project-light.png) · [Website trial guide](desktop/website-trial.md)
+
+The stable Web/CLI one-line installer below targets v0.4.0. Project continuity and website checks are available in the beta.22 source for Web and CLI. [Website checker setup](desktop/delivery-checks.md#browser-availability)
 
 <a id="quick-start"></a>
 

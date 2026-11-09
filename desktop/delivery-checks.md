@@ -1,4 +1,4 @@
-# Checked website delivery — beta.22 local preview
+# Checked website delivery — beta.22
 
 Set success criteria, run browser checks, review repair candidates, accept the delivery and save decisions for the next task. Desktop, Web and CLI share the same records when they use the same data workspace.
 
@@ -101,4 +101,4 @@ The screenshots and verification below use isolated fixture projects, actual bro
 
 The review panels show the criteria, observed failures and accepted evidence. [Criteria](../docs/desktop/delivery/criteria-light.png), [actual failures](../docs/desktop/delivery/observed-failures.png), [candidate differences](../docs/desktop/delivery/candidate-differences.png), [accepted delivery](../docs/desktop/delivery/delivery-overview-light.png), [Web](../docs/desktop/delivery/web-delivery.png), [dark](../docs/desktop/delivery/delivery-dark.png), [narrow Desktop](../docs/desktop/delivery/delivery-narrow.png), [narrow Web](../docs/desktop/delivery/web-delivery-narrow.png), [mobile screenshot evidence](../docs/desktop/delivery/accepted-evidence-light.png).
 
-The beta.22 build is a local preview. [Verification record](verification.md)
+Use the [installer guide](downloads.md) for available beta packages and the [verification record](verification.md) for test scope.

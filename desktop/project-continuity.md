@@ -1,4 +1,4 @@
-# Continue a project — beta.21 local preview
+# Continue a project — introduced in beta.21
 
 Pantheon's first continuity milestone keeps an explicit project state beside conversations: goals, confirmed decisions, current outputs, open items and check notes. Desktop and Web use the same core, API and workspace database. The English Desktop garden themes and Web temple artwork remain unchanged.
 
@@ -30,4 +30,4 @@ Project state is limited to 128 entries; context is bounded, prioritizes goals a
 
 Screenshots: [Desktop light](../docs/desktop/continuity/desktop-project-light.png), [Desktop dark](../docs/desktop/continuity/desktop-project-dark.png), [external file change](../docs/desktop/continuity/desktop-file-changed.png), [retained conflicting edit](../docs/desktop/continuity/desktop-edit-conflict.png), [Web](../docs/desktop/continuity/web-project-state.png), [narrow Web](../docs/desktop/continuity/web-project-narrow.png).
 
-All screenshot content comes from isolated test projects and fixture models, not real user conversations or commercial account acceptance. Current local test results are recorded in [verification](verification.md). This source is a local preview; download availability is determined by actual Release assets.
+All screenshot content comes from isolated test projects and fixture models, not real user conversations or commercial account acceptance. Current local test results are recorded in [verification](verification.md). Check the [installer guide](downloads.md) for available beta packages.

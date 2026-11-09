@@ -1,4 +1,4 @@
-# A clearer task journey — beta.20 local preview
+# A clearer task journey — introduced in beta.20
 
 This preview implements the four approved experience improvements. The English interface, full-floral light/dark gardens, provider connections and shared execution core are retained. It does not add an automatic desktop-control agent or change provider assignments.
 
