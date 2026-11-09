@@ -1,6 +1,7 @@
 'use strict';
 const journey={artifacts:[],artifactSession:'',artifactRun:'',request:0,brief:null};
 const journeyNotes=[
+  ['From completed to checked','Set website criteria, inspect actual browser evidence and review bounded repair candidates.','Open delivery checks','delivery-checks'],
   ['Pick up where your project left off','Review confirmed decisions, outputs and next steps across Desktop and Web.','Open project overview','project'],
   ['Your next step, within reach','What’s new and quick links make capabilities easier to find.','Explore features','features'],
   ['Start with a clearer brief','Turn a starting point into an editable goal, deliverables and acceptance criteria.','Try a task template','template'],
@@ -12,7 +13,7 @@ function featureAction(id){
   closeDialog('#whats-new-dialog');closeDialog('#feature-guide');
   if(id==='template')return (async()=>{if(!state.info?.workspace&&!await connectWorkspace())return;if(!state.selected)await newTask();return openTaskBrief('build');})();
   if(id==='activity'||id==='delivery'){if(!state.selected){toast('Choose or create a task first.');return setView('tasks');}return setTab(id==='delivery'?'result':'activity');}
-  if(id==='project')return nativeProject.open();if(id==='models')return openModels();if(id==='budgets')return openUsage();if(id==='operations')return openOperations();
+  if(id==='delivery-checks')return desktopDelivery.open();if(id==='project')return nativeProject.open();if(id==='models')return openModels();if(id==='budgets')return openUsage();if(id==='operations')return openOperations();
   if(id==='files')return setView('files');if(id==='features')return openFeatureGuide();
   return openSystemDialog(id==='sync'?'sync':id==='backups'?'backups':'updates');
 }
@@ -25,6 +26,7 @@ function syncJourneyNotice(){let seen=false;try{seen=localStorage.getItem('panth
 function openFeatureGuide(){
   const content=$('#feature-guide-list');content.replaceChildren();
   for(const [title,text,id,needsProject] of [
+    ['Website delivery checks','Define success, inspect real evidence and review bounded repairs.','delivery-checks',true],
     ['Project continuity','Review shared state, tracked file changes and prepare a continuation.','project',true],
     ['Task templates','Shape a goal and decide what a useful delivery looks like.','template',true],
     ['Role models','Use one provider or mix saved connections for this conversation.','models',true],
@@ -84,17 +86,18 @@ function renderDelivery(){
   const panel=$('#delivery-summary'),run=latestRun();panel.hidden=!run;if(panel.hidden)return;
   const artifacts=journey.artifactSession===state.selected&&journey.artifactRun===run.id&&journey.artifactEpoch===state.epoch?journey.artifacts:[],value=JourneyData.delivery(run,state.eventCache.get(run.id)||[],artifacts,state.selected);
   const errorContext=journey.artifactErrorContext,outputError=errorContext?.session===state.selected&&errorContext?.run===run.id&&errorContext?.epoch===state.epoch?journey.artifactError:'';
-  const signature=JSON.stringify([state.selected,run.id,run.status,value,outputError]);if(panel.dataset.signature===signature)return;panel.dataset.signature=signature;panel.replaceChildren();
+  const checked=typeof desktopDelivery!=='undefined'?desktopDelivery?.summary():null;
+  const signature=JSON.stringify([state.selected,run.id,run.status,value,outputError,checked]);if(panel.dataset.signature===signature)return;panel.dataset.signature=signature;panel.replaceChildren();
   const header=element('div','journey-section-heading'),copy=element('div');copy.append(element('span','document-kicker','YOUR DELIVERY'),element('h2','',value.title),element('p','',value.successful?'Review the outcome, keep the useful work, and choose what comes next.':'Review retained work and recorded issues before continuing.'));header.append(copy);panel.append(header);
   const metrics=element('div','delivery-metrics');for(const [number,label] of [[value.completed,'Completed steps'],[value.outputs.length,'Outputs this run'],[value.saves.length,'Reviewed artifact saves']]){const item=label==='Outputs this run'?journeyButton('',()=>$('#result-artifacts').scrollIntoView({block:'start'})):element('div');if(item.tagName==='BUTTON'){item.disabled=!value.outputs.length;item.title='View this run’s outputs';}item.append(element('strong','',String(number)),element('small','',label));metrics.append(item);}panel.append(metrics);
   if(activeStatuses.has(run.status))panel.append(element('p','delivery-note','This run is still in progress. Outputs and saved state may change.'));
   if(value.steps.some(x=>x.status==='completed')){const work=element('section','delivery-completed');work.append(element('h3','','Completed work'));const list=element('ul');for(const step of value.steps.filter(x=>x.status==='completed'))list.append(element('li','',(councilRoles[step.role]?.name||step.role||'Step')+' · '+JourneyData.stepLabel(step)));work.append(list);panel.append(work);}
-  const checks=element('section','delivery-evidence');checks.append(element('h3','','Checks & open items'),element('p','',value.verification));if(value.issue)checks.append(element('p','delivery-issue',value.issue));else checks.append(element('p','',value.successful?'No execution errors are present in the loaded activity. Check the response for limitations.':'Review Full activity for the latest recorded status.'));panel.append(checks);
+  const checks=element('section','delivery-evidence');checks.append(element('h3','','Checks & open items'),element('p','',checked?'Recorded website checks: '+checked.verification+(checked.accepted?' · accepted by user':' · user acceptance pending'):value.verification),journeyButton('Open delivery checks',()=>desktopDelivery.open()));if(value.issue)checks.append(element('p','delivery-issue',value.issue));else checks.append(element('p','',value.successful?'No execution errors are present in the loaded activity. Check the response for limitations.':'Review Full activity for the latest recorded status.'));panel.append(checks);
   if(value.saves.length){const saves=element('section','delivery-saves');saves.append(element('h3','','Reviewed artifact saves'));for(const save of value.saves){const button=journeyButton(save.path,()=>openFileHistory(save.path));saves.append(button);}saves.append(element('small','','These are recorded artifact saves, not a complete project diff.'));panel.append(saves);}
   const actions=element('div','delivery-actions');actions.append(journeyButton('Continue conversation',()=>{setTab('conversation');$('#prompt').focus();},'primary'),journeyButton('Review for gaps',()=>journeyFollowup('Review the last result for gaps against the original goal and acceptance criteria. Explain unresolved points and propose the next step.')),journeyButton('Refine this result',()=>journeyFollowup('Refine the last result. The changes I want are: ')),journeyButton('Full activity',()=>setTab('activity')));for(const b of actions.querySelectorAll('button'))b.disabled=!!activeRun();panel.append(actions);
   if(outputError){const error=element('p','delivery-issue','Outputs could not be refreshed. '+outputError+' ');error.append(journeyButton('Retry outputs',loadResultArtifacts));panel.append(error);}
 }
-function renderJourney(){syncJourneyNotice();renderJourneyReadiness();renderJourneyProgress();renderDelivery();}
+function renderJourney(){if(typeof desktopDelivery!=='undefined')desktopDelivery?.contextChanged();syncJourneyNotice();renderJourneyReadiness();renderJourneyProgress();renderDelivery();}
 function bindJourney(){
   action($('#journey-open-run'),()=>{const run=latestRun();setTab(activeStatuses.has(run?.status)?'conversation':'result');if(activeStatuses.has(run?.status))$('.content-scroll').scrollTop=0;});action($('#whats-new-open'),openWhatsNew);action($('#whats-new-dismiss'),markJourneyRead);action($('#whats-new-done'),markJourneyRead);action($('#feature-guide-open'),openFeatureGuide);action($('#task-template-open'),()=>openTaskBrief('build'));
   $('#brief-form').onsubmit=event=>{event.preventDefault();applyTaskBrief().catch(error=>{$('#brief-feedback').textContent=errorText(error);});};

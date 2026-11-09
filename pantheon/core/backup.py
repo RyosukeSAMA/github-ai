@@ -15,7 +15,7 @@ from pantheon.core.runtime import RuntimeLease, maintenance_lease
 from pantheon.core.tasks import TaskStore
 
 MAX_BYTES = 512 * 1024 * 1024
-EPHEMERAL = {'runtime.lock', 'maintenance.lock', 'desktop-runtime.json', 'desktop-sessions.lock', 'desktop-writes.lock'}
+EPHEMERAL = {'runtime.lock', 'maintenance.lock', 'desktop-runtime.json', 'desktop-sessions.lock', 'desktop-writes.lock', 'delivery.lock'}
 
 
 def _copy_database(source: Path, target: Path) -> None:

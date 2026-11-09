@@ -43,6 +43,7 @@ class Hermes:
         self.memory_context_provider: Any = None
         self.project_context_provider: Any = None
         self.active_project_context = ''
+        self.active_acceptance_context = ''
         self.skill_context_provider: Any = None
         self.skill_catalog_provider: Any = None
         self.skill_lookup_provider: Any = None
@@ -65,13 +66,14 @@ class Hermes:
         try:
             if store is not None:
                 store.start(task.task_id, task.content, task.mode)
-                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill, 'attachments': task.attachments, 'history': task.history},
+                store.update_checkpoint(task.task_id, task={'content': task.content, 'mode': task.mode, 'skill': task.skill, 'attachments': task.attachments, 'history': task.history, 'acceptance': task.acceptance},
                                         steps=(resume_checkpoint or {}).get('steps', {}), phase='planning')
         except Exception:
             self.active_task_id = None
             TASK_ID.reset(budget_token)
             raise
         try:
+            self.active_acceptance_context = task.acceptance
             self.active_project_context = self.project_context_provider(task.content, 'hermes') if callable(self.project_context_provider) else ''
             if task.attachments:
                 self._checkpoint()
@@ -111,6 +113,7 @@ class Hermes:
         finally:
             self.active_task_id = None
             self.active_project_context = ''
+            self.active_acceptance_context = ''
             TASK_ID.reset(budget_token)
 
     def _dispatch(
@@ -824,6 +827,8 @@ Workflow rules:
                 memories = list(details)
             if provider_kind == "skill" and details:
                 skills = list(details)
+        if self.active_acceptance_context:
+            blocks.append(self.active_acceptance_context)
         if self.active_project_context:
             blocks.append(self.active_project_context)
         if not blocks:

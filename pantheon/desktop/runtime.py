@@ -72,7 +72,7 @@ class DesktopRuntime:
             db.close()
 
     def identity(self, challenge: str = ''):
-        return {'api_version': 1, 'api_revision': 3, 'version': __version__, 'instance_id': self.instance_id,
+        return {'api_version': 1, 'api_revision': 4, 'version': __version__, 'instance_id': self.instance_id,
                 'workspace': str(self.workspace), 'workspace_name': self.workspace.name,
                 'challenge': challenge, 'pid': os.getpid()}
 
@@ -293,7 +293,7 @@ class DesktopRuntime:
         try:
             req = self.request_type(task=prompt, mode=item['mode'], overrides=item.get('overrides', {}), history=history,
                                     attachments=body.get('attachments', []), resume_task_id=resume_id,
-                                    acknowledge_effects=body.get('acknowledge_effects', False), project_review=body.get('project_review'))
+                                    acknowledge_effects=body.get('acknowledge_effects', False), project_review=body.get('project_review'), delivery_contract=body.get('delivery_contract'))
         except ValidationError as exc:
             raise HTTPException(400, 'Invalid task, attachment or model assignment') from exc
         run_id = uuid.uuid4().hex
@@ -306,6 +306,7 @@ class DesktopRuntime:
                 return self.run(previous['id'])
             try:
                 self.services.project.validate_review(body.get('project_review'))
+                self.services.delivery.acceptance_context(body.get('delivery_contract'))
             except ProjectConflictError as exc:
                 raise HTTPException(409, str(exc)) from exc
             if db.execute("SELECT 1 FROM runs WHERE session_id=? AND status IN ('queued','running','stopping')", (session_id,)).fetchone():

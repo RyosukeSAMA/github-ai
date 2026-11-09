@@ -68,7 +68,7 @@ class ProjectStore:
             raise ValueError('Use a normalized project-relative file path.')
         return path.parts
 
-    def observe(self, raw):
+    def observe(self, raw, *, include_content=False):
         """Hash only a bounded, explicitly tracked regular file; never return contents."""
         parts = self.safe_parts(raw)
         handles = []
@@ -94,19 +94,22 @@ class ProjectStore:
             if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE:
                 raise ValueError('Track a regular file up to 4 MB.')
             digest = hashlib.sha256()
+            chunks = []
             remaining = MAX_FILE + 1
             while remaining:
                 chunk = os.read(fd, min(65536, remaining))
                 if not chunk:
                     break
                 digest.update(chunk)
+                if include_content:
+                    chunks.append(chunk)
                 remaining -= len(chunk)
             after = os.fstat(fd)
             if not remaining or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
                 raise ValueError('File changed while being inspected. Check again.')
             if os.name == 'nt' and (target.is_symlink() or not target.resolve().is_relative_to(self.workspace)):
                 raise ValueError('File location changed while inspecting.')
-            return {'hash': digest.hexdigest(), 'bytes': after.st_size}
+            return {'hash': digest.hexdigest(), 'bytes': after.st_size, **({'content': b''.join(chunks)} if include_content else {})}
         finally:
             for fd in reversed(handles):
                 os.close(fd)
@@ -231,3 +234,88 @@ class ProjectStore:
                 'Compare tracked file observations with the saved version. Changed, missing or unavailable files need inspection. '
                 'Check notes are user reports, not independently passed tests. Ordinary memory and prior assistant text may be outdated.\n'
                 + text)
+
+
+    def apply_handoff(self, values, revision, project_id, reference):
+        if not isinstance(values, list) or len(values) > 24:
+            raise ValueError('Choose at most 24 project updates.')
+        prepared = []
+        for value in values:
+            kind, text = value.get('kind'), str(value.get('text', '')).strip()
+            if kind not in KINDS or not text or len(text) > 4000:
+                raise ValueError('Choose valid project updates with 1–4000 characters.')
+            path = value.get('file_path', '') if kind == 'output' else ''
+            baseline = self.observe(path)['hash'] if path else ''
+            prepared.append((uuid.uuid4().hex, kind, text, DEFAULTS[kind] if kind != 'decision' else 'confirmed',
+                             'user', reference[:300], path, baseline, '', time.time(), time.time()))
+        with self.db() as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            self._expect(db, revision, project_id)
+            db.execute('CREATE TABLE IF NOT EXISTS project_handoffs (reference TEXT PRIMARY KEY)')
+            if db.execute('SELECT 1 FROM project_handoffs WHERE reference=?', (reference,)).fetchone():
+                raise ProjectConflictError('This delivery handoff was already applied. Refresh Project overview.')
+            db.execute('INSERT INTO project_handoffs VALUES(?)', (reference,))
+            for item in prepared:
+                if item[1] == 'output' and item[6]:
+                    previous = db.execute("SELECT id,created FROM project_entries WHERE kind='output' AND status='current' AND file_path=?", (item[6],)).fetchone()
+                    if previous:
+                        item = (previous['id'], *item[1:9], previous['created'], item[10])
+                db.execute('INSERT OR REPLACE INTO project_entries VALUES(?,?,?,?,?,?,?,?,?,?,?)', item)
+            if db.execute('SELECT COUNT(*) FROM project_entries').fetchone()[0] > 128:
+                raise ValueError('Remove obsolete project entries before adding these updates.')
+            if prepared:
+                self._bump(db)
+        return self.snapshot()
+
+
+    def write_reviewed(self, raw, text, expected_hash):
+        """Replace an existing reviewed file, anchored to non-symlink parent directories."""
+        parts = self.safe_parts(raw)
+        if os.name == 'nt':
+            from pantheon.core.credentials import atomic_text
+            seen = self.observe(raw)
+            if seen['hash'] != expected_hash:
+                raise ProjectConflictError('File changed during review. Reload before applying.')
+            target = self.workspace.joinpath(*parts)
+            mode = target.stat().st_mode & 0o777
+            if not target.resolve().is_relative_to(self.workspace):
+                raise ValueError('File location changed during review.')
+            atomic_text(target, text, newline='')
+            os.chmod(target, mode)
+            return
+        handles, temporary = [], None
+        try:
+            directory = os.open(self.workspace, os.O_RDONLY | os.O_DIRECTORY)
+            handles.append(directory)
+            for part in parts[:-1]:
+                directory = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+                handles.append(directory)
+            source = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+            handles.append(source)
+            before = os.fstat(source)
+            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE:
+                raise ValueError('Review a bounded regular file before writing.')
+            digest = hashlib.sha256()
+            remaining = MAX_FILE + 1
+            while remaining:
+                block = os.read(source, min(65536, remaining))
+                if not block:
+                    break
+                digest.update(block)
+                remaining -= len(block)
+            if not remaining or digest.hexdigest() != expected_hash:
+                raise ProjectConflictError('File changed during review. Reload before applying.')
+            temporary = '.delivery-'+uuid.uuid4().hex
+            fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, before.st_mode & 0o777, dir_fd=directory)
+            os.fchmod(fd, before.st_mode & 0o777)
+            with os.fdopen(fd, 'wb') as output:
+                output.write(text.encode('utf8'))
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, parts[-1], src_dir_fd=directory, dst_dir_fd=directory)
+            temporary = None
+        finally:
+            if temporary is not None:
+                os.unlink(temporary, dir_fd=directory)
+            for fd in reversed(handles):
+                os.close(fd)

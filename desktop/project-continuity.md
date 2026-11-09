@@ -24,7 +24,7 @@ Concurrent saves use project identity and revision checks. A conflicting edit ke
 
 ## Verification boundaries
 
-Check notes are **user reports**, never independently passed checks. “File matches registered version” and “task execution completed” do not imply that a website works, a script passed tests or a delivery was accepted. Automated evidence collection and a bounded check/repair cycle remain later milestones.
+Check notes are **user reports**, never independently passed checks. “File matches registered version” and “task execution completed” do not imply that a website works, a script passed tests or a delivery was accepted. At the beta.21 milestone, automated evidence collection and a bounded check/repair cycle were still pending; the subsequent [beta.22 website delivery milestone](delivery-checks.md) adds them for small static websites.
 
 Project state is limited to 128 entries; context is bounded, prioritizes goals and confirmed decisions, and marks omissions. Ordinary memory notes and generated answers are not automatically promoted to confirmed decisions. Project state is included in existing workspace backups; registered output file contents still require the normal project-file backup.
 

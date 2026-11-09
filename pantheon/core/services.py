@@ -7,6 +7,7 @@ from typing import Any
 from pantheon.core.budgets import BudgetStore
 from pantheon.core.channels import ChannelStore
 from pantheon.core.credentials import CredentialStore
+from pantheon.core.delivery import DeliveryStore
 from pantheon.core.extensions import MCPError, MCPManager, PluginStore, SkillStore
 from pantheon.core.media import MediaService
 from pantheon.core.memory import MemoryStore, detect_memory_candidate, normalize_memory_role
@@ -21,6 +22,7 @@ class WorkspaceServices:
     def __init__(self, paths: DataPaths) -> None:
         self.paths = paths
         self.project = ProjectStore(paths.state / 'project.sqlite', paths.workspace)
+        self.delivery = DeliveryStore(self)
         self.credentials = CredentialStore(paths.env)
         self.budget = BudgetStore(paths.state / 'budgets.sqlite')
         self.tasks = TaskStore(paths.state / 'tasks.sqlite')

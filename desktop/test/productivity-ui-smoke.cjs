@@ -53,7 +53,16 @@ async function main(){
     await page.locator('.model-plans summary').click();await page.locator('#model-rating-rows [data-key="deepseek/deepseek-flash"] [data-field=quality]').fill('4');await page.locator('.model-plans').getByRole('button',{name:'Save my ratings'}).click();await expect(page.locator('#model-plan-feedback')).toContainText('Assignments are unchanged');
     await page.locator('.model-plans').getByRole('button',{name:'Compare plans',exact:true}).click();await expect(page.locator('#model-plan-results [data-plan=cost]')).toContainText('No eligible model');
     await page.locator('#plan-verified-only').uncheck();await page.locator('.model-plans').getByRole('button',{name:'Compare plans',exact:true}).click();await expect(page.locator('#model-plan-results [data-plan=cost]')).toContainText('deepseek-flash');await expect(page.locator('#model-plan-results [data-plan=quality]')).toContainText('4/5');await shot('model-plans');
-    const before=await page.evaluate(()=>window.pantheonDesktop.api('/api/desktop/sessions/'+state.selected));await page.locator('#model-plan-results [data-plan=cost]').getByRole('button',{name:'Review assignment'}).click();await expect(page.locator('#model-plan-note')).toContainText('No assignments saved');const unchanged=await page.evaluate(()=>window.pantheonDesktop.api('/api/desktop/sessions/'+state.selected));assert.deepEqual(unchanged.overrides,before.overrides);await page.locator('#save-models').click();const applied=await page.evaluate(()=>window.pantheonDesktop.api('/api/desktop/sessions/'+state.selected));assert.equal(applied.overrides.athena.model,'deepseek-flash');
+    const readSession = () => page.evaluate(() => window.pantheonDesktop.api('/api/desktop/sessions/' + state.selected));
+    const before = await readSession();
+    await page.locator('#model-plan-results [data-plan=cost]').getByRole('button', {name: 'Review assignment'}).click();
+    await expect(page.locator('#model-plan-note')).toContainText('No assignments saved');
+    const unchanged = await readSession();
+    assert.deepEqual(unchanged.overrides, before.overrides);
+    await page.locator('#save-models').click();
+    await expect(page.locator('#models-dialog')).toBeHidden();
+    const applied = await readSession();
+    assert.equal(applied.overrides.athena.model, 'deepseek-flash');
     assert.deepEqual(errors,[]);await app.close();assert.equal(child.exitCode,0);progress.finish(true);await fs.writeFile(path.join(evidence,'result.json'),JSON.stringify({passed:true,packaged:!!process.env.PANTHEON_TEST_EXECUTABLE,page_errors:errors,paid_api_calls:0,checks:['project-aware commands','keyboard navigation','loading/empty/error/retry','System and explicit themes','private local diagnostics','validated budget forms','version compare and reviewed restoration','explicit model plan application']},null,2));console.log('PRODUCTIVITY_UI_PASS: search, System theme, help and private diagnostics; no paid APIs');
   }finally{if(child.exitCode===null)await app.close().catch(()=>child.kill('SIGKILL'));progress.finish(false);}
 }

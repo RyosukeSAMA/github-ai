@@ -2,6 +2,14 @@
 
 All notable changes to Pantheon are documented in this file.
 
+## Unreleased — Checked website delivery (Desktop beta.22, Web and CLI)
+
+- Add versioned user-reviewed website criteria and inject the accepted snapshot into task planning/execution. Preserve existing positional Task arguments and keep running tasks on their original criteria.
+- Run actual desktop/mobile browser checks against bounded approved file snapshots, with screenshots, interaction outcomes, overflow and uncaught page-error observations. Keep missing browsers and blocked dependencies unverified.
+- Offer up to two explicitly approved text-only coding-model repair requests with cumulative budget accounting and current-task model overrides. Recheck candidates before a separate hash-guarded, reviewed apply; retain evidence when stopped, limited or interrupted.
+- Separate execution, current automated verification and user acceptance. Invalidate prior acceptance when files/criteria change. Add reviewed, revision-checked project handoff and CLI summaries/full report access.
+- Preserve Web drafts/attachments through both preflight and server-side criteria conflicts, show a checking state, and retain edited criteria on concurrent-save conflicts.
+
 ## Unreleased — Project continuity (Desktop beta.21 and Web)
 
 - Add revisioned project goals, candidate/confirmed/superseded decisions, current outputs, todos and explicitly unverified check notes. New dispatches share a bounded current-state snapshot across planning and role execution; ordinary memory and prior model summaries are not promoted to confirmed decisions.

@@ -509,7 +509,8 @@ def test_media_upload_and_transcript_prepare_without_sending(page: Page, live_se
     expect(page.locator('#composer-attachments')).to_contain_text('vision model reads on Send')
     assert not requests
     page.locator('#input').fill('Summarize the PDF')
-    page.locator('#send-btn').click()
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
     expect(page.locator('#send-btn')).not_to_be_disabled()
     assert requests[0]['attachments'] == [media_id]
     page.locator('#toggle-settings').click()
@@ -565,7 +566,8 @@ def test_followup_context_and_reply_provenance_survive_model_switch_and_reload(p
     page.goto(live_server_url, wait_until="networkidle")
     page.locator("#new-chat-btn").click()
     page.locator('#input').fill('Write function ORCHID_917 to add integers')
-    page.locator('#send-btn').click()
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
     answer = page.locator('#chat [data-role="hephaestus"]').first
     expect(answer).to_have_attribute('data-status', 'done')
     expect(page.locator('#send-btn')).to_contain_text('Send')
@@ -580,7 +582,8 @@ def test_followup_context_and_reply_provenance_survive_model_switch_and_reload(p
     expect(answer).to_have_attribute('data-provider', 'deepseek')
     expect(answer).to_have_attribute('data-task-id', 'original-task')
     page.locator('#input').fill('Change the previous function to subtract')
-    page.locator('#send-btn').click()
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
     expect(page.locator('#chat [data-role="hephaestus"]')).to_have_count(2)
     expect(page.locator('#send-btn')).to_contain_text('Send')
     assert requests[1]['history'] == [
@@ -589,7 +592,8 @@ def test_followup_context_and_reply_provenance_survive_model_switch_and_reload(p
     ]
     page.locator('#new-chat-btn').click()
     page.locator('#input').fill('A separate chat')
-    page.locator('#send-btn').click()
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
     expect(page.locator('#send-btn')).to_contain_text('Send')
     assert requests[2]['history'] == []
 
@@ -667,7 +671,8 @@ def test_legacy_model_unknown_and_long_history_remains_bounded(page: Page, live_
     expect(page.locator('#info-conversation-status')).to_contain_text('conversations saved')
     expect(page.locator('#chat-list .chat-row-title').filter(has_text='Conflict copy:')).to_have_count(0)
     page.locator('#input').fill('Continue the previous answer')
-    page.locator('#send-btn').click()
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
     expect(page.locator('#send-btn')).to_contain_text('Send')
     history = requests[0]['history']
     assert len(history) <= 16

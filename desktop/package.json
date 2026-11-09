@@ -1,6 +1,6 @@
 {
   "name": "pantheon-desktop",
-  "version": "0.5.0-beta.21",
+  "version": "0.5.0-beta.22",
   "private": true,
   "description": "Pantheon local multi-role workspace",
   "homepage": "https://github.com/RyosukeSAMA/github-ai",
@@ -21,7 +21,8 @@
     "test:sync": "node test/sync-ui-smoke.cjs",
     "test:operations": "node test/operations-ui-smoke.cjs",
     "test:journey": "node test/journey-ui-smoke.cjs",
-    "test:project": "node test/project-ui-smoke.cjs"
+    "test:project": "node test/project-ui-smoke.cjs",
+    "test:delivery": "node test/delivery-ui-smoke.cjs"
   },
   "devDependencies": {
     "electron": "44.9.1",

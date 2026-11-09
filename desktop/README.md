@@ -10,6 +10,10 @@ Top-bar **Connection status** opens a non-modal panel separating project-service
 
 Toolbar previews: [Light](../docs/desktop/toolbar-status-light.png) · [Dark](../docs/desktop/toolbar-status-dark.png) · [Narrow](../docs/desktop/toolbar-status-narrow.png). The screenshots use isolated fixture connections and do not show the user's real API status.
 
+## beta.22 checked website delivery
+
+The local preview adds reviewed website criteria, actual desktop/mobile browser evidence, up to two approved text-only repair requests, hash-guarded candidate application, separate user acceptance and a reviewed project handoff across Desktop, Web and CLI. See [website delivery workflow, limits and CLI commands](delivery-checks.md).
+
 ## beta.21 project continuity
 
 The local preview adds a shared **Project overview** to Desktop and Web: user-controlled goals, decisions, outputs and next steps, tracked file observations and a reviewed continuation into a new conversation. Existing drafts remain intact. See [project continuity behavior and limits](project-continuity.md).

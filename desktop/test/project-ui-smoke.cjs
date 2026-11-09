@@ -11,7 +11,7 @@ async function main(){
   const app=await electron.launch({executablePath:process.env.PANTHEON_TEST_EXECUTABLE||require('electron'),args:process.env.PANTHEON_TEST_EXECUTABLE?['-r',loader]:[path.join(repo,'desktop')],env}),child=app.process();
   const progress=smokeProgress('project-ui',evidence,smokeTimeout(240000),()=>child.kill('SIGKILL')),page=await app.firstWindow(),errors=[];let browser;
   page.on('pageerror',e=>errors.push('Desktop: '+e.message));page.setDefaultTimeout(20000);
-  const shot=async(p,name)=>{if(await p.locator('#project-overview-dialog').isVisible())await p.locator('.project-overview-body').evaluate(e=>e.scrollTop=0);await p.mouse.move(4,70);await p.screenshot({path:path.join(evidence,name+'.png'),animations:'disabled',scale:'css'});};
+  const shot=async(p,name)=>{if(await p.locator('#project-overview-dialog').isVisible())await p.locator('#project-overview-dialog .project-overview-body').evaluate(e=>e.scrollTop=0);await p.mouse.move(4,70);await p.screenshot({path:path.join(evidence,name+'.png'),animations:'disabled',scale:'css'});};
   const nativeAPI=(target,body,method)=>page.evaluate(async({target,body,method})=>window.pantheonDesktop.api(target,{method:method||(body===undefined?'GET':'POST'),...(body===undefined?{}:{body})}),{target,body,method});
   async function entry(p,kind,text,status){await p.getByRole('button',{name:'Add project entry',exact:true}).click();await p.locator('#project-entry-editor select').first().selectOption(kind);await p.locator('#project-entry-text').fill(text);if(status)await p.locator('#project-entry-state').selectOption(status);await p.locator('#project-entry-save').click();await expect(p.locator('#project-entry-editor')).not.toBeVisible();}
   try{

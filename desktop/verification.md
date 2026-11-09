@@ -1,6 +1,6 @@
 # Desktop beta verification
 
-Current source: **0.5.0-beta.21 local preview**, November 6, 2026. The beta.21 record below states the checks completed for this source. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
+Current source is **0.5.0-beta.22 local preview**, verified November 9, 2026. The beta.22 record below states the checks completed for this source. Current instructions are in [downloads and recovery](downloads.md). Versioned paragraphs below are historical records, not claims that the newest source is already published.
 
 Validation date: 2026-10-21 (Asia/Singapore). Desktop package version: `0.5.0-beta.1`; shared core source is based on `v0.4.0` with the new bridge. These are separate from the already-installed stable Web/CLI service.
 
@@ -167,3 +167,11 @@ The state/index failure regression also verifies that a successfully saved Web o
 Screenshots: [Desktop light](../docs/desktop/continuity/desktop-project-light.png), [Desktop dark](../docs/desktop/continuity/desktop-project-dark.png), [tracked file change](../docs/desktop/continuity/desktop-file-changed.png), [retained conflict](../docs/desktop/continuity/desktop-edit-conflict.png), [Web](../docs/desktop/continuity/web-project-state.png), [narrow Web](../docs/desktop/continuity/web-project-narrow.png). All content is from isolated fixture workspaces.
 
 This is a local preview. Windows/Linux current-source native execution, public publication and real commercial-account acceptance are separate from these checks. Independent automated delivery validation and the bounded repair loop remain later milestones; recorded check notes do not claim those capabilities. Signing/notarization remains excluded. Existing installed apps, production Web services, real conversation data and saved API assignments were not replaced by these tests.
+
+## beta.22 checked website delivery local preview — 2026-11-09
+
+Desktop, Web and CLI share versioned website criteria and browser evidence. The delivery workflow covers editable goals, actual desktop and mobile observations, up to two explicitly authorized repair requests, reviewed file changes, user acceptance and a project handoff. Changes to files, criteria or the reviewed project state invalidate the affected evidence or repair candidate. [Delivery guide](delivery-checks.md)
+
+Local checks passed 370 Python tests with three platform or environment skips, 41 Node tests and 45 browser Web checks. All ten macOS ARM64 packaged suites passed. The delivery suite also passed on the final build after the acceptance copy correction. A separate CLI run observed a broken button, passed seven browser checks after the file was corrected and marked the prior record stale. The packaged repair test used one localhost model fixture request and zero paid API requests.
+
+The evidence covers small static websites in local desktop and mobile browser viewports. The installer targets Apple Silicon Macs. [Accepted delivery](../docs/desktop/delivery/delivery-overview-light.png) · [Candidate differences](../docs/desktop/delivery/candidate-differences.png) · [Web](../docs/desktop/delivery/web-delivery.png)

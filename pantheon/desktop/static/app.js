@@ -439,7 +439,8 @@ async function runTask(resume) {
   try{if(!state.selected)await newTask();await flushDrafts();const prompt=resume?.prompt || $('#prompt').value.trim();if(!prompt){$('#prompt').focus();return;}
     const session=currentSession();if(session.title==='New task')await patchSession({title:prompt.split(/\r?\n/)[0].trim().slice(0,80)});
     const projectReview=await nativeProject.checkReview(prompt);
-    const request={prompt,project_review:projectReview||undefined,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
+    const deliveryContract=await desktopDelivery.prepareRequest();
+    const request={prompt,delivery_contract:deliveryContract||undefined,project_review:projectReview||undefined,request_id:crypto.randomUUID(),expected_version:currentSession().desktop_version||0,attachments:(state.attachments.get(state.selected)||[]).map(item=>item.id),...(resume?{resume_task_id:resume.id,acknowledge_effects:resume.ack}: {})};
     const run=await api('/api/desktop/sessions/'+state.selected+'/runs',request);state.runs.unshift(run);nativeProject.clearReview();$('#prompt').value='';state.detail.draft='';state.attachments.set(state.selected,[]);renderAttachments();setTab('conversation');await refresh();}
   catch(error){if(/timeout|fetch|network/i.test(errorText(error)))notice('The send status is uncertain. Refresh task history before trying again; do not resend automatically.');throw error;}
   finally{state.sending=false;updateComposerState();}
@@ -656,7 +657,7 @@ async function recoverTask(){const run=latestRun();if(!run?.task_id)return;const
 async function addAttachments(items){if(!state.selected)await newTask();const list=state.attachments.get(state.selected)||[];for(const item of items){if(list.length>=5)throw new Error('Use up to five attachments per message.');const uploaded=await api('/api/desktop/attachments',item);if(uploaded.type.startsWith('audio/')){toast('Transcribe audio in Capabilities → Media, then use the text in your task.');continue;}list.push(uploaded);}state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(item=>item.id)});renderAttachments();}
 function renderAttachments(){$('#attachment-list').replaceChildren();for(const item of state.attachments.get(state.selected)||[]){const chip=element('span','attachment-chip',item.name),remove=element('button','','×');remove.setAttribute('aria-label','Remove '+item.name);action(remove,async()=>{const list=state.attachments.get(state.selected).filter(value=>value.id!==item.id);state.attachments.set(state.selected,list);await patchSession({attachment_draft:list.map(value=>value.id)});renderAttachments();});chip.append(remove);$('#attachment-list').append(chip);}}
 function bind() {
-  bindSystem();bindNavigation();bindSync();bindOperations();bindJourney();bindProjectOverview();
+  bindSystem();bindNavigation();bindSync();bindOperations();bindJourney();bindProjectOverview();bindDeliveryChecks();
   action($('#connection-state'),openConnectionPanel);action($('#connection-panel-close'),closeConnectionPanel);
   $('#connection-panel').addEventListener('toggle',event=>{$('#connection-state').setAttribute('aria-expanded',String(event.newState==='open'));});
   action($('#connection-configure'),async()=>{closeConnectionPanel();await openConnections();});

@@ -329,3 +329,12 @@ DeepSeek/OpenAI/Anthropic 图标用于识别连接；Ollama 图标识别运行�
 在 **Continue this project** 写下本次目标，再点 **Prepare new task**：只新建会话并准备草稿，之前未发送的草稿会保留，不会自动调用模型。之后仍由你确认发送。文件或项目状态变化后，先重新查看概览，再用 **Review current draft** 确认当前草稿。
 
 **Accept current file version** 只更新已登记文件的哈希基线；“文件未变化”“任务执行完成”“独立测试通过”是不同的状态。检查说明始终是用户报告，不会显示为独立验收通过。两端需要连接同一个工作区/服务才能共享数据；不同电脑上的独立文件夹不会自动同步。完整边界见[项目续做说明](../../desktop/project-continuity.md)。
+
+
+## beta.22 本地预览：网站验收、修复和交接
+
+左侧 **Delivery checks** 打开网站交付流程。先填写目标、HTML 入口文件和所需输出文件，保存 **Save criteria**；模型生成后先审阅保存文件，再用 **Run checks** 对实际文件做浏览器检查，此操作不调用模型。可选交互检查用于点击指定按钮并核对可见结果。
+
+**Check & propose repairs** 需要你授权，最多调用当前任务的编码角色模型两轮，可能产生费用，并发送已列出的文本文件和失败检查详情。修复先保留为候选版本并复检，不自动改动项目。通过 **Review candidate differences → Apply reviewed candidate** 审阅并应用，随后才能针对当前文件版本确认 **Accept delivery**。人工作品要求需要另行确认。
+
+最后审阅 **Prepare the next handoff** 中的决定、待办、检查说明和成果引用，按 **Confirm project updates** 才写入项目状态。文件或标准变化后，之前的验收会失效；模型声称“测试通过”不会变成绿色检查。首次支持小型静态网站，不能代替后端、支付、登录或线上系统验收。详见[完整流程及 CLI 对应命令](../../desktop/delivery-checks.md)。

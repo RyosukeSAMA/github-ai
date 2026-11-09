@@ -40,6 +40,7 @@ from pantheon.core.connections import (
 )
 from pantheon.core.context import HISTORY_MESSAGE_CHARACTERS, HISTORY_MESSAGES
 from pantheon.core.credentials import CredentialError, atomic_text
+from pantheon.core.delivery import DeliveryRef
 from pantheon.core.extensions import (
     EXTENSION_ROLES,
     MCPError,
@@ -64,6 +65,7 @@ from pantheon.core.usage import UsageStore
 from pantheon.llm import get_llm_client
 from pantheon.llm.openai_client import is_responses_api_model
 from pantheon.web.conversations import ConversationStore
+from pantheon.web.delivery_api import install_delivery_routes
 from pantheon.web.model_catalog import (
     ModelDiscoveryError,
     discover_documented_models,
@@ -101,6 +103,7 @@ class AskRequest(BaseModel):
     task: str
     user_task: str | None = None
     project_review: ProjectReview | None = None
+    delivery_contract: DeliveryRef | None = None
     mode: str = "auto"          # "auto" | "role:<name>" | "multi"
     role: str | None = None     # convenience: --role foo → mode = "role:foo"
     skill: str | None = None    # optional explicit installed skill id
@@ -587,6 +590,10 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                 model_catalog_runner["task"] = asyncio.create_task(model_catalog_loop())
             yield
         finally:
+            for identity in list(getattr(_app.state, 'delivery_jobs', {})):
+                workspace_services.delivery.stop(identity)
+            if getattr(_app.state, 'delivery_jobs', {}):
+                await asyncio.wait(list(_app.state.delivery_jobs.values()), timeout=5)
             await desktop_holder["runtime"].close()
             channel_cancel.set()
             runner_tasks = [
@@ -909,11 +916,12 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         overrides: dict[str, dict[str, str]] | None = None,
         attachments: list[str] | None = None,
         history: list[dict[str, str]] | None = None,
+        acceptance: str = '',
     ) -> dict[str, Any]:
         p = request_pantheon(overrides)
         result = p.ask(content, mode=mode, skill=skill,
                        **({'attachments': attachments} if attachments else {}),
-                       **({'history': history} if history else {}))
+                       **({'history': history} if history else {}), **({'acceptance': acceptance} if acceptance else {}))
         result["memory_matches"] = result.get("memory_matches", [])
         result["skill_matches"] = result.get("skill_matches", [])
         maybe_auto_capture_memory(content, result, mode)
@@ -3007,12 +3015,13 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     def check_project_review(req):
         try:
             workspace_services.project.validate_review(req.project_review.model_dump() if req.project_review else None)
+            return workspace_services.delivery.acceptance_context(req.delivery_contract.model_dump() if req.delivery_contract else None)
         except ProjectConflictError as exc:
             raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/ask")
     async def ask(req: AskRequest) -> JSONResponse:
-        check_project_review(req)
+        acceptance = check_project_review(req)
         try:
             get_pantheon()
         except Exception as e:
@@ -3026,7 +3035,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
         try:
             result = await asyncio.to_thread(
                 ask_with_memory, req.task, mode=mode, skill=req.skill, overrides=req.overrides,
-                attachments=req.attachments, history=[item.model_dump() for item in req.history]
+                attachments=req.attachments, history=[item.model_dump() for item in req.history], acceptance=acceptance
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"ask failed: {e}") from e
@@ -3111,7 +3120,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
           event: error
           data: {"message": "..."}
         """
-        check_project_review(req)
+        acceptance = check_project_review(req)
         try:
             p = request_pantheon(req.overrides)
         except Exception as e:
@@ -3136,7 +3145,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
                     from pantheon.core.base import Task
                     workspace_services.media.validate_attachments(req.attachments)
                     task = Task(content=req.task, mode=mode, skill=req.skill, attachments=req.attachments,
-                                history=[item.model_dump() for item in req.history])
+                                history=[item.model_dump() for item in req.history], acceptance=acceptance)
                     emit("start", {
                         "task_id": None if req.resume_task_id else task.task_id,
                         "task": req.task,
@@ -3641,6 +3650,7 @@ def create_app(config_path: str | None = None, bind_host: str = "127.0.0.1", bin
     desktop_holder["runtime"] = desktop
     app.state.desktop = desktop
     app.state.workspace_services = workspace_services
+    install_delivery_routes(app, workspace_services, lambda overrides: request_pantheon(overrides))
     desktop.setup_status = setup_status_payload
     install_routes(app, desktop)
     return app

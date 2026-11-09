@@ -31,7 +31,7 @@ def test_desktop_capability_is_required_and_private(desktop):
     identity = client.get('/api/desktop/identity?challenge=one').json()
     assert identity['workspace'] == str(root)
     assert identity['challenge'] == 'one'
-    assert identity['api_revision'] == 3
+    assert identity['api_revision'] == 4
     assert 'token' not in identity
     assert json.loads(runtime.descriptor.read_text())['token'] == runtime.token
     client.headers.pop('x-pantheon-desktop-token')
