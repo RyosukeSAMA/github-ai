@@ -1,9 +1,14 @@
-"""Tests for LLM clients (using mocks for the SDK calls)."""
+"""Tests for LLM clients without real provider requests."""
 
+import json
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+from openai import OpenAI
 
+from pantheon.core.calls import call_scope
 from pantheon.llm import get_llm_client
 from pantheon.llm.anthropic_client import AnthropicClient
 from pantheon.llm.base import BaseLLMClient
@@ -27,6 +32,63 @@ def test_factory_creates_ollama():
     c = get_llm_client("ollama")
     assert isinstance(c, OllamaClient)
     assert "11434" in c.base_url
+
+
+@pytest.mark.parametrize("streaming", [False, True], ids=["complete", "stream"])
+@pytest.mark.parametrize(
+    ("provider", "model", "options", "expected"),
+    [
+        ("ollama", "gemma4:12b", {}, {"reasoning_effort": "none"}),
+        ("ollama", "gemma4-local:12b", {}, {"reasoning_effort": "none"}),
+        ("ollama", "gemma4:12b", {"reasoning_effort": "low"}, {"reasoning_effort": "low"}),
+        ("ollama", "qwen3:8b", {}, {}),
+        ("ollama", "gpt-oss:20b", {}, {}),
+        ("openai", "gemma4:12b", {}, {}),
+        ("deepseek", "gemma4:12b", {}, {}),
+    ],
+)
+def test_chat_reasoning_effort_is_scoped_to_ollama_gemma4(provider, model, options, expected, streaming):
+    base_url = "http://fixture.test"
+    if provider == "ollama":
+        client = OllamaClient(base_url=base_url)
+    else:
+        client = OpenAIClient(api_key="fixture", base_url=f"{base_url}/v1")
+        client.provider_name = provider
+
+    requests = []
+
+    def handle(request):
+        assert request.url.path == "/v1/chat/completions"
+        requests.append(json.loads(request.content))
+        response = {"id": "fixture", "created": 0, "model": model}
+        choice = {"index": 0, "finish_reason": "stop"}
+        message = {"role": "assistant", "content": "ok"}
+        if streaming:
+            response.update(object="chat.completion.chunk", choices=[{**choice, "delta": message}])
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text=f"data: {json.dumps(response)}\n\ndata: [DONE]\n\n",
+            )
+        response.update(object="chat.completion", choices=[{**choice, "message": message}])
+        return httpx.Response(200, json=response)
+
+    deltas = []
+    transport = httpx.MockTransport(handle)
+    with OpenAI(api_key=client.api_key, base_url=client.base_url, http_client=httpx.Client(transport=transport)) as sdk:
+        client._client = sdk
+        scope = call_scope("hermes", "execution", sink=deltas.append) if streaming else nullcontext()
+        with scope:
+            result = client.complete([{"role": "user", "content": "Reply with exactly: ok"}], model, max_tokens=8, **options)
+
+    assert result == "ok"
+    assert deltas == (["ok"] if streaming else [])
+    assert len(requests) == 1
+    body = requests[0]
+    assert body["model"] == model
+    assert body["max_tokens"] == 8
+    assert body.get("stream", False) is streaming
+    assert {key: body[key] for key in ("reasoning_effort", "think") if key in body} == expected
 
 
 def test_factory_unknown_provider_raises():
