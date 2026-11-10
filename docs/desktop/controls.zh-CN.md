@@ -1,6 +1,6 @@
 # Pantheon Desktop：按钮与功能说明
 
-对应本地 **0.5.0-beta.19**，核对日期：2026-11-03（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
+对应本地 **0.5.0-beta.20**，核对日期：2026-11-05（Asia/Singapore）。客户端保持英文；本说明保留实际英文名称，中文解释用途。依据当前桌面界面及点击处理代码整理，不代表每项功能都已经通过真实第三方账号或所有操作系统的验收。
 
 ## 先认识界面
 
@@ -309,3 +309,32 @@ DeepSeek/OpenAI/Anthropic 图标用于识别连接；Ollama 图标识别运行�
 **Service & updates → Offline drafts**：对同一 HTTPS 主机/账号/工作区启用本地私有缓存。断网时可以编辑草稿、新建未发送任务及搜索已缓存内容，状态为 Saved locally。重新连接不自动同步；点击 Sync drafts 后，如另一台设备或网页端改过草稿，会展示两端文本供选择。选择保留本机草稿后仍需再次 Sync drafts；选择服务器稿件会保留一份本机恢复副本。Export local drafts 导出私有文本。主机需升级到支持该修订协议的当前源码；工作区 ZIP 不含本设备尚未同步的应用缓存。
 
 **Operation sessions**：先明确批准浏览器来源或 macOS 应用，再添加步骤并 Review & run steps。浏览器在单独窗口运行，可填写/点击/截图；跨来源导航、下载和弹窗受限，不共享 Pantheon 登录 Cookie。Stop 取消剩余步骤，已经发出的请求可能继续完成。macOS 应用控制需要实际辅助功能与自动化权限，支持范围以内置应用列表为准；Windows/Linux 目前只有浏览器适配器。该入口不会给模型授予无需审阅的桌面权限。详见[完整步骤与验证边界](../../desktop/offline-and-operations.md)。
+
+
+## beta.20 任务体验
+
+- **What’s new**：升级条说明四项变化并提供直达入口；Got it 后本版本不反复提示，帮助和命令菜单仍可打开。
+- **Explore features**：集中进入任务模板、模型、预算、文件历史、离线草稿、备份、操作会话及更新。
+- 四张起步卡打开 **Task brief**，编辑 Goal / Deliverables / Acceptance criteria / Constraints。Use task brief 只填入草稿；替换已有草稿需确认；切换项目或草稿发生新修改会阻止旧表单覆盖。
+- 输入框上方显示当前项目、供应商和配置准备情况。Ready to start 表示已配置，不等于实际 API 已验证；读取的是当前会话的模型分配。
+- **View progress**：查看真实事件驱动的步骤、当前角色和审批等待。完成后顶部入口变为 **Review delivery**。
+- **Result**：本次运行的完成步骤、成果、已审阅保存文件、检查证据和完整回复。旧运行成果保留在 Artifact library。模型自述测试通过不会变成独立验证通过。
+- **Review for gaps / Refine this result**：只生成可编辑的追问草稿，仍需手动发送。
+
+
+## beta.21 本地预览：项目概览与续做
+
+客户端左侧 **Project overview**、Web 左侧 **Project overview & continue** 打开同一套项目状态界面。**Add project entry** 可以添加目标、决定、成果、待办或检查说明；候选决定要确认后才进入新任务上下文。**Edit / Delete / Replace decision / Mark done** 用于纠正、删除、替换或完成条目。
+
+在 **Continue this project** 写下本次目标，再点 **Prepare new task**：只新建会话并准备草稿，之前未发送的草稿会保留，不会自动调用模型。之后仍由你确认发送。文件或项目状态变化后，先重新查看概览，再用 **Review current draft** 确认当前草稿。
+
+**Accept current file version** 只更新已登记文件的哈希基线；“文件未变化”“任务执行完成”“独立测试通过”是不同的状态。检查说明始终是用户报告，不会显示为独立验收通过。两端需要连接同一个工作区/服务才能共享数据；不同电脑上的独立文件夹不会自动同步。完整边界见[项目续做说明](../../desktop/project-continuity.md)。
+
+
+## beta.22 本地预览：网站验收、修复和交接
+
+左侧 **Delivery checks** 打开网站交付流程。先填写目标、HTML 入口文件和所需输出文件，保存 **Save criteria**；模型生成后先审阅保存文件，再用 **Run checks** 对实际文件做浏览器检查，此操作不调用模型。可选交互检查用于点击指定按钮并核对可见结果。
+
+**Check & propose repairs** 需要你授权，最多调用当前任务的编码角色模型两轮，可能产生费用，并发送已列出的文本文件和失败检查详情。修复先保留为候选版本并复检，不自动改动项目。通过 **Review candidate differences → Apply reviewed candidate** 审阅并应用，随后才能针对当前文件版本确认 **Accept delivery**。人工作品要求需要另行确认。
+
+最后审阅 **Prepare the next handoff** 中的决定、待办、检查说明和成果引用，按 **Confirm project updates** 才写入项目状态。文件或标准变化后，之前的验收会失效；模型声称“测试通过”不会变成绿色检查。首次支持小型静态网站，不能代替后端、支付、登录或线上系统验收。详见[完整流程及 CLI 对应命令](../../desktop/delivery-checks.md)。

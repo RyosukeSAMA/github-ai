@@ -5,11 +5,11 @@ function paletteCommands(){
   return [
     ['New task',newTask,project],['Choose project',connectWorkspace,!state.maintenance],
     ['Task center',()=>setView('tasks'),project],['Artifact library',()=>setView('library'),project],
-    ['Project files',()=>setView('files'),live],['Models and connections',openConnections,live],
+    ['Delivery checks',()=>desktopDelivery.open(),live],['Project overview',()=>nativeProject.open(),live],['Project files',()=>setView('files'),live],['Models and connections',openConnections,live],
     ['Capabilities',()=>setView('capabilities'),live],['Open terminal',()=>showTerminal(true),live],
     ['Usage and budgets',openUsage,live],['Toggle Focus layout',toggleLayout,true],
     ['Connect remote server',()=>showDialog('#remote-dialog'),!state.maintenance],
-    ['Service and updates',showService,true],['Help and diagnostics',openHelp,true]
+    ['Service and updates',showService,true],['What’s new',openWhatsNew,true],['Explore features',openFeatureGuide,true],['Task brief',()=>openTaskBrief('build'),live],['Help and diagnostics',openHelp,true]
   ];
 }
 function commandResult(name,detail,callback,enabled=true){
@@ -62,6 +62,7 @@ async function openHelp(){
   const steps=element('ol');for(const text of ['Choose a project folder and wait for Project connected.','Connect one provider, optionally Test API, then Save connection. Tests may incur usage.','Choose future-task defaults or assign models only to this task. Additional providers are optional.','Describe your goal. Review file changes before saving; inspect interrupted tasks before resuming.'])steps.append(element('li','',text));content.append(element('h3','','Your first task'),steps);
   const list=element('dl','shortcut-list');for(const [key,description] of [['⌘ / Ctrl K','Search tasks, artifacts and commands'],['⌘ / Ctrl N','Create a new task'],['⌘ / Ctrl O','Choose a project'],['⌘ / Ctrl Shift N','Open this task in another window'],['⌘ / Ctrl Enter','Send the current prompt'],['Escape','Close the active menu or dialog']])list.append(element('dt','',key),element('dd','',description));content.append(element('h3','','Keyboard shortcuts'),list);
   content.append(element('h3','','What the controls do'),element('p','','The connection badge separates service access from saved API test evidence. Focus hides navigation without changing your task. Theme changes artwork and controls; select System in Desktop preferences to follow your OS. Service & updates manages verified downloads and offline backups.'));
+  const whatsNew=journeyButton('What’s new',()=>{closeDialog('#info-dialog');openWhatsNew();}),features=journeyButton('Explore features',()=>{closeDialog('#info-dialog');openFeatureGuide();});content.append(whatsNew,features);
   const updates=element('button','','Updates and recovery');action(updates,()=>{closeDialog('#info-dialog');return showService();});content.append(updates);
   content.append(element('h3','','Diagnostic export'),element('p','','Export a local JSON file containing app/runtime versions, OS/CPU, service reachability and counts. No API keys, credentials, prompts, messages, files, project names, paths, server URLs or raw logs are included. Nothing is uploaded. Inspect the file before sharing it.'));
   const feedback=element('p','help-feedback');feedback.setAttribute('role','status');const save=element('button','primary','Export private diagnostic summary');

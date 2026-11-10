@@ -673,6 +673,7 @@ def ask(
     config: str | None = typer.Option(
         None, "--config", "-c", help="Path to pantheon.yaml."
     ),
+    delivery: str | None = typer.Option(None, '--delivery', help='Reviewed website acceptance contract ID.'),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON instead of formatted text."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
     stream: bool = typer.Option(False, "--stream", help="Print incremental text as it arrives."),
@@ -722,12 +723,19 @@ def ask(
             return typer.confirm("Allow this tool call once?", default=False)
         p.services.approval_handler = approve_tool
 
+    acceptance = ''
+    if isinstance(delivery, str) and delivery:
+        saved = p.services.delivery.contract(delivery)
+        if not saved:
+            fail(ValueError('Acceptance contract not found in this workspace.'))
+        acceptance = p.services.delivery.acceptance_context({'id': saved['id'], 'version': saved['version']})
+    delivery_options = {'acceptance': acceptance} if acceptance else {}
     started_at = time.perf_counter()
     try:
         if raw:
-            result = p.ask(task, mode=mode, skill=skill, **({'attachments': file} if file else {}))
+            result = p.ask(task, mode=mode, skill=skill, **delivery_options, **({'attachments': file} if file else {}))
         elif stream:
-            result = p.ask(task, mode=mode, skill=skill, on_event=_text_stream_event, **({"attachments":file} if file else {}))
+            result = p.ask(task, mode=mode, skill=skill, **delivery_options, on_event=_text_stream_event, **({"attachments":file} if file else {}))
         else:
             with console.status(
                 f"[{BRAND_COLOR}]Hermes is opening the council…[/]",
@@ -737,6 +745,7 @@ def ask(
                     task,
                     mode=mode,
                     skill=skill,
+                    **delivery_options,
                     on_event=_run_event_handler(run_status),
                     **({'attachments': file} if file else {}),
                 )
@@ -784,6 +793,118 @@ def ask(
     console.print(Panel(completion, border_style="grey37", box=box.MINIMAL, padding=(0, 1)))
     if exit_code:
         raise typer.Exit(exit_code)
+
+
+def _print_delivery(value, store, raw):
+    if raw or 'verification' not in value:
+        console.print_json(data=value)
+        return
+    console.print(_brand_header('DELIVERY', 'Recorded checks and reviewed outcomes',
+                               [value['id'], value['verification']], hero=False))
+    console.print(Panel(Text('Execution: '+value['status']+'  •  Automated checks: '+value['verification']+
+                            '  •  User acceptance: '+('accepted' if value['accepted'] else 'pending')),
+                        title=value['data']['contract']['data']['title'], border_style='green' if value['verification']=='passed' else 'yellow'))
+    table = Table('Check', 'Viewport', 'Observed result', box=box.SIMPLE, expand=True)
+    for check in value['data']['checks']:
+        table.add_row(Text(check['label']), Text(check.get('viewport','—')),
+                      Text(check['status']+': '+check['detail'], style='green' if check['status']=='passed' else 'yellow'))
+    console.print(table)
+    if value['data'].get('error'):
+        console.print(Text(value['data']['error'], style='yellow'))
+    console.print(Text('Evidence: '+str(store.root/value['id'])))
+    console.print(Text(value['note'], style=MUTED_COLOR))
+
+
+@app.command('delivery')
+def delivery_checks(
+    contract_file: Path | None = typer.Option(None, '--contract', help='Save a website acceptance JSON file.'),
+    context: str = typer.Option('cli-website', '--context'),
+    contract_id: str = typer.Option('', '--id', help='Acceptance contract ID.'),
+    run: bool = typer.Option(False, '--run', help='Run actual checks on saved files.'),
+    repair: bool = typer.Option(False, '--repair', help='Authorize up to two text-only model repair requests; may incur usage.'),
+    report: str = typer.Option('', '--report'),
+    apply: str = typer.Option('', '--apply', help='Review and apply a candidate run.'),
+    accept: str = typer.Option('', '--accept', help='Accept a current delivery after passing checks.'),
+    handoff: str = typer.Option('', '--handoff', help='Delivery run whose project updates will be reviewed.'),
+    updates: Path | None = typer.Option(None, '--updates', help='JSON array of explicitly reviewed project entries.'),
+    remove: str = typer.Option('', '--remove'),
+    stop: str = typer.Option('', '--stop'),
+    config: str | None = typer.Option(None, '--config'),
+    raw: bool = typer.Option(False, '--raw', help='Print the complete machine-readable report.'),
+):
+    """Website criteria, real evidence, bounded repairs and reviewed project handoff."""
+    from pantheon.core.delivery import model_repairer
+    services = _workspace_services()
+    store = services.delivery
+    store.recover()
+    if repair and not run:
+        raise typer.BadParameter('--repair requires --run.')
+    if updates and not handoff:
+        raise typer.BadParameter('--updates requires --handoff.')
+    try:
+        if contract_file:
+            current = store.contract(context=context)
+            value = json.loads(contract_file.read_text())
+            value['context'] = context
+            if current and not typer.confirm('Replace the saved acceptance criteria?', default=False):
+                raise typer.Exit(0)
+            console.print_json(data=store.save_contract(value, current['version'] if current else 0))
+            return
+        identity = apply or accept or handoff or remove or stop or report
+        if identity:
+            value = store.report(identity)
+            if stop:
+                value = store.stop(identity)
+            elif apply:
+                for item in store.diffs(identity):
+                    console.print(Panel(Text(item['diff']), title=item['path']))
+                if not typer.confirm('Apply these candidate changes to the unchanged source files?', default=False):
+                    raise typer.Exit(0)
+                value = store.apply(identity, value['proof'])
+            elif accept:
+                console.print_json(data={'verification': value['verification'], 'human_requirements': value['human_requirements']})
+                if not typer.confirm('I reviewed this delivery and its human requirements. Accept it?', default=False):
+                    raise typer.Exit(0)
+                value = store.accept(identity, value['proof'], acknowledge_requirements=True)
+            elif handoff:
+                if not updates:
+                    console.print_json(data={'suggestion': value['data'].get('handoff_suggestion', {}),
+                                             'files': list(value['data']['target_hashes']), 'checks': value['data']['checks'],
+                                             'next': 'Review a JSON array of goal/decision/output/todo/check entries and pass --updates.'})
+                    return
+                entries = json.loads(updates.read_text())
+                console.print_json(data=entries)
+                if not typer.confirm('Add these reviewed facts to current project state?', default=False):
+                    raise typer.Exit(0)
+                state = services.project.snapshot()
+                value = store.handoff(identity, value['proof'], state['project_id'], state['revision'], entries)
+            elif remove:
+                if not typer.confirm('Remove this delivery evidence?', default=False):
+                    raise typer.Exit(0)
+                store.remove(identity)
+                value = {'removed': True}
+            _print_delivery(value, store, raw)
+            return
+        contract = store.contract(contract_id) if contract_id else store.contract(context=context)
+        if not contract:
+            console.print_json(data={'contract': None, 'next': 'Save website criteria with --contract FILE. See desktop/delivery-checks.md.'})
+            return
+        if run:
+            if repair and not typer.confirm('Authorize up to '+str(contract['data']['repair_rounds'])+' model repair requests? Usage may incur cost; changes remain candidates until reviewed.', default=False):
+                raise typer.Exit(0)
+            repairer = model_repairer(Pantheon(config_path=config)) if repair else None
+            prepared = store.prepare({'id': contract['id'], 'version': contract['version']}, repair=repair)
+            result = store.execute(prepared, repairer)
+            _print_delivery(result, store, raw)
+            if result['verification'] != 'passed':
+                raise typer.Exit(2)
+            return
+        console.print_json(data={'contract': contract, 'runs': store.list_runs(contract['id'])})
+    except typer.Exit:
+        raise
+    except (ValueError, OSError, RuntimeError) as error:
+        console.print(Text(str(error), style='red'))
+        raise typer.Exit(1) from error
 
 
 @app.command("roles")

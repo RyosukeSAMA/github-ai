@@ -206,3 +206,20 @@ def test_enhancement_waits_for_initial_chat_and_model_assignment(page: Page, liv
     page.wait_for_function('Boolean(window.finishEnhancement)')
     page.evaluate('window.finishEnhancement()')
     expect(page.locator('#input')).to_have_value('Enhanced startup draft')
+
+
+def test_server_criteria_conflict_preserves_unsent_draft_and_attachment(page, live_server_url):
+    """A last-moment server conflict must not erase a request already cleared by the UI."""
+    page.route('**/api/media/upload?*', lambda route: route.fulfill(json={
+        'id': 'd'*32, 'name': 'brief.pdf', 'type': 'application/pdf', 'size': 16}))
+    page.route('**/api/ask/stream', lambda route: route.fulfill(status=409, json={
+        'detail': 'Acceptance criteria changed. Review Delivery checks before sending.'}))
+    page.goto(live_server_url, wait_until='networkidle')
+    page.locator('#attachment-input').set_input_files({'name':'brief.pdf','mimeType':'application/pdf','buffer':b'%PDF-1.7\nfixture'})
+    expect(page.locator('#composer-attachments')).to_contain_text('brief.pdf')
+    page.locator('#input').fill('Build my product website')
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
+    expect(page.locator('#input')).to_have_value('Build my product website')
+    expect(page.locator('#composer-attachments')).to_contain_text('brief.pdf')
+    expect(page.locator('#chat .msg.user')).to_have_count(0)

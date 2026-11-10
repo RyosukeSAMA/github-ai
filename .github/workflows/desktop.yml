@@ -7,6 +7,8 @@ on:
       - 'desktop/**'
       - 'scripts/desktop/**'
       - 'pantheon/**'
+      - 'tests/test_project.py'
+      - 'tests/test_delivery.py'
       - 'tests/test_desktop.py'
       - 'tests/test_desktop_maintenance.py'
       - 'tests/test_desktop_sync.py'
@@ -28,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest, ubuntu-24.04]
+        os: [macos-15, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -43,15 +45,17 @@ jobs:
       - name: Install core and native build tools
         run: |
           python -m pip install --require-hashes -r requirements.lock
-          python -m pip install -e ".[dev]" pyinstaller==6.22.3
+          python -m pip install -e ".[dev,checks]" pyinstaller==6.22.3
           python -m pip check
           npm ci --prefix desktop
       - name: Install Linux desktop libraries
         if: runner.os == 'Linux'
         run: npx --prefix desktop playwright install-deps chromium
+      - name: Install delivery checker browser
+        run: python -m playwright install chromium
       - name: Test shared contracts and proxy
         run: |
-          python -m pytest tests/test_desktop.py tests/test_desktop_maintenance.py tests/test_desktop_sync.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
+          python -m pytest tests/test_delivery.py tests/test_project.py tests/test_desktop.py tests/test_desktop_maintenance.py tests/test_desktop_sync.py tests/test_backup.py tests/test_tasks.py tests/test_web_stream.py tests/test_windows_native.py
           npm test --prefix desktop
       - name: Freeze the Python runtime
         run: python scripts/desktop/build_runtime.py
@@ -97,3 +101,6 @@ jobs:
             dist/productivity-ui-evidence/**
             dist/sync-ui-evidence/**
             dist/operations-ui-evidence/**
+            dist/journey-ui-evidence/**
+            dist/project-ui-evidence/**
+            dist/delivery-ui-evidence/**

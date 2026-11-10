@@ -25,6 +25,7 @@ class Task:
     task_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     attachments: list[str] = field(default_factory=list)
     history: list[dict[str, str]] = field(default_factory=list)
+    acceptance: str = ''
 
     def __post_init__(self) -> None:
         if self.mode not in ("auto", "multi") and not self.mode.startswith("role:"):

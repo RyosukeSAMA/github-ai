@@ -22,7 +22,7 @@ test('a read-locked runtime is reused only after authenticated identity and PID 
   const {Backend}=require('../backend.cjs'),root=await fs.mkdtemp(path.join(os.tmpdir(),'pantheon-locked-runtime-'));
   t.after(()=>fs.rm(root,{recursive:true,force:true}));
   const workspace=await fs.realpath(root),descriptor=path.join(root,'desktop-runtime.json'),runtimeLock=path.join(root,'runtime.lock'),token='fixture-private-token-'.repeat(3);let wrongPID=false;
-  const server=http.createServer((req,res)=>{res.setHeader('content-type','application/json');if(req.headers['x-pantheon-desktop-token']!==token){res.writeHead(403);res.end('{}');return;}res.end(JSON.stringify({api_version:1,api_revision:2,challenge:new URL(req.url,'http://localhost').searchParams.get('challenge'),pid:wrongPID?process.pid+1:process.pid,instance_id:'locked-fixture',workspace}));});
+  const server=http.createServer((req,res)=>{res.setHeader('content-type','application/json');if(req.headers['x-pantheon-desktop-token']!==token){res.writeHead(403);res.end('{}');return;}res.end(JSON.stringify({api_version:1,api_revision:4,challenge:new URL(req.url,'http://localhost').searchParams.get('challenge'),pid:wrongPID?process.pid+1:process.pid,instance_id:'locked-fixture',workspace}));});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
   await fs.writeFile(descriptor,JSON.stringify({pid:process.pid,port:server.address().port,instance_id:'locked-fixture',workspace,token}),{mode:0o600});
   const locator=path.join(root,'locate.cjs');await fs.writeFile(locator,'process.stdout.write('+JSON.stringify(JSON.stringify({descriptor,runtime_lock:runtimeLock}))+')');

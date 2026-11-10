@@ -9,7 +9,7 @@
 <h1 align="center">Pantheon</h1>
 
 <p align="center">
-  <strong>一个本地多 Agent 工作区</strong><br>
+  <strong>一支能接着做项目的本地 AI 团队</strong><br>
   Hermes 负责规划与编排，专业神祇分工执行。
 </p>
 
@@ -51,7 +51,17 @@ Pantheon 把一个需求变成可观察、可控制的本地协作流程。使�
 
 Pantheon 以本地为中心：配置、Memory、定时任务、扩展状态和 Web 会话保存在所选工作区；浏览器还保留会话缓存和显示偏好。只有在执行任务时，相关内容才会发送给你启用的模型 Provider 或外部集成。
 
-桌面端 Beta（`0.5.0-beta.19`）：仓库现已包含英语原生客户端，支持内置 Python、持久任务、文件审阅、模型连接和本地/远程工作区。目前仍为预览版；请按[桌面端下载与系统/CPU指引](desktop/downloads.md)选择安装包。真实账号与设备验收和自动化 CI 分开记录。见[客户端说明](desktop/README.md)与[验证边界](desktop/verification.md)。下方稳定版 v0.4.0 安装命令仍对应 Web/CLI 版本。
+### 桌面端 beta.22 · 续做项目，检查交付
+
+按 **Apple Silicon macOS、x64 Windows 或 x64 Linux** 选择安装包。桌面端内置 Python。 [下载与首次安装](desktop/downloads.md)
+
+在[项目概览](desktop/project-continuity.md)里保存已确认的决定和待办。小型静态网站可运行[交付检查](desktop/delivery-checks.md)，查看浏览器观测、截图和经过审阅的修复。任务完成、检查通过和用户验收分别记录。
+
+![Pantheon 桌面端 beta.22 的网站验收和浏览器检查证据](docs/desktop/delivery/delivery-overview-light.png)
+
+[Web 版截图](docs/desktop/delivery/web-delivery.png) · [项目概览截图](docs/desktop/continuity/desktop-project-light.png) · [网站试用指引](desktop/website-trial.md)
+
+下方 Web/CLI 一行安装对应稳定版 v0.4.0。Web 和 CLI 的项目续做与网站检查在 beta.22 源码中提供。 [网站检查环境](desktop/delivery-checks.md#browser-availability)
 
 <a id="quick-start"></a>
 

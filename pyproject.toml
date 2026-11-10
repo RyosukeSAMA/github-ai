@@ -46,6 +46,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+checks = ["playwright>=1.56,<2"]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
@@ -78,6 +79,7 @@ pantheon = [
     "defaults/*.yaml",
     "web/static/*",
     "desktop/static/*",
+    "project_ui/*",
     "web/static/avatars/*",
     "skills/*/SKILL.md",
     "skills/*/pantheon.json",

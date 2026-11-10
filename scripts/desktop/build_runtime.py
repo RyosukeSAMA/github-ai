@@ -12,6 +12,7 @@ subprocess.run([
     '--specpath', str(root / 'build'), '--paths', str(root),
     '--collect-all', 'pantheon', '--collect-all', 'uvicorn',
     '--collect-all', 'keyring', '--collect-all', 'mcp',
+    '--collect-all', 'playwright',
     '--collect-all', 'openai', '--collect-all', 'anthropic',
     '--copy-metadata', 'pantheon-ai',
     str(root / 'scripts' / 'desktop' / 'runtime_entry.py'),

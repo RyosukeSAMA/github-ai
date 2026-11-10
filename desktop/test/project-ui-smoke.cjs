@@ -1,0 +1,84 @@
+'use strict';
+const {_electron:electron}=require('playwright'),{expect}=require('playwright/test');
+const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),http=require('node:http');
+const {smokeProgress,smokeTimeout}=require('./smoke-support.cjs'),repo=path.resolve(__dirname,'../..');
+async function main(){
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'pantheon-continuity-')),project=path.join(root,'Garden studio');await fs.mkdir(project);
+  const calls=[],provider=http.createServer((req,res)=>{let body='';req.on('data',x=>body+=x);req.on('end',()=>{calls.push(JSON.parse(body));res.writeHead(200,{'content-type':'text/event-stream'});res.end('data: '+JSON.stringify({choices:[{index:0,delta:{content:'Pricing page prepared. Independent browser checks have not run.'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');});});await new Promise(r=>provider.listen(0,'127.0.0.1',r));
+  const base='http://127.0.0.1:'+provider.address().port,evidence=path.join(repo,'dist/project-ui-evidence');await fs.mkdir(evidence,{recursive:true});await fs.rm(path.join(evidence,'result.json'),{force:true});
+  const env={...process.env,PANTHEON_DESKTOP_TEST:'1',PANTHEON_DESKTOP_WORKSPACE:project,PANTHEON_DESKTOP_USER_DATA:path.join(root,'profile'),PANTHEON_DATA_DIR:path.join(root,'data'),PANTHEON_STATE_MODE:'workspace',PANTHEON_MODEL_DOCS_SYNC:'0',PANTHEON_UI_AUTH_ENABLED:'false',PANTHEON_DESKTOP_PYTHON:process.env.PANTHEON_DESKTOP_PYTHON||path.join(repo,'.venv/bin/python')};for(const k of ['OPENAI_API_KEY','ANTHROPIC_API_KEY','DEEPSEEK_API_KEY','PANTHEON_CONFIG','PANTHEON_DESKTOP_TOKEN','PANTHEON_UI_PASSWORD','PANTHEON_UI_PASSWORD_HASH','PANTHEON_UI_SESSION_SECRET'])delete env[k];
+  const loader=path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib/server/electron/loader.js');
+  const app=await electron.launch({executablePath:process.env.PANTHEON_TEST_EXECUTABLE||require('electron'),args:process.env.PANTHEON_TEST_EXECUTABLE?['-r',loader]:[path.join(repo,'desktop')],env}),child=app.process();
+  const progress=smokeProgress('project-ui',evidence,smokeTimeout(240000),()=>child.kill('SIGKILL')),page=await app.firstWindow(),errors=[];let browser;
+  page.on('pageerror',e=>errors.push('Desktop: '+e.message));page.setDefaultTimeout(20000);
+  const shot=async(p,name)=>{if(await p.locator('#project-overview-dialog').isVisible())await p.locator('#project-overview-dialog .project-overview-body').evaluate(e=>e.scrollTop=0);await p.mouse.move(4,70);await p.screenshot({path:path.join(evidence,name+'.png'),animations:'disabled',scale:'css'});};
+  const nativeAPI=(target,body,method)=>page.evaluate(async({target,body,method})=>window.pantheonDesktop.api(target,{method:method||(body===undefined?'GET':'POST'),...(body===undefined?{}:{body})}),{target,body,method});
+  async function entry(p,kind,text,status){await p.getByRole('button',{name:'Add project entry',exact:true}).click();await p.locator('#project-entry-editor select').first().selectOption(kind);await p.locator('#project-entry-text').fill(text);if(status)await p.locator('#project-entry-state').selectOption(status);await p.locator('#project-entry-save').click();await expect(p.locator('#project-entry-editor')).not.toBeVisible();}
+  try{
+    await expect(page.locator('#connection-state')).toHaveText('Local connected',{timeout:30000});
+    await nativeAPI('/api/connections/save',{provider:'deepseek',model:'continuity-chat',base_url:base,api_key:'fixture-only-no-real-key',credential_storage:'env',streaming:true});await nativeAPI('/api/models/defaults',{models:Object.fromEntries(['hermes','hephaestus','athena','apollo'].map(r=>[r,{provider:'deepseek',model:'continuity-chat'}]))});await page.evaluate(()=>refreshSetup());
+    await page.locator('#new-task').click();await page.locator('#prompt').fill('Keep this unsent draft');const old=await page.evaluate(()=>state.selected);
+    progress.stage('confirmed project state and deliberate new task');
+    await page.locator('#project-overview-open').click();await entry(page,'goal','Build a small product website');await entry(page,'decision','Use forest green for the brand','confirmed');await entry(page,'decision','Candidate neon pink','candidate');await entry(page,'todo','Add a pricing page');await shot(page,'desktop-project-light');
+    await expect(page.locator('#draft-state')).toHaveText('Saved');
+    const oldTask=await nativeAPI('/api/desktop/sessions/'+old);
+    await nativeAPI('/api/desktop/sessions/'+old,{expected_version:oldTask.desktop_version,pinned:true},'PATCH');
+    await page.evaluate(async id=>{
+      while(state.polling)await new Promise(resolve=>setTimeout(resolve,20));
+      state.polling=true;
+      const original=api;
+      let release,received,held=false;
+      const delayed=new Promise(resolve=>{release=resolve;});
+      const captured=new Promise(resolve=>{received=resolve;});
+      api=async (path,body,method)=>{
+        const result=await original(path,body,method);
+        if(!held&&path==='/api/desktop/sessions/'+id&&body===undefined){
+          held=true;received();await delayed;
+        }
+        return result;
+      };
+      const pending=refresh();
+      globalThis.finishOldTaskRefresh=async()=>{
+        release();
+        try{
+          await pending;
+          return {selected:state.selected,detail:state.detail.id,prompt:$('#prompt').value};
+        }finally{api=original;state.polling=false;}
+      };
+      await captured;
+    },old);
+    await page.locator('#project-continue-intent').fill('Continue the website and add pricing');
+    await page.locator('#project-continue-prepare').click();
+    await expect(page.locator('#project-overview-dialog')).not.toBeVisible();
+    const next=await page.evaluate(()=>globalThis.finishOldTaskRefresh());
+    assert.notEqual(next.selected,old);
+    assert.equal(next.detail,next.selected);
+    assert.equal(next.prompt,'Continue the website and add pricing');
+    assert.equal((await nativeAPI('/api/desktop/sessions/'+old)).draft,'Keep this unsent draft');
+    assert.equal(calls.length,0);
+    // Locate only this isolated runtime; do not expose its private capability in evidence.
+    async function descriptor(dir){for(const item of await fs.readdir(dir,{withFileTypes:true})){const name=path.join(dir,item.name);if(item.name==='desktop-runtime.json')return JSON.parse(await fs.readFile(name,'utf8'));if(item.isDirectory()){const found=await descriptor(name);if(found)return found;}}}
+    const runtime=await descriptor(root),origin='http://127.0.0.1:'+runtime.port;
+    const webReady=app.waitForEvent('window');await app.evaluate(({BrowserWindow},origin)=>{const web=new BrowserWindow({width:1440,height:1000,show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});web.loadURL(origin);},origin);const web=await webReady;await web.waitForLoadState('domcontentloaded');web.setDefaultTimeout(20000);web.on('pageerror',e=>errors.push('Web: '+e.message));await web.route(/^https?:\/\/(?!127\.0\.0\.1)/,r=>r.abort());await web.locator('#project-overview-open').click();await expect(web.locator('#project-entry-list')).toContainText('Use forest green');await expect(web.locator('#project-entry-list')).toContainText('Candidate neon pink');await shot(web,'web-project-state');
+    const webAPI=(target,body,method)=>web.evaluate(async({target,body,method})=>{const r=await fetch(target,{method:method||(body===undefined?'GET':'POST'),headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});if(!r.ok)throw Error(await r.text());return r.json();},{target,body,method});
+    progress.stage('cross-client outputs, external file change and stale review refusal');
+    await webAPI('/api/workspace/file',{path:'index.html',content:'<h1>First website</h1>',overwrite:false});await page.locator('#project-overview-open').click();await page.getByRole('button',{name:'Refresh state',exact:true}).click();await expect(page.locator('.project-file')).toContainText('unchanged');await page.locator('#project-review-draft').click();await expect(page.locator('#project-overview-dialog')).not.toBeVisible();
+    await fs.writeFile(path.join(project,'index.html'),'<h1>Externally edited website</h1>');await page.locator('#run').click();await expect(page.locator('#toast')).toContainText('Project state or tracked files changed');await expect(page.locator('#prompt')).toHaveValue('Continue the website and add pricing');assert.equal(calls.length,0);assert.equal((await nativeAPI('/api/desktop/sessions')).runs.length,0);
+    await page.locator('#project-overview-open').click();await expect(page.locator('.project-file')).toContainText('changed');await shot(page,'desktop-file-changed');
+    progress.stage('concurrent edit retention and correction propagation');
+    const decision=page.locator('.project-entry').filter({hasText:'Use forest green'});await decision.getByRole('button',{name:'Edit',exact:true}).click();await page.locator('#project-entry-text').fill('Use sage green for the brand');
+    const current=await webAPI('/api/project'),item=current.entries.find(x=>x.text==='Use forest green for the brand');await webAPI('/api/project/entries/'+item.id,{project_id:current.project_id,expected_revision:current.revision,kind:item.kind,text:'Use cobalt blue for the brand',status:'confirmed'},'PATCH');
+    await page.locator('#project-entry-save').click();await expect(page.locator('.project-edit-conflict')).toBeVisible();await expect(page.locator('#project-entry-text')).toHaveValue('Use sage green for the brand');await expect(page.locator('.project-edit-conflict')).toContainText('Use cobalt blue');await shot(page,'desktop-edit-conflict');await page.getByRole('button',{name:'Cancel edit',exact:true}).click();
+    await page.locator('#project-review-draft').click();await expect(page.locator('#project-overview-dialog')).not.toBeVisible();await page.locator('#mode-trigger').click();await page.locator('#mode-menu [data-mode="role:hephaestus"]').click();await page.locator('#run').click();await expect(page.locator('#task-state')).toHaveText('completed',{timeout:30000});assert.equal(calls.length,1);assert.match(JSON.stringify(calls[0]),/Use cobalt blue/);assert.match(JSON.stringify(calls[0]),/Externally edited website|changed/);assert.doesNotMatch(JSON.stringify(calls[0]),/Use forest green|Candidate neon pink/);
+    // Delete the corrected decision through Web; it must not reappear in a new Desktop chat.
+    const latest=await webAPI('/api/project'),saved=latest.entries.find(x=>x.id===item.id);await webAPI('/api/project/entries/'+saved.id,{project_id:latest.project_id,expected_revision:latest.revision},'DELETE');await page.locator('#project-overview-open').click();await expect(page.locator('#project-entry-list')).not.toContainText('Use cobalt blue');await page.locator('#project-continue-intent').fill('Continue without the removed brand decision');await page.locator('#project-continue-prepare').click();await page.locator('#mode-trigger').click();await page.locator('#mode-menu [data-mode="role:hephaestus"]').click();await page.locator('#run').click();await expect(page.locator('#task-state')).toHaveText('completed',{timeout:30000});assert.equal(calls.length,2);assert.doesNotMatch(JSON.stringify(calls[1]),/Use cobalt blue|Use forest green|Candidate neon pink/);
+    progress.stage('Web continuation, dark garden and responsive project controls');
+    await web.getByRole('button',{name:'Refresh state',exact:true}).click();await expect(web.locator('#project-entry-list')).not.toContainText('Use cobalt blue');await web.locator('#project-continue-intent').fill('Continue with an accessibility review');await web.locator('#project-continue-prepare').click();await expect(web.locator('#input')).toHaveValue('Continue with an accessibility review');assert.equal(calls.length,2);
+    await fs.writeFile(path.join(project,'index.html'),'<h1>Second external edit</h1>');await web.locator('.god-row[data-role="hephaestus"]').click();await web.locator('#send-btn').click();await expect(web.locator('#input')).toHaveValue('Continue with an accessibility review');await expect(web.locator('#composer-status')).toContainText('Project state or tracked files changed');assert.equal(calls.length,2);
+    await web.locator('#project-overview-open').click();await web.locator('#project-review-draft').click();await expect(web.locator('#project-overview-dialog')).not.toBeVisible();await web.locator('#send-btn').click();await expect.poll(()=>calls.length).toBe(3);await expect(web.locator('#send-btn')).not.toHaveClass(/is-stopping/);assert.doesNotMatch(JSON.stringify(calls[2]),/Use cobalt blue|Use forest green|Candidate neon pink/);
+    await web.locator('#project-overview-open').click();await web.setViewportSize({width:760,height:800});await shot(web,'web-project-narrow');assert.ok(await web.locator('#project-overview-dialog').evaluate(e=>e.scrollWidth<=e.clientWidth));await web.locator('#project-overview-dialog').getByRole('button',{name:'Done',exact:true}).click();
+    await page.locator('#theme-toggle').click();await page.locator('#project-overview-open').click();await shot(page,'desktop-project-dark');await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(820,720));await shot(page,'desktop-project-narrow');assert.ok(await page.locator('#project-overview-dialog').evaluate(e=>e.scrollWidth<=e.clientWidth));await expect(page.locator('#project-overview-dialog').getByRole('button',{name:'Done',exact:true})).toBeInViewport();assert.deepEqual(errors,[]);
+    await app.close();assert.equal(child.exitCode,0);progress.finish(true);await fs.writeFile(path.join(evidence,'result.json'),JSON.stringify({passed:true,packaged:!!process.env.PANTHEON_TEST_EXECUTABLE,page_errors:errors,paid_api_calls:0,fixture_model_requests:calls.length,checks:['shared Desktop and Web project state','candidate excluded from confirmed context','new task retains original unsent draft','explicit saved output registered','external file change invalidates reviewed continuation before charge','concurrent edits retain local text and expose latest state','correction and deletion propagate to new dispatch','Web prepares a new chat without sending and preserves stale drafts before dispatch','dark/light/narrow project dialog']},null,2));console.log('PROJECT_UI_PASS: shared state, guarded continuation and corrections; zero paid APIs');
+  }catch(error){await shot(page,'failure');console.error('PROJECT_FEEDBACK: '+await page.locator('#project-feedback-status').textContent());throw error;}finally{await browser?.close().catch(()=>{});if(child.exitCode===null)await app.close().catch(()=>child.kill('SIGKILL'));provider.closeAllConnections();await new Promise(r=>provider.close(r));progress.finish(false);}
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

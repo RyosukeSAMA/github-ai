@@ -62,7 +62,8 @@ def test_long_chat_dom_is_bounded_and_complete_history_survives(page: Page, live
     page.locator('.load-earlier-messages').click()
     expect(page.locator('#chat .msg')).to_have_count(160)
     page.locator('#input').fill('Continue from the full transcript')
-    page.locator('#send-btn').click()
+    with page.expect_response('**/api/ask/stream'):
+        page.locator('#send-btn').click()
     expect(page.locator('#send-btn')).to_contain_text('Send')
     assert len(requests[0]['history']) <= 16
     assert 'TAIL' in requests[0]['history'][-1]['content']

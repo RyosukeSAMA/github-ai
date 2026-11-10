@@ -10,6 +10,18 @@ Top-bar **Connection status** opens a non-modal panel separating project-service
 
 Toolbar previews: [Light](../docs/desktop/toolbar-status-light.png) · [Dark](../docs/desktop/toolbar-status-dark.png) · [Narrow](../docs/desktop/toolbar-status-narrow.png). The screenshots use isolated fixture connections and do not show the user's real API status.
 
+## beta.22 checked website delivery
+
+This milestone adds reviewed website criteria, actual desktop/mobile browser evidence, up to two approved text-only repair requests, hash-guarded candidate application, separate user acceptance and a reviewed project handoff across Desktop, Web and CLI. See [website delivery workflow, limits and CLI commands](delivery-checks.md).
+
+## beta.21 project continuity
+
+This milestone adds a shared **Project overview** to Desktop and Web: user-controlled goals, decisions, outputs and next steps, tracked file observations and a reviewed continuation into a new conversation. Existing drafts remain intact. See [project continuity behavior and limits](project-continuity.md).
+
+## beta.20 task journey
+
+This milestone adds a version-aware **What’s new**, an **Explore features** guide, editable task briefs, current-task setup, real-event progress and a per-run delivery summary with reviewed saves and deliberate follow-ups. See [task journey behavior and verification scope](task-journey.md). The approved floral themes remain intact.
+
 ## First run
 
 1. Open Pantheon and choose your project folder. **Opening project…** shows progress; the connected project appears as a folder tile with its actual name and full path. The first setup step gets a checkmark and **Configure models** becomes the next action. Click the folder to browse project files; use **Change project** or the sidebar chevron to choose another folder. If opening fails, its reason and **Choose another folder** remain visible. Canceling the picker keeps your current task and draft. The app bundles Python; installing Python or Node is unnecessary for a packaged app.
@@ -117,7 +129,7 @@ node scripts/desktop/build_icons.cjs
 
 ### Combined packaged verification
 
-Set `PANTHEON_TEST_EXECUTABLE` to the built app and run `npm run test:packaged --prefix desktop`. The runner executes the full native smoke, provider UI, toolbar UI, update/recovery, productivity, offline-sync and operation suites in separate disposable profiles and requires all seven to exit successfully. CI runs this same command path on macOS, Windows and Linux. It records stage durations, failed/expired stages and the combined outcome in `dist/desktop-evidence`, `dist/provider-ui-evidence` and `dist/toolbar-ui-evidence`; all three directories are uploaded even on failure.
+Set `PANTHEON_TEST_EXECUTABLE` to the built app and run `npm run test:packaged --prefix desktop`. The runner executes the full native smoke, provider UI, toolbar UI, update/recovery, productivity, offline-sync, operation and task-journey suites in separate disposable profiles and requires all eight to exit successfully. CI runs this same command path on macOS, Windows and Linux. It records stage durations, failed/expired stages and the combined outcome in `dist/desktop-evidence`, `dist/provider-ui-evidence` and `dist/toolbar-ui-evidence`; all eight evidence directories are uploaded even on failure.
 
 The combined runner allows 600 seconds for the full native flow and 300 seconds for each focused suite, within the 45-minute job limit. A bounded `PANTHEON_DESKTOP_TEST_TIMEOUT_MS` override accepts 1000–900000 ms for diagnosis; malformed or out-of-range values fail immediately. Standalone native smoke retains its original platform defaults unless overridden. All existing assertions and zero-paid-call checks remain enabled. Passing local macOS tests does not establish a Windows/Linux CI pass.
 

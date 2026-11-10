@@ -3660,6 +3660,7 @@
     ]);
     pinChatModels();
     renderSettingsModels();
+    void projectUI.refresh(true);
     if (latestSetupStatus?.onboarding?.show) openSettingsPane('setup');
   }
 
@@ -6737,8 +6738,23 @@
            /网页|页面|网站|前端|落地页/.test(task);
   }
 
+  let projectPreflight = false;
   async function sendAsk(task, opts = {}) {
-    if (isStreaming) return;
+    if (isStreaming || projectPreflight) return;
+    let projectReview, deliveryContract;
+    const sendingSession = activeSessionId;
+    projectPreflight = true;
+    sendBtn.disabled = true;
+    sendBtn.querySelector('.send-text').textContent = 'Checking…';
+    try {
+      projectReview = await projectUI.checkReview(task);
+      deliveryContract = await deliveryUI.prepareRequest();
+      if (sendingSession !== activeSessionId) throw Error('The conversation changed. Nothing was sent.');
+      if (opts.sourceDraft !== undefined && (inputEl.value !== opts.sourceDraft || JSON.stringify(pendingAttachments) !== JSON.stringify(opts.attachments || []))) throw Error('The draft or attachments changed during checks. Review and send again.');
+    }
+    catch (error) { showSaveNotice(error.message); setComposerStatus(error.message + ' Review Project overview or Delivery checks before retrying.', 'warn', true); return; }
+    finally { projectPreflight = false; setSendState(false); }
+    if (opts.sourceDraft !== undefined) { inputEl.value = ''; autoResize(); clearPendingAttachments(); }
     invalidatePromptEnhancement();
     const history = conversationHistory();
     const agentTask = opts.agentTask || task;
@@ -6750,7 +6766,7 @@
     clearGodHighlight();
 
     titleActiveSessionFromPrompt(task);
-    addUserMessage(task, { attachments, skill: opts.skill || '' });
+    const submittedUserMessage = addUserMessage(task, { attachments, skill: opts.skill || '' });
     resetWorkspace();
     startWorkspaceTask(task, workspaceModeLabel());
     workspaceAutoPreview = taskLooksPreviewable(agentTask);
@@ -6870,6 +6886,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task: agentTask,
+          project_review: projectReview || undefined,
+          delivery_contract: deliveryContract || undefined,
           history: opts.resumeTaskId ? undefined : history,
           user_task: task,
           mode: currentMode,
@@ -6884,9 +6902,16 @@
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        if (resp.status === 409 && opts.sourceDraft !== undefined && activeSessionId === sendingSession && !inputEl.value.trim()) {
+          submittedUserMessage.remove();
+          inputEl.value = opts.sourceDraft;
+          if (!pendingAttachments.length) { pendingAttachments = attachments; renderAttachmentChips(); }
+          inputEl.dispatchEvent(new Event('input', {bubbles:true}));
+        }
         throw new Error(err.detail || `HTTP ${resp.status}`);
       }
 
+      projectUI.clearReview();
       streamConnected = true;
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -8030,7 +8055,9 @@
       if (abortCtrl) abortCtrl.abort();
       return;
     }
+    if (projectPreflight) return;
     if (voiceListening) stopVoiceInput();
+    const sourceDraft = inputEl.value;
     const skillSubmission = skillSubmissionFromInput(inputEl.value);
     if (skillSubmission?.handled) return;
     if (!skillSubmission && tryRunSlashCommand(inputEl.value)) return;
@@ -8039,11 +8066,9 @@
       || inputEl.value.trim()
       || (attachments.length ? '请根据我上传的附件进行分析。' : '');
     if (!text) return;
-    inputEl.value = '';
-    autoResize();
-    clearPendingAttachments();
     const localHtml = standaloneHtmlInput(text);
     if (localHtml && !attachments.length) {
+      inputEl.value = ''; autoResize(); clearPendingAttachments();
       previewLocalHtmlInput(text, localHtml);
       return;
     }
@@ -8052,6 +8077,7 @@
       : null;
     const agentTask = numericChoice?.agentTask || `${text}${attachmentPromptContext(attachments)}`;
     sendAsk(text, {
+      sourceDraft,
       agentTask,
       attachments,
       skill: skillSubmission?.item?.id || '',
@@ -8215,7 +8241,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, content, overwrite: false }),
       });
-      if (resp.ok) return await resp.json();
+      if (resp.ok) { const saved = await resp.json(); if (saved.project_state_warning) showSaveNotice('File saved. ' + saved.project_state_warning); void projectUI.refresh(true); return saved; }
       const data = await resp.json().catch(() => ({}));
       lastError = data.detail || `HTTP ${resp.status}`;
       if (resp.status !== 409) break;
@@ -8493,6 +8519,32 @@
   renderSessions();
   if (activeSessionId) activateSession(activeSessionId, true);
   else setMode('auto');
+  const projectUI = PantheonProject.mount({
+    request: async (path, body, method) => {
+      const response = await fetch(path, {method:method || (body === undefined ? 'GET':'POST'), headers:{'Content-Type':'application/json'}, signal:AbortSignal.timeout(15000), ...(body === undefined ? {} : {body:JSON.stringify(body)})});
+      const value = await response.json();
+      if (!response.ok) { const error = new Error(typeof value.detail === 'string' ? value.detail : 'Project request failed'); error.status = response.status; throw error; }
+      return value;
+    },
+    scope:()=>location.origin, session:()=>activeSessionId,
+    unavailable:()=>!protectedDataLoaded || (authState.enabled && !authState.authenticated),
+    busy:()=>isStreaming || projectPreflight,
+    currentDraft:()=>inputEl.value,
+    confirm:async (title, text)=>window.confirm(title + '\n\n' + text),
+    prepare:async prompt=>{await flushConversationSync(); const old=activeSessionId; startNewSession(); if (!activeSessionId || old === activeSessionId) throw Error('A new chat could not be created. The original draft is retained.'); inputEl.value=prompt; inputEl.dispatchEvent(new Event('input',{bubbles:true})); inputEl.focus();},
+    notify:showSaveNotice, strip:document.querySelector('#project-context-strip')
+  });
+  const deliveryUI = PantheonDelivery.mount({
+    request: async(path,body,method)=>{const response=await fetch(path,{method:method||(body===undefined?'GET':'POST'),headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(20000),...(body===undefined?{}:{body:JSON.stringify(body)})});const value=await response.json();if(!response.ok){const error=new Error(typeof value.detail==='string'?value.detail:'Delivery request failed');error.status=response.status;throw error;}return value;},
+    scope:()=>location.origin, context:()=>activeSessionId,
+    unavailable:()=>!protectedDataLoaded||(authState.enabled&&!authState.authenticated),
+    busy:()=>isStreaming||projectPreflight,
+    confirm:async(title,text)=>window.confirm(title+'\n\n'+text),
+    repairOverrides:()=>roleOverrides.hephaestus?{hephaestus:roleOverrides.hephaestus}:{},
+    projectChanged:()=>projectUI.refresh(true)
+  });
+  document.querySelector('#delivery-open').addEventListener('click',()=>deliveryUI.open().catch(error=>setComposerStatus(error.message,'warn',true)));
+  document.querySelector('#project-overview-open').addEventListener('click',()=>projectUI.open().catch(error=>showSaveNotice(error.message)));
   loadAuthStatus().then(() => initProtectedData());
   setInterval(() => {
     if (protectedDataLoaded && (!authState.enabled || authState.authenticated)) loadUpdateStatus();

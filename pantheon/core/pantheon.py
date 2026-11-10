@@ -93,6 +93,7 @@ class Pantheon:
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
         attachments: list[str | Path] | None = None,
         history: list[dict[str, str]] | None = None,
+        acceptance: str = '',
     ) -> dict[str, Any]:
         """Ask the Pantheon to do something.
 
@@ -115,7 +116,7 @@ class Pantheon:
                       for item in (attachments or [])]
         if identities:
             self.services.media.validate_attachments(identities)
-        task = Task(content=content, mode=mode, skill=skill, attachments=identities, history=history or [])
+        task = Task(content=content, mode=mode, skill=skill, attachments=identities, history=history or [], acceptance=acceptance)
         memory_events = self.services.process_input(content) if self.handle_memory else {'saved': [], 'suggestions': []}
         result = self._execution_hermes(on_event).dispatch(task, on_event=on_event)
         if self.handle_memory:
@@ -142,7 +143,7 @@ class Pantheon:
         if uncertain and not acknowledge_effects:
             raise ValueError('An unfinished step attempted an external tool or scheduling action. Review its result before acknowledging a retry.')
         saved_task = checkpoint['task']
-        task = Task(content=saved_task['content'], mode=saved_task['mode'], skill=saved_task.get('skill'), attachments=saved_task.get('attachments', []), history=saved_task.get('history', []))
+        task = Task(content=saved_task['content'], mode=saved_task['mode'], skill=saved_task.get('skill'), attachments=saved_task.get('attachments', []), history=saved_task.get('history', []), acceptance=saved_task.get('acceptance', ''))
         store.claim_resume(task_id, task.task_id)
         result = self._execution_hermes(on_event).dispatch(task, on_event=on_event, resume_checkpoint=checkpoint)
         result['resumed_from'] = task_id
