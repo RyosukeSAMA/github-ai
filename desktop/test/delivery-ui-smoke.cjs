@@ -15,7 +15,23 @@ async function main(){
   const shot=async(p,name)=>{await p.mouse.move(4,70);await p.screenshot({path:path.join(evidence,name+'.png'),scale:'css',animations:'disabled'});};
   try{
     await expect(page.locator('#connection-state')).toHaveText('Local connected',{timeout:30000});const base='http://127.0.0.1:'+provider.address().port;
-    await api('/api/connections/save',{provider:'deepseek',model:'delivery-fixture',base_url:base,api_key:'fixture-only-no-real-key',credential_storage:'env',streaming:true});await api('/api/models/defaults',{models:Object.fromEntries(['hermes','hephaestus','athena','apollo'].map(r=>[r,{provider:'deepseek',model:'delivery-fixture'}]))});await page.evaluate(()=>refreshSetup());await page.locator('#delivery-open').click();await expect(page.locator('#delivery-checks-dialog')).toBeVisible();const session=await page.evaluate(()=>state.selected);const current=await api('/api/desktop/sessions/'+session);await api('/api/desktop/sessions/'+session,{expected_version:current.desktop_version,overrides:{hephaestus:{provider:'deepseek',model:'delivery-override-fixture'}}},'PATCH');await page.evaluate(id=>selectSession(id,true),session);
+    await api('/api/connections/save',{provider:'deepseek',model:'delivery-fixture',base_url:base,api_key:'fixture-only-no-real-key',credential_storage:'env',streaming:true});await api('/api/models/defaults',{models:Object.fromEntries(['hermes','hephaestus','athena','apollo'].map(r=>[r,{provider:'deepseek',model:'delivery-fixture'}]))});await page.evaluate(()=>refreshSetup());
+    await app.evaluate(({app})=>{
+      const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');
+      const {Backend}=require(app.getAppPath()+'/backend.cjs');
+      const request=Backend.prototype.request;
+      const load=new Promise(resolve=>{globalThis.releaseDeliveryLoad=resolve;});
+      Backend.prototype.request=async function(target,...args){
+        if(target.startsWith('/api/delivery/contract?'))await load;
+        return request.call(this,target,...args);
+      };
+    });
+    await page.locator('#delivery-open').click();await expect(page.locator('#delivery-checks-dialog')).toBeVisible();
+    await expect(page.locator('#delivery-feedback')).toHaveText('Loading acceptance criteria…');
+    await expect(page.locator('#delivery-contract-form')).toBeHidden();
+    await app.evaluate(()=>globalThis.releaseDeliveryLoad());
+    await expect(page.locator('#delivery-contract-form')).toBeVisible();
+    const session=await page.evaluate(()=>state.selected);const current=await api('/api/desktop/sessions/'+session);await api('/api/desktop/sessions/'+session,{expected_version:current.desktop_version,overrides:{hephaestus:{provider:'deepseek',model:'delivery-override-fixture'}}},'PATCH');await page.evaluate(id=>selectSession(id,true),session);
     progress.stage('editable goal and website acceptance criteria');
     await page.locator('#delivery-contract-name').fill('Garden product website');await page.locator('#delivery-goal').fill('Present the garden product and support a working Add button.');await page.locator('#delivery-requirements').fill('Use a comfortable botanical palette.');await page.locator('#delivery-contract-form details summary').click();await page.getByRole('button',{name:'Add interaction',exact:true}).click();await page.locator('[data-field=label]').fill('Add updates the total');await page.locator('[data-field=click]').fill('#add');await page.locator('[data-field=expect]').fill('#total');await page.locator('[data-field=text]').fill('1');await page.locator('#delivery-save').click();await expect(page.locator('#delivery-feedback')).toContainText('Criteria saved');await page.locator('#delivery-checks-dialog .project-overview-body').evaluate(e=>e.scrollTop=0);await shot(page,'criteria-light');
     const contract=(await api('/api/delivery/contract?context='+session)).contract;assert.ok(contract.id);assert.equal(calls.length,0);
