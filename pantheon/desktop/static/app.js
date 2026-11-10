@@ -271,14 +271,17 @@ async function selectSession(id, initial=false) {
 }
 async function refresh() {
   if(!state.info?.workspace)return;
-  const epoch=state.epoch,mutation=state.mutation;
-  const data=await api('/api/desktop/sessions');if(epoch!==state.epoch||mutation!==state.mutation||state.saving)return;
+  const epoch=state.epoch,mutation=state.mutation,selection=state.selectionGeneration;
+  const stale=()=>epoch!==state.epoch||mutation!==state.mutation||selection!==state.selectionGeneration||state.saving||state.creatingTask;
+  const data=await api('/api/desktop/sessions');if(stale())return;
   const old=new Map(state.sessions.map(item=>[item.id,item]));state.sessions=data.sessions.map(item=>state.dirty.has(item.id)&&old.has(item.id)?{...item,desktop_version:old.get(item.id).desktop_version}:item);state.runs=data.runs;
-  if(!state.setup)await refreshSetup();
+  if(!state.setup){await refreshSetup();if(stale())return;}
   if(!state.selected && state.sessions.length){let last=state.info.initialSession;try{last=last||localStorage.getItem('pantheon-selected:'+state.info.workspace.workspace);}catch{}if(!state.sessions.some(item=>item.id===last))last=state.sessions.filter(item=>!item.archived).sort((a,b)=>b.updatedAt-a.updatedAt)[0]?.id||state.sessions[0].id;await selectSession(last,true);}
   else if(state.selected){
     const item=currentSession();if(item && !state.saving && !state.dirty.has(state.selected)){
-      const detail=await api('/api/desktop/sessions/'+state.selected);
+      const selected=state.selected;
+      const detail=await api('/api/desktop/sessions/'+selected);
+      if(stale()||selected!==state.selected||state.dirty.has(selected))return;
       if(state.detail?.desktop_version!==detail.desktop_version){const localDraft=$('#prompt').value;state.detail=detail;if(document.activeElement!==$('#prompt'))$('#prompt').value=detail.draft||'';else state.detail.draft=localDraft;}
     }
     renderTask();

@@ -20,7 +20,40 @@ async function main(){
     await page.locator('#new-task').click();await page.locator('#prompt').fill('Keep this unsent draft');const old=await page.evaluate(()=>state.selected);
     progress.stage('confirmed project state and deliberate new task');
     await page.locator('#project-overview-open').click();await entry(page,'goal','Build a small product website');await entry(page,'decision','Use forest green for the brand','confirmed');await entry(page,'decision','Candidate neon pink','candidate');await entry(page,'todo','Add a pricing page');await shot(page,'desktop-project-light');
-    await page.locator('#project-continue-intent').fill('Continue the website and add pricing');await page.locator('#project-continue-prepare').click();await expect(page.locator('#project-overview-dialog')).not.toBeVisible();await expect(page.locator('#prompt')).toHaveValue('Continue the website and add pricing');assert.notEqual(await page.evaluate(()=>state.selected),old);assert.equal((await nativeAPI('/api/desktop/sessions/'+old)).draft,'Keep this unsent draft');assert.equal(calls.length,0);
+    await expect(page.locator('#draft-state')).toHaveText('Saved');
+    const oldTask=await nativeAPI('/api/desktop/sessions/'+old);
+    await nativeAPI('/api/desktop/sessions/'+old,{expected_version:oldTask.desktop_version,pinned:true},'PATCH');
+    await page.evaluate(async id=>{
+      while(state.polling)await new Promise(resolve=>setTimeout(resolve,20));
+      state.polling=true;
+      const original=api;
+      let release,received,held=false;
+      const delayed=new Promise(resolve=>{release=resolve;});
+      const captured=new Promise(resolve=>{received=resolve;});
+      api=async (path,body,method)=>{
+        const result=await original(path,body,method);
+        if(!held&&path==='/api/desktop/sessions/'+id&&body===undefined){
+          held=true;received();await delayed;
+        }
+        return result;
+      };
+      const pending=refresh();
+      globalThis.finishOldTaskRefresh=async()=>{
+        release();
+        try{await pending;}finally{api=original;state.polling=false;}
+      };
+      await captured;
+    },old);
+    await page.locator('#project-continue-intent').fill('Continue the website and add pricing');
+    await page.locator('#project-continue-prepare').click();
+    await expect(page.locator('#project-overview-dialog')).not.toBeVisible();
+    await page.evaluate(()=>globalThis.finishOldTaskRefresh());
+    await expect(page.locator('#prompt')).toHaveValue('Continue the website and add pricing');
+    const next=await page.evaluate(()=>({selected:state.selected,detail:state.detail.id}));
+    assert.notEqual(next.selected,old);
+    assert.equal(next.detail,next.selected);
+    assert.equal((await nativeAPI('/api/desktop/sessions/'+old)).draft,'Keep this unsent draft');
+    assert.equal(calls.length,0);
     // Locate only this isolated runtime; do not expose its private capability in evidence.
     async function descriptor(dir){for(const item of await fs.readdir(dir,{withFileTypes:true})){const name=path.join(dir,item.name);if(item.name==='desktop-runtime.json')return JSON.parse(await fs.readFile(name,'utf8'));if(item.isDirectory()){const found=await descriptor(name);if(found)return found;}}}
     const runtime=await descriptor(root),origin='http://127.0.0.1:'+runtime.port;
