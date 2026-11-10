@@ -40,18 +40,20 @@ async function main(){
       const pending=refresh();
       globalThis.finishOldTaskRefresh=async()=>{
         release();
-        try{await pending;}finally{api=original;state.polling=false;}
+        try{
+          await pending;
+          return {selected:state.selected,detail:state.detail.id,prompt:$('#prompt').value};
+        }finally{api=original;state.polling=false;}
       };
       await captured;
     },old);
     await page.locator('#project-continue-intent').fill('Continue the website and add pricing');
     await page.locator('#project-continue-prepare').click();
     await expect(page.locator('#project-overview-dialog')).not.toBeVisible();
-    await page.evaluate(()=>globalThis.finishOldTaskRefresh());
-    await expect(page.locator('#prompt')).toHaveValue('Continue the website and add pricing');
-    const next=await page.evaluate(()=>({selected:state.selected,detail:state.detail.id}));
+    const next=await page.evaluate(()=>globalThis.finishOldTaskRefresh());
     assert.notEqual(next.selected,old);
     assert.equal(next.detail,next.selected);
+    assert.equal(next.prompt,'Continue the website and add pricing');
     assert.equal((await nativeAPI('/api/desktop/sessions/'+old)).draft,'Keep this unsent draft');
     assert.equal(calls.length,0);
     // Locate only this isolated runtime; do not expose its private capability in evidence.
